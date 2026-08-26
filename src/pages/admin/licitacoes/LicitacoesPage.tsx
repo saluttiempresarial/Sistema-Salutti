@@ -18,10 +18,11 @@ import {
   LicitacaoFormData,
   StatusLicitacao,
   STATUS_LICITACAO_LABEL,
+  ModalidadeLicitacao,
   MODALIDADE_LICITACAO_LABEL,
   DECISAO_CLIENTE_LABEL,
 } from '../../../types/licitacao';
-import { mockClientesResumo } from '../../../data/mockClientesResumo';
+import { clienteService } from '../../../services/clienteService';
 import { formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 
 const STATUS_TONE: Record<StatusLicitacao, StatusTone> = {
@@ -52,6 +53,12 @@ export function LicitacoesPage() {
   const [licitacaoParaExcluir, setLicitacaoParaExcluir] = useState<Licitacao | null>(null);
   const [excluindo, setExcluindo] = useState(false);
 
+  // Mapa id -> nome fantasia, carregado direto do Supabase (tabela `clientes`).
+  // Substituiu o antigo `mockClientesResumo` — que era uma lista fixa de
+  // clientes fictícios e não continha os clientes reais cadastrados no banco
+  // (ex.: a coluna "Cliente" ficava em branco para qualquer cliente real).
+  const [nomesClientes, setNomesClientes] = useState<Record<string, string>>({});
+
   const carregar = useCallback(async () => {
     if (carregandoPermissoes) return;
     setCarregando(true);
@@ -70,6 +77,23 @@ export function LicitacoesPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    let ativo = true;
+    // 200 cobre a carteira inteira sem precisar de paginação aqui — mesmo
+    // padrão já usado no seletor "Cliente vinculado" do LicitacaoFormModal.
+    clienteService.list({ page: 1, pageSize: 200 }).then((resultado) => {
+      if (!ativo) return;
+      const mapa: Record<string, string> = {};
+      resultado.data.forEach((c) => {
+        mapa[c.id] = c.empresa.nomeFantasia;
+      });
+      setNomesClientes(mapa);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   function abrirNova() {
     setLicitacaoEmEdicao(null);
@@ -103,7 +127,7 @@ export function LicitacoesPage() {
   }
 
   function nomeCliente(clienteId: string): string {
-    return mockClientesResumo.find((c) => c.id === clienteId)?.nomeFantasia ?? '—';
+    return nomesClientes[clienteId] ?? '—';
   }
 
   return (
@@ -186,7 +210,9 @@ export function LicitacoesPage() {
                   <tr key={licitacao.id} className="hover:bg-paper-2/60">
                     <td className="px-4 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
                     <td className="px-4 py-3 text-ink-soft">{licitacao.orgao}</td>
-                    <td className="px-4 py-3 text-ink-soft">{MODALIDADE_LICITACAO_LABEL[licitacao.modalidade]}</td>
+                    <td className="px-4 py-3 text-ink-soft">
+                      {MODALIDADE_LICITACAO_LABEL[licitacao.modalidade as ModalidadeLicitacao] ?? licitacao.modalidade}
+                    </td>
                     <td className="px-4 py-3 text-ink-soft">{nomeCliente(licitacao.clienteId)}</td>
                     <td className="px-4 py-3 text-ink-soft">
                       {formatarDataHora(dataReferencia)}

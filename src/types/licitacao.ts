@@ -71,10 +71,11 @@ export const STATUS_PROPOSTA_LABEL: Record<StatusProposta, string> = {
 
 // Aba 3 — Condições Comerciais: "Forma de pagamento (crédito em conta,
 // boleto, pix ou outros)" — únicas opções explicitadas na spec.
-export type FormaPagamento = 'credito_conta' | 'boleto' | 'pix' | 'outros';
+export type FormaPagamento = 'credito_conta' | 'debito_conta' | 'boleto' | 'pix' | 'outros';
 
 export const FORMA_PAGAMENTO_LABEL: Record<FormaPagamento, string> = {
   credito_conta: 'Crédito em conta',
+  debito_conta: 'Débito em conta',
   boleto: 'Boleto',
   pix: 'Pix',
   outros: 'Outros',
@@ -88,16 +89,16 @@ export interface HistoricoAcao {
 }
 
 // ---------------------------------------------------------------------------
-// Aba 2 — Habilitação
+// Aba 2 — Habilitação (Critérios de Habilitação)
 // ---------------------------------------------------------------------------
 export interface Habilitacao {
-  exigeAtestado: boolean;
-  exigeQuantidadeMinima: boolean;
   qualificacaoTecnica: string; // preenchido pelo analista (ou futuramente pela IA)
   qualificacaoEconomicoFinanceira: string;
-  regularidadeFiscal: string;
-  exigeAmostras: boolean;
-  prazoEntregaAmostraDias?: number; // só relevante quando exigeAmostras = true
+  regularidadeFiscal: string; // rótulo exibido: "Regularidade Fiscal e Trabalhista"
+  exigeAtestado: string; // rótulo exibido: "Exigência de Atestado de Fornecimento?" — texto descritivo, ex: "Sim, para ambos os itens..."
+  exigeAmostras: string; // rótulo exibido: "Exigência de Amostras?" — texto descritivo, ex: "Sim. O licitante classificado em primeiro lugar deverá apresentar a amostra"
+  prazoEntregaAmostraDias?: number; // só relevante quando exigeAmostras estiver preenchido
+  outrosRequisitos: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,7 @@ export interface PropostaClienteItem {
 
 export interface GrupoItens {
   id: string;
+  numero: string; // ex.: "1", "2" — número do grupo
   nome: string; // ex.: "Grupo 1"
 }
 
@@ -160,12 +162,13 @@ export interface Licitacao {
   orgao: string;
   estado: string; // UF
   municipio: string;
-  modalidade: ModalidadeLicitacao;
+  distanciaMatriz: string; // texto livre, ex: "120km" ou "cerca de 2h de viagem"
+  modalidade: string;
   formaDisputa: string;
-  modoDisputa: string;
-  participacao: string;
-  capag: boolean;
-  restricoesMeEpp: boolean;
+  modoDisputa: string; // dropdown: Aberto / Fechado / Aberto-Fechado / Fechado-Aberto
+  participacao: string; // dropdown: Individual / Por lote
+  capag: string; // texto livre, ex: "B (3,96%)"
+  restricoesMeEpp: string; // texto livre, ex: "Não é exclusiva. A preferência para ME/EPP não será aplicada"
   linkEdital?: string;
   nomeArquivoEdital?: string; // simula o upload do PDF do edital (mock); real vai para Supabase Storage
   valorTotalLicitacao?: number; // ausente/undefined = orçamento sigiloso

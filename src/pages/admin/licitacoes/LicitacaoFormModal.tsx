@@ -26,19 +26,19 @@ import { Button } from '../../../components/Button';
 import {
   Licitacao,
   LicitacaoFormData,
-  ModalidadeLicitacao,
-  MODALIDADE_LICITACAO_LABEL,
   StatusLicitacao,
   STATUS_LICITACAO_LABEL,
   FormaPagamento,
   FORMA_PAGAMENTO_LABEL,
+  ModalidadeLicitacao,
+  MODALIDADE_LICITACAO_LABEL,
   Habilitacao,
   CondicoesComerciais,
   ItemLicitacao,
   GrupoItens,
   DECISAO_CLIENTE_LABEL,
 } from '../../../types/licitacao';
-import { mockClientesResumo } from '../../../data/mockClientesResumo';
+import { clienteService } from '../../../services/clienteService';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 
@@ -54,6 +54,19 @@ function gerarIdLocal(prefixo: string): string {
   return `${prefixo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/** Converte um ISO string (UTC, como salvo no banco/estado) para o formato
+ *  "AAAA-MM-DDTHH:mm" que o input datetime-local espera, respeitando o
+ *  fuso horário LOCAL do navegador — ao contrário de um slice() direto no
+ *  ISO (que pega a hora em UTC e "engana" o campo, fazendo 09:30 local
+ *  aparecer como 12:30 depois de salvo, no fuso do Brasil UTC-3). */
+function paraInputDatetimeLocal(isoString?: string): string {
+  if (!isoString) return '';
+  const data = new Date(isoString);
+  if (Number.isNaN(data.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}T${pad(data.getHours())}:${pad(data.getMinutes())}`;
+}
+
 function criarFormularioVazio(): LicitacaoFormData {
   return {
     dataLicitacao: '',
@@ -63,12 +76,13 @@ function criarFormularioVazio(): LicitacaoFormData {
     orgao: '',
     estado: '',
     municipio: '',
-    modalidade: 'pregao_eletronico',
+    distanciaMatriz: '',
+    modalidade: '',
     formaDisputa: '',
     modoDisputa: '',
     participacao: '',
-    capag: false,
-    restricoesMeEpp: false,
+    capag: '',
+    restricoesMeEpp: '',
     linkEdital: '',
     nomeArquivoEdital: '',
     valorTotalLicitacao: undefined,
@@ -77,12 +91,12 @@ function criarFormularioVazio(): LicitacaoFormData {
     status: 'pendente',
 
     habilitacao: {
-      exigeAtestado: false,
-      exigeQuantidadeMinima: false,
+      exigeAtestado: '',
       qualificacaoTecnica: '',
       qualificacaoEconomicoFinanceira: '',
       regularidadeFiscal: '',
-      exigeAmostras: false,
+      exigeAmostras: '',
+      outrosRequisitos: '',
     },
 
     condicoesComerciais: {
@@ -117,12 +131,27 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
   const [abaAtiva, setAbaAtiva] = useState('gerais');
   const [form, setForm] = useState<LicitacaoFormData>(criarFormularioVazio());
   const [salvando, setSalvando] = useState(false);
+  const [clientes, setClientes] = useState<Array<{ value: string; label: string }>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
     setAbaAtiva('gerais');
     setForm(licitacaoEmEdicao ? { ...licitacaoEmEdicao } : criarFormularioVazio());
   }, [isOpen, licitacaoEmEdicao]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let ativo = true;
+    // 200 cobre a carteira inteira sem precisar de paginação aqui — a
+    // lista de clientes deste seletor não costuma passar disso.
+    clienteService.list({ page: 1, pageSize: 200 }).then((resultado) => {
+      if (!ativo) return;
+      setClientes(resultado.data.map((c) => ({ value: c.id, label: c.empresa.nomeFantasia })));
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [isOpen]);
 
   function atualizarCampo<K extends keyof LicitacaoFormData>(campo: K, valor: LicitacaoFormData[K]) {
     setForm((atual) => ({ ...atual, [campo]: valor }));
@@ -139,8 +168,16 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
   // --- Aba 5 — Itens: grupos e itens ------------------------------------
 
   function adicionarGrupo() {
-    const novoGrupo: GrupoItens = { id: gerarIdLocal('grp'), nome: `Grupo ${form.grupos.length + 1}` };
+    const numero = String(form.grupos.length + 1);
+    const novoGrupo: GrupoItens = { id: gerarIdLocal('grp'), numero, nome: `Grupo ${numero}` };
     setForm((atual) => ({ ...atual, grupos: [...atual.grupos, novoGrupo] }));
+  }
+
+  function renumerarGrupo(id: string, numero: string) {
+    setForm((atual) => ({
+      ...atual,
+      grupos: atual.grupos.map((g) => (g.id === id ? { ...g, numero } : g)),
+    }));
   }
 
   function renomearGrupo(id: string, nome: string) {
@@ -230,13 +267,18 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
                 label="Data e horário da licitação *"
                 required
                 type="datetime-local"
-                value={form.dataLicitacao?.slice(0, 16) ?? ''}
-                onChange={(e) => atualizarCampo('dataLicitacao', new Date(e.target.value).toISOString())}
+                value={paraInputDatetimeLocal(form.dataLicitacao)}
+                onChange={(e) =>
+                  atualizarCampo(
+                    'dataLicitacao',
+                    e.target.value ? new Date(e.target.value).toISOString() : ''
+                  )
+                }
               />
               <TextField
                 label="Data efetiva (se suspensa e remarcada)"
                 type="datetime-local"
-                value={form.dataEfetivaLicitacao?.slice(0, 16) ?? ''}
+                value={paraInputDatetimeLocal(form.dataEfetivaLicitacao)}
                 onChange={(e) =>
                   atualizarCampo('dataEfetivaLicitacao', e.target.value ? new Date(e.target.value).toISOString() : undefined)
                 }
@@ -286,6 +328,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
                 onChange={(e) => atualizarCampo('orgao', e.target.value)}
                 placeholder="Ex: Prefeitura Municipal de..."
               />
+              <div className="col-span-2">
+                <TextAreaField
+                  label="Objeto da licitação"
+                  value={form.objeto}
+                  onChange={(e) => atualizarCampo('objeto', e.target.value)}
+                  rows={2}
+                  placeholder="Descreva o objeto desta licitação"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <TextField
                   label="Estado (UF) *"
@@ -302,30 +353,51 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
                   onChange={(e) => atualizarCampo('municipio', e.target.value)}
                 />
               </div>
+              <TextField
+                label="Distância da matriz"
+                value={form.distanciaMatriz}
+                onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value)}
+                placeholder="Ex: 120km ou cerca de 2h de viagem"
+              />
               <SelectField
                 label="Modalidade *"
                 required
                 value={form.modalidade}
                 onChange={(e) => atualizarCampo('modalidade', e.target.value as ModalidadeLicitacao)}
+                placeholder="Selecione"
                 options={Object.entries(MODALIDADE_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
-              <TextField
+              <SelectField
                 label="Forma de disputa"
                 value={form.formaDisputa}
                 onChange={(e) => atualizarCampo('formaDisputa', e.target.value)}
-                placeholder="Ex: Aberto, Aberto-Fechado, Fechado"
+                placeholder="Selecione"
+                options={[
+                  { value: 'Menor Preço', label: 'Menor Preço' },
+                  { value: 'Maior Desconto', label: 'Maior Desconto' },
+                ]}
               />
-              <TextField
+              <SelectField
                 label="Modo de disputa"
                 value={form.modoDisputa}
                 onChange={(e) => atualizarCampo('modoDisputa', e.target.value)}
-                placeholder="Ex: Eletrônico, Presencial"
+                placeholder="Selecione"
+                options={[
+                  { value: 'Aberto', label: 'Aberto' },
+                  { value: 'Fechado', label: 'Fechado' },
+                  { value: 'Aberto/Fechado', label: 'Aberto/Fechado' },
+                  { value: 'Fechado/Aberto', label: 'Fechado/Aberto' },
+                ]}
               />
-              <TextField
+              <SelectField
                 label="Participação"
                 value={form.participacao}
                 onChange={(e) => atualizarCampo('participacao', e.target.value)}
-                placeholder="Ex: Ampla, Exclusiva ME/EPP"
+                placeholder="Selecione"
+                options={[
+                  { value: 'Individual', label: 'Individual' },
+                  { value: 'Por lote', label: 'Por lote' },
+                ]}
               />
               <TextField
                 label="Valor total da licitação (R$)"
@@ -363,15 +435,17 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <CheckboxField
+              <TextField
                 label="CAPAG"
-                checked={form.capag}
-                onChange={(e) => atualizarCampo('capag', e.target.checked)}
+                value={form.capag}
+                onChange={(e) => atualizarCampo('capag', e.target.value)}
+                placeholder="Ex: B (3,96%)"
               />
-              <CheckboxField
-                label="Restrições ME/EPP"
-                checked={form.restricoesMeEpp}
-                onChange={(e) => atualizarCampo('restricoesMeEpp', e.target.checked)}
+              <TextField
+                label="Restrições à participação. Exclusiva ME/EPP?"
+                value={form.restricoesMeEpp}
+                onChange={(e) => atualizarCampo('restricoesMeEpp', e.target.value)}
+                placeholder="Ex: Não é exclusiva. A preferência para ME/EPP não será aplicada"
               />
             </div>
 
@@ -382,7 +456,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
                 value={form.clienteId}
                 onChange={(e) => atualizarCampo('clienteId', e.target.value)}
                 placeholder="Selecione um cliente"
-                options={mockClientesResumo.map((c) => ({ value: c.id, label: c.nomeFantasia }))}
+                options={clientes}
               />
               <SelectField
                 label="Status *"
@@ -409,31 +483,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
           </div>
         )}
 
-        {/* Aba 2 — Habilitação */}
+        {/* Aba 2 — Habilitação (Critérios de Habilitação) */}
         {abaAtiva === 'habilitacao' && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <CheckboxField
-                label="Exige atestado de capacidade técnica?"
-                checked={form.habilitacao.exigeAtestado}
-                onChange={(e) => atualizarHabilitacao('exigeAtestado', e.target.checked)}
-              />
-              <CheckboxField
-                label="Exige quantidade mínima no atestado?"
-                checked={form.habilitacao.exigeQuantidadeMinima}
-                onChange={(e) => atualizarHabilitacao('exigeQuantidadeMinima', e.target.checked)}
-              />
-            </div>
-
-            {(form.habilitacao.exigeAtestado || form.habilitacao.exigeQuantidadeMinima) && (
-              <TextAreaField
-                label="Qualificação técnica"
-                value={form.habilitacao.qualificacaoTecnica}
-                onChange={(e) => atualizarHabilitacao('qualificacaoTecnica', e.target.value)}
-                placeholder="Detalhe a exigência de atestado / quantidade mínima"
-                rows={3}
-              />
-            )}
+            <TextAreaField
+              label="Qualificação técnica"
+              value={form.habilitacao.qualificacaoTecnica}
+              onChange={(e) => atualizarHabilitacao('qualificacaoTecnica', e.target.value)}
+              rows={3}
+            />
 
             <TextAreaField
               label="Qualificação econômico-financeira"
@@ -443,18 +501,28 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
             />
 
             <TextAreaField
-              label="Regularidade fiscal"
+              label="Regularidade fiscal e trabalhista"
               value={form.habilitacao.regularidadeFiscal}
               onChange={(e) => atualizarHabilitacao('regularidadeFiscal', e.target.value)}
               rows={3}
             />
 
-            <CheckboxField
-              label="Exige amostras?"
-              checked={form.habilitacao.exigeAmostras}
-              onChange={(e) => atualizarHabilitacao('exigeAmostras', e.target.checked)}
+            <TextAreaField
+              label="Exigência de atestado de fornecimento?"
+              value={form.habilitacao.exigeAtestado}
+              onChange={(e) => atualizarHabilitacao('exigeAtestado', e.target.value)}
+              rows={2}
+              placeholder='Ex: Sim, para ambos os itens. O(s) atestado(s) devem comprovar fornecimento similar ao objeto...'
             />
-            {form.habilitacao.exigeAmostras && (
+
+            <TextAreaField
+              label="Exigência de amostras?"
+              value={form.habilitacao.exigeAmostras}
+              onChange={(e) => atualizarHabilitacao('exigeAmostras', e.target.value)}
+              rows={2}
+              placeholder="Ex: Sim. O licitante classificado em primeiro lugar deverá apresentar a amostra"
+            />
+            {form.habilitacao.exigeAmostras.trim() && (
               <TextField
                 label="Prazo para entrega da amostra (dias)"
                 type="number"
@@ -468,6 +536,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
                 className="max-w-xs"
               />
             )}
+
+            <TextAreaField
+              label="Outros requisitos"
+              value={form.habilitacao.outrosRequisitos}
+              onChange={(e) => atualizarHabilitacao('outrosRequisitos', e.target.value)}
+              rows={3}
+            />
           </div>
         )}
 
@@ -543,6 +618,25 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
                 rows={2}
               />
             )}
+
+            <div className="border-t border-ink-soft/10 pt-5">
+              <CheckboxField
+                label="Cobrar frete?"
+                checked={form.cobrarFrete}
+                onChange={(e) => atualizarCampo('cobrarFrete', e.target.checked)}
+              />
+              {form.cobrarFrete && (
+                <TextField
+                  label="Percentual de frete (%)"
+                  type="number"
+                  value={form.percentualFrete ?? ''}
+                  onChange={(e) =>
+                    atualizarCampo('percentualFrete', e.target.value === '' ? undefined : Number(e.target.value))
+                  }
+                  className="mt-3 max-w-xs"
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -586,6 +680,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
               return (
                 <div key={grupo.id} className="rounded-xl border border-ink-soft/15 p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
+                    <input
+                      value={grupo.numero}
+                      onChange={(e) => renumerarGrupo(grupo.id, e.target.value)}
+                      placeholder="Nº"
+                      className="w-14 rounded-md border border-transparent bg-transparent font-body text-sm font-semibold text-ink hover:border-ink-soft/20 focus:border-forest focus:outline-none"
+                    />
                     <input
                       value={grupo.nome}
                       onChange={(e) => renomearGrupo(grupo.id, e.target.value)}
@@ -659,59 +759,67 @@ function ItemLicitacaoRow({
   onRemover: (id: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-12 items-end gap-2 rounded-lg bg-paper-2/60 p-3">
-      <div className="col-span-1">
-        <TextField
-          label="Nº"
-          value={item.numero}
-          onChange={(e) => onChange(item.id, 'numero', e.target.value)}
-        />
+    <div className="relative rounded-lg bg-paper-2/60 p-3">
+      <button
+        type="button"
+        onClick={() => onRemover(item.id)}
+        aria-label="Remover item"
+        className="absolute right-2 top-2 rounded-md p-1 text-ink-soft/50 hover:bg-red-50 hover:text-red-600"
+      >
+        ✕
+      </button>
+
+      <div className="flex flex-wrap items-end gap-2 pr-8">
+        <div className="w-16 shrink-0">
+          <TextField
+            label="Nº"
+            value={item.numero}
+            onChange={(e) => onChange(item.id, 'numero', e.target.value)}
+          />
+        </div>
+        <div className="w-32 shrink-0">
+          <TextField
+            label="Unidade de medida"
+            value={item.unidadeMedida}
+            onChange={(e) => onChange(item.id, 'unidadeMedida', e.target.value)}
+          />
+        </div>
+        <div className="w-28 shrink-0">
+          <TextField
+            label="Qtde"
+            type="number"
+            value={item.quantidade}
+            onChange={(e) => onChange(item.id, 'quantidade', Number(e.target.value))}
+          />
+        </div>
+        <div className="w-44 shrink-0">
+          <TextField
+            label="Valor Unit. Referência"
+            type="number"
+            value={item.precoReferencia}
+            onChange={(e) => onChange(item.id, 'precoReferencia', Number(e.target.value))}
+          />
+        </div>
+        <div className="w-48 shrink-0">
+          <p className="mb-1.5 whitespace-nowrap font-mono text-xs uppercase tracking-wide text-ink-soft">
+            Total Referência
+          </p>
+          <div className="whitespace-nowrap rounded-md border border-ink-soft/20 bg-white px-3 py-2.5 font-body text-sm font-medium text-ink">
+            {formatarMoeda(totalReferenciaItem(item))}
+          </div>
+        </div>
       </div>
-      <div className="col-span-3">
-        <TextField
+
+      <div className="mt-2">
+        <TextAreaField
           label="Descrição"
           value={item.descricao}
           onChange={(e) => onChange(item.id, 'descricao', e.target.value)}
+          rows={3}
         />
       </div>
-      <div className="col-span-2">
-        <TextField
-          label="Unidade"
-          value={item.unidadeMedida}
-          onChange={(e) => onChange(item.id, 'unidadeMedida', e.target.value)}
-        />
-      </div>
-      <div className="col-span-1">
-        <TextField
-          label="Qtde"
-          type="number"
-          value={item.quantidade}
-          onChange={(e) => onChange(item.id, 'quantidade', Number(e.target.value))}
-        />
-      </div>
-      <div className="col-span-2">
-        <TextField
-          label="Preço ref. (R$)"
-          type="number"
-          value={item.precoReferencia}
-          onChange={(e) => onChange(item.id, 'precoReferencia', Number(e.target.value))}
-        />
-      </div>
-      <div className="col-span-2">
-        <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Total ref.</p>
-        <p className="py-2.5 font-body text-sm font-medium text-ink">{formatarMoeda(totalReferenciaItem(item))}</p>
-      </div>
-      <div className="col-span-1 flex justify-end">
-        <button
-          type="button"
-          onClick={() => onRemover(item.id)}
-          aria-label="Remover item"
-          className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="col-span-12">
+
+      <div className="mt-2">
         <CheckboxField
           label="Exclusivo para ME/EPP"
           checked={item.exclusivoMeEpp}
