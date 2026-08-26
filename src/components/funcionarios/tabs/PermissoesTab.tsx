@@ -1,12 +1,21 @@
+import { useEffect, useState } from 'react'
 import type { AcaoPermissao, FuncionarioPerfil, FuncionarioPermissoes, ModuloPermissao } from '@/types/funcionario'
 import { MODO_ACESSO_LABEL, MODULO_PERMISSAO_LABEL } from '@/types/funcionario'
-import { mockClientesResumo } from '@/data/mockClientesResumo'
+import { clienteService } from '@/services/clienteService'
 import { mockLicitacoes } from '@/data/mockLicitacoes'
+// NOTA: "Licitações atribuídas à parte" ainda usa mockLicitacoes — a
+// migração desse módulo específico para o Supabase fica para depois,
+// fora do escopo desta correção (só o mock de clientes foi trocado aqui).
 
 interface PermissoesTabProps {
   permissoes: FuncionarioPermissoes
   perfil: FuncionarioPerfil
   onChange: (patch: Partial<FuncionarioPermissoes>) => void
+}
+
+interface ClienteResumo {
+  id: string
+  nomeFantasia: string
 }
 
 const MODULOS: ModuloPermissao[] = [
@@ -39,6 +48,22 @@ function alternarAcao(acoes: AcaoPermissao[], acao: AcaoPermissao): AcaoPermissa
  *  módulo/ação. Perfil Administrador ignora tudo aqui (acesso total
  *  garantido pelo perfil), então a aba fica desabilitada com um aviso. */
 export function PermissoesTab({ permissoes, perfil, onChange }: PermissoesTabProps) {
+  const [clientes, setClientes] = useState<ClienteResumo[]>([])
+
+  useEffect(() => {
+    if (perfil === 'admin') return
+    let ativo = true
+    // 200 cobre a carteira inteira sem precisar de paginação aqui — mesmo
+    // padrão já usado no seletor "Cliente vinculado" do LicitacaoFormModal.
+    clienteService.list({ page: 1, pageSize: 200 }).then((resultado) => {
+      if (!ativo) return
+      setClientes(resultado.data.map((c) => ({ id: c.id, nomeFantasia: c.empresa.nomeFantasia })))
+    })
+    return () => {
+      ativo = false
+    }
+  }, [perfil])
+
   if (perfil === 'admin') {
     return (
       <div className="rounded-lg border border-dashed border-ink-soft/25 bg-paper-2/60 p-4">
@@ -137,7 +162,7 @@ export function PermissoesTab({ permissoes, perfil, onChange }: PermissoesTabPro
         </p>
         <div className="mt-2 grid gap-4 sm:grid-cols-2">
           <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-ink-soft/15 p-2">
-            {mockClientesResumo.map((cliente) => (
+            {clientes.map((cliente) => (
               <label
                 key={cliente.id}
                 className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-forest-mist/40"

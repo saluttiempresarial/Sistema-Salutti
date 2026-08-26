@@ -1,35 +1,27 @@
 import { useState } from 'react'
 import type {
-  ClienteAcesso,
   ClienteContato,
   ClienteDadosEmpresa,
   ClienteEndereco,
   ClienteFormData,
+  ClienteStatus,
 } from '@/types/cliente'
 import { criarClienteFormVazio } from '@/types/cliente'
 import { isValidCEP, isValidCNPJ, isValidEmail } from '@/utils/validators'
 import { clienteService } from '@/services/clienteService'
 
 export type ClienteFormErrors = Partial<
-  Record<
-    | keyof ClienteDadosEmpresa
-    | keyof ClienteEndereco
-    | keyof ClienteContato
-    | 'emailLogin'
-    | 'senhaTemporaria'
-    | 'confirmarSenha',
-    string
-  >
+  Record<keyof ClienteDadosEmpresa | keyof ClienteEndereco | keyof ClienteContato, string>
 >
 
 interface UseClienteFormOptions {
   /** id do cliente em edição, para não acusar "CNPJ duplicado" contra ele mesmo. */
   clienteIdEmEdicao?: string
-  /** true ao editar: torna a senha temporária opcional (só preenche se for resetar). */
-  isEdicao?: boolean
 }
 
-/** Estado + validação do formulário de cliente, compartilhado pelas 5 abas. */
+/** Estado + validação do formulário de cliente (dados da empresa). O
+ *  gerenciamento de usuários/login fica em useUsuariosClienteTab, separado —
+ *  ver comentário em src/types/cliente.ts. */
 export function useClienteForm(
   initialData: ClienteFormData | undefined,
   options: UseClienteFormOptions = {}
@@ -51,12 +43,8 @@ export function useClienteForm(
     setFormData((prev) => ({ ...prev, contato: { ...prev.contato, ...patch } }))
   }
 
-  function updateAcesso(patch: Partial<ClienteAcesso>) {
-    setFormData((prev) => ({ ...prev, acesso: { ...prev.acesso, ...patch } }))
-  }
-
-  function updateSenha(patch: Partial<Pick<ClienteFormData, 'senhaTemporaria' | 'confirmarSenha'>>) {
-    setFormData((prev) => ({ ...prev, ...patch }))
+  function updateStatus(status: ClienteStatus) {
+    setFormData((prev) => ({ ...prev, status }))
   }
 
   function updateObservacoes(observacoes: string) {
@@ -72,8 +60,9 @@ export function useClienteForm(
     })
   }
 
-  /** Valida todas as abas. Retorna true se tudo estiver ok; caso contrário,
-   *  preenche `errors` (usado pelas abas para destacar os campos). */
+  /** Valida as abas de dados da empresa. Retorna true se tudo estiver ok;
+   *  caso contrário, preenche `errors` (usado pelas abas para destacar
+   *  os campos). */
   async function validar(): Promise<boolean> {
     const novosErros: ClienteFormErrors = {}
 
@@ -115,25 +104,6 @@ export function useClienteForm(
       novosErros.email = 'E-mail inválido.'
     }
 
-    // Aba 4 — Acesso ao Sistema
-    if (!formData.acesso.emailLogin.trim()) {
-      novosErros.emailLogin = 'Campo obrigatório.'
-    } else if (!isValidEmail(formData.acesso.emailLogin)) {
-      novosErros.emailLogin = 'E-mail inválido.'
-    }
-
-    const senhaObrigatoria = !options.isEdicao
-    if (senhaObrigatoria || formData.senhaTemporaria || formData.confirmarSenha) {
-      if (!formData.senhaTemporaria) {
-        novosErros.senhaTemporaria = 'Campo obrigatório.'
-      } else if (formData.senhaTemporaria.length < 6) {
-        novosErros.senhaTemporaria = 'Mínimo de 6 caracteres.'
-      }
-      if (formData.confirmarSenha !== formData.senhaTemporaria) {
-        novosErros.confirmarSenha = 'As senhas não coincidem.'
-      }
-    }
-
     setErrors(novosErros)
     return Object.keys(novosErros).length === 0
   }
@@ -144,8 +114,7 @@ export function useClienteForm(
     updateEmpresa,
     updateEndereco,
     updateContato,
-    updateAcesso,
-    updateSenha,
+    updateStatus,
     updateObservacoes,
     clearError,
     validar,

@@ -10,7 +10,7 @@ import { clienteService } from '@/services/clienteService'
 import { DadosEmpresaTab } from '@/components/clientes/tabs/DadosEmpresaTab'
 import { EnderecoTab } from '@/components/clientes/tabs/EnderecoTab'
 import { ContatoTab } from '@/components/clientes/tabs/ContatoTab'
-import { AcessoTab } from '@/components/clientes/tabs/AcessoTab'
+import { UsuariosClienteTab } from '@/components/clientes/tabs/UsuariosClienteTab'
 import { ObservacoesTab } from '@/components/clientes/tabs/ObservacoesTab'
 
 interface ClienteFormModalProps {
@@ -21,14 +21,14 @@ interface ClienteFormModalProps {
   onSaved: () => void
 }
 
-const TAB_IDS = ['empresa', 'endereco', 'contato', 'acesso', 'observacoes'] as const
+const TAB_IDS = ['empresa', 'endereco', 'contato', 'usuarios', 'observacoes'] as const
 type TabId = (typeof TAB_IDS)[number]
 
 const CAMPOS_POR_ABA: Record<TabId, string[]> = {
   empresa: ['razaoSocial', 'nomeFantasia', 'cnpj', 'segmento'],
   endereco: ['cep', 'endereco', 'numero', 'bairro', 'cidade', 'estado'],
   contato: ['responsavel', 'cargo', 'whatsapp', 'email'],
-  acesso: ['emailLogin', 'senhaTemporaria', 'confirmarSenha'],
+  usuarios: [],
   observacoes: [],
 }
 
@@ -37,6 +37,9 @@ export function ClienteFormModal({ open, clienteEmEdicao, onClose, onSaved }: Cl
   const [activeTab, setActiveTab] = useState<TabId>('empresa')
   const [isSaving, setIsSaving] = useState(false)
   const [erroGeral, setErroGeral] = useState('')
+  // Guarda o id assim que o cliente é criado, para a aba "Usuários" liberar
+  // mesmo sem fechar/reabrir o modal (criar → já poder cadastrar usuários).
+  const [clienteIdSalvo, setClienteIdSalvo] = useState<string | undefined>(clienteEmEdicao?.id)
 
   const {
     formData,
@@ -44,21 +47,19 @@ export function ClienteFormModal({ open, clienteEmEdicao, onClose, onSaved }: Cl
     updateEmpresa,
     updateEndereco,
     updateContato,
-    updateAcesso,
-    updateSenha,
+    updateStatus,
     updateObservacoes,
     clearError,
     validar,
   } = useClienteForm(clienteEmEdicao ? clienteParaFormData(clienteEmEdicao) : undefined, {
     clienteIdEmEdicao: clienteEmEdicao?.id,
-    isEdicao,
   })
 
   const tabs: TabItem[] = [
     { id: 'empresa', label: 'Dados da Empresa', hasError: CAMPOS_POR_ABA.empresa.some((c) => c in errors) },
     { id: 'endereco', label: 'Endereço', hasError: CAMPOS_POR_ABA.endereco.some((c) => c in errors) },
     { id: 'contato', label: 'Contato', hasError: CAMPOS_POR_ABA.contato.some((c) => c in errors) },
-    { id: 'acesso', label: 'Acesso ao Sistema', hasError: CAMPOS_POR_ABA.acesso.some((c) => c in errors) },
+    { id: 'usuarios', label: 'Usuários' },
     { id: 'observacoes', label: 'Observações' },
   ]
 
@@ -79,7 +80,8 @@ export function ClienteFormModal({ open, clienteEmEdicao, onClose, onSaved }: Cl
       if (clienteEmEdicao) {
         await clienteService.update(clienteEmEdicao.id, formData)
       } else {
-        await clienteService.create(formData)
+        const criado = await clienteService.create(formData)
+        setClienteIdSalvo(criado.id)
       }
       onSaved()
     } catch (err) {
@@ -119,8 +121,10 @@ export function ClienteFormModal({ open, clienteEmEdicao, onClose, onSaved }: Cl
         {activeTab === 'empresa' && (
           <DadosEmpresaTab
             empresa={formData.empresa}
+            status={formData.status}
             errors={errors}
             onChange={updateEmpresa}
+            onChangeStatus={updateStatus}
             onClearError={clearError}
           />
         )}
@@ -140,18 +144,7 @@ export function ClienteFormModal({ open, clienteEmEdicao, onClose, onSaved }: Cl
             onClearError={clearError}
           />
         )}
-        {activeTab === 'acesso' && (
-          <AcessoTab
-            acesso={formData.acesso}
-            senhaTemporaria={formData.senhaTemporaria}
-            confirmarSenha={formData.confirmarSenha}
-            errors={errors}
-            isEdicao={isEdicao}
-            onChangeAcesso={updateAcesso}
-            onChangeSenha={updateSenha}
-            onClearError={clearError}
-          />
-        )}
+        {activeTab === 'usuarios' && <UsuariosClienteTab clienteId={clienteIdSalvo} />}
         {activeTab === 'observacoes' && (
           <ObservacoesTab observacoes={formData.observacoes} onChange={updateObservacoes} />
         )}

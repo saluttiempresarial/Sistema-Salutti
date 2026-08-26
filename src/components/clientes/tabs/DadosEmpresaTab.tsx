@@ -1,4 +1,4 @@
-import type { ClienteDadosEmpresa } from '@/types/cliente'
+import type { ClienteDadosEmpresa, ClienteStatus } from '@/types/cliente'
 import { SEGMENTOS_DISPONIVEIS } from '@/types/cliente'
 import { TextField } from '@/components/TextField'
 import { SelectField } from '@/components/SelectField'
@@ -7,12 +7,26 @@ import type { ClienteFormErrors } from '@/hooks/useClienteForm'
 
 interface DadosEmpresaTabProps {
   empresa: ClienteDadosEmpresa
+  status: ClienteStatus
   errors: ClienteFormErrors
   onChange: (patch: Partial<ClienteDadosEmpresa>) => void
+  onChangeStatus: (status: ClienteStatus) => void
   onClearError: (campo: keyof ClienteFormErrors) => void
 }
 
-export function DadosEmpresaTab({ empresa, errors, onChange, onClearError }: DadosEmpresaTabProps) {
+const STATUS_OPTIONS = [
+  { value: 'ativo', label: 'Ativo' },
+  { value: 'inativo', label: 'Inativo' },
+]
+
+export function DadosEmpresaTab({
+  empresa,
+  status,
+  errors,
+  onChange,
+  onChangeStatus,
+  onClearError,
+}: DadosEmpresaTabProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <TextField
@@ -67,6 +81,12 @@ export function DadosEmpresaTab({ empresa, errors, onChange, onClearError }: Dad
         value={empresa.site}
         onChange={(e) => onChange({ site: e.target.value })}
         className="sm:col-span-2"
+      />
+      <SelectField
+        label="Status do cliente *"
+        value={status}
+        options={STATUS_OPTIONS}
+        onChange={(e) => onChangeStatus(e.target.value as ClienteStatus)}
       />
     </div>
   )

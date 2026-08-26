@@ -11,9 +11,9 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { usePermissoes } from '../../../hooks/usePermissoes';
 import { licitacaoService } from '../../../services/licitacaoService';
 import { disputaService } from '../../../services/disputaService';
+import { clienteService } from '../../../services/clienteService';
 import { Licitacao, STATUS_LICITACAO_LABEL, MODALIDADE_LICITACAO_LABEL } from '../../../types/licitacao';
 import { Disputa, RESULTADO_DISPUTA_LABEL } from '../../../types/disputa';
-import { mockClientesResumo } from '../../../data/mockClientesResumo';
 import { formatarDataHora, formatarMoeda } from '../../../utils/prazoUtils';
 import { totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 import { exportarParaExcel, exportarParaPDF, ColunaRelatorio } from '../../../utils/exportUtils';
@@ -24,10 +24,6 @@ const ABAS: { id: AbaRelatorio; label: string }[] = [
   { id: 'licitacoes', label: 'Licitações' },
   { id: 'disputas', label: 'Disputas' },
 ];
-
-function nomeCliente(clienteId: string): string {
-  return mockClientesResumo.find((c) => c.id === clienteId)?.nomeFantasia ?? '—';
-}
 
 // Valor de referência de uma licitação para relatórios/exportação: usa o
 // valor total informado na Aba 1 quando existir; senão, cai para a soma
@@ -73,6 +69,10 @@ export function RelatoriosPage() {
   const [disputas, setDisputas] = useState<Disputa[]>([]);
   const [carregando, setCarregando] = useState(true);
 
+  // Mapa id -> nome fantasia, carregado direto do Supabase (tabela
+  // `clientes`) — substituiu o antigo `mockClientesResumo`.
+  const [nomesClientes, setNomesClientes] = useState<Record<string, string>>({});
+
   const [statusFiltro, setStatusFiltro] = useState('');
   const [dataDe, setDataDe] = useState('');
   const [dataAte, setDataAte] = useState('');
@@ -95,6 +95,27 @@ export function RelatoriosPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    let ativo = true;
+    // 200 cobre a carteira inteira sem precisar de paginação aqui — mesmo
+    // padrão já usado no seletor "Cliente vinculado" do LicitacaoFormModal.
+    clienteService.list({ page: 1, pageSize: 200 }).then((resultado) => {
+      if (!ativo) return;
+      const mapa: Record<string, string> = {};
+      resultado.data.forEach((c) => {
+        mapa[c.id] = c.empresa.nomeFantasia;
+      });
+      setNomesClientes(mapa);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  function nomeCliente(clienteId: string): string {
+    return nomesClientes[clienteId] ?? '—';
+  }
 
   // Reseta o filtro de status ao trocar de aba, pois as opções são diferentes
   useEffect(() => {
@@ -192,7 +213,7 @@ export function RelatoriosPage() {
         resultado: RESULTADO_DISPUTA_LABEL[d.resultado],
       })),
     };
-  }, [aba, licitacoesFiltradas, disputasFiltradas, licitacoes]);
+  }, [aba, licitacoesFiltradas, disputasFiltradas, licitacoes, nomesClientes]);
 
   const opcoesStatus = useMemo(() => {
     if (aba === 'licitacoes') return Object.entries(STATUS_LICITACAO_LABEL);

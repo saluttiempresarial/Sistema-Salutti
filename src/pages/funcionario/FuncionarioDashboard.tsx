@@ -13,6 +13,9 @@
 // funcionário com modoAcesso 'restrito' só vê aqui as licitações dos
 // clientes vinculados a ele (+ atribuições pontuais) — `restricaoDados`
 // abaixo é repassado direto para licitacaoService.listarAtivas().
+//
+// Nome do cliente: vem de clienteService.list() (Supabase real) — antes
+// usava mockClientesResumo, migrado junto com a limpeza dos últimos mocks.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -21,13 +24,13 @@ import { useAuth } from '@/context/AuthContext'
 import { usePermissoes } from '@/hooks/usePermissoes'
 import { StatusPill, StatusTone } from '@/components/StatusPill'
 import { licitacaoService } from '@/services/licitacaoService'
+import { clienteService } from '@/services/clienteService'
 import {
   Licitacao,
   StatusLicitacao,
   STATUS_LICITACAO_LABEL,
   DECISAO_CLIENTE_LABEL,
 } from '@/types/licitacao'
-import { mockClientesResumo } from '@/data/mockClientesResumo'
 import { formatarDataHora, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 
 const STATUS_TONE: Record<StatusLicitacao, StatusTone> = {
@@ -38,14 +41,11 @@ const STATUS_TONE: Record<StatusLicitacao, StatusTone> = {
   perdido: 'danger',
 }
 
-function nomeCliente(clienteId: string): string {
-  return mockClientesResumo.find((c) => c.id === clienteId)?.nomeFantasia ?? '—'
-}
-
 export function FuncionarioDashboard() {
   const { user } = useAuth()
   const { carregando: carregandoPermissoes, restricaoDados, podeAcessarModulo } = usePermissoes()
   const [licitacoes, setLicitacoes] = useState<Licitacao[]>([])
+  const [nomesClientes, setNomesClientes] = useState<Record<string, string>>({})
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
@@ -62,6 +62,23 @@ export function FuncionarioDashboard() {
       ativo = false
     }
   }, [carregandoPermissoes, restricaoDados])
+
+  // Busca os nomes dos clientes referenciados nas licitações carregadas —
+  // 200 cobre a carteira inteira sem precisar de paginação aqui.
+  useEffect(() => {
+    let ativo = true
+    clienteService.list({ page: 1, pageSize: 200 }).then((resultado) => {
+      if (!ativo) return
+      const mapa: Record<string, string> = {}
+      resultado.data.forEach((c) => {
+        mapa[c.id] = c.empresa.nomeFantasia
+      })
+      setNomesClientes(mapa)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [])
 
   const comPrazoUrgente = useMemo(
     () =>
@@ -162,7 +179,7 @@ export function FuncionarioDashboard() {
                     <tr key={licitacao.id} className="hover:bg-paper-2/60">
                       <td className="px-4 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
                       <td className="px-4 py-3 text-ink-soft">{licitacao.orgao}</td>
-                      <td className="px-4 py-3 text-ink-soft">{nomeCliente(licitacao.clienteId)}</td>
+                      <td className="px-4 py-3 text-ink-soft">{nomesClientes[licitacao.clienteId] ?? '—'}</td>
                       <td className="px-4 py-3 text-ink-soft">
                         {formatarDataHora(dataReferencia)}
                         {urgencia === 'vencido' && <span className="ml-2 text-xs font-medium text-red-600">⚠ vencido</span>}
