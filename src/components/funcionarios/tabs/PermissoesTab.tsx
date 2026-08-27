@@ -2,10 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AcaoPermissao, FuncionarioPerfil, FuncionarioPermissoes, ModuloPermissao } from '@/types/funcionario'
 import { MODO_ACESSO_LABEL, MODULO_PERMISSAO_LABEL } from '@/types/funcionario'
 import { clienteService } from '@/services/clienteService'
-import { mockLicitacoes } from '@/data/mockLicitacoes'
-// NOTA: "Licitações atribuídas à parte" ainda usa mockLicitacoes — a
-// migração desse módulo específico para o Supabase fica para depois,
-// fora do escopo desta correção (só o mock de clientes foi trocado aqui).
+import { licitacaoService } from '@/services/licitacaoService'
 
 interface PermissoesTabProps {
   permissoes: FuncionarioPermissoes
@@ -16,6 +13,12 @@ interface PermissoesTabProps {
 interface ClienteResumo {
   id: string
   nomeFantasia: string
+}
+
+interface LicitacaoResumo {
+  id: string
+  numeroPregao: string
+  orgao: string
 }
 
 const MODULOS: ModuloPermissao[] = [
@@ -49,6 +52,7 @@ function alternarAcao(acoes: AcaoPermissao[], acao: AcaoPermissao): AcaoPermissa
  *  garantido pelo perfil), então a aba fica desabilitada com um aviso. */
 export function PermissoesTab({ permissoes, perfil, onChange }: PermissoesTabProps) {
   const [clientes, setClientes] = useState<ClienteResumo[]>([])
+  const [licitacoes, setLicitacoes] = useState<LicitacaoResumo[]>([])
 
   useEffect(() => {
     if (perfil === 'admin') return
@@ -58,6 +62,12 @@ export function PermissoesTab({ permissoes, perfil, onChange }: PermissoesTabPro
     clienteService.list({ page: 1, pageSize: 200 }).then((resultado) => {
       if (!ativo) return
       setClientes(resultado.data.map((c) => ({ id: c.id, nomeFantasia: c.empresa.nomeFantasia })))
+    })
+    licitacaoService.listar({ page: 1, pageSize: 200 }).then((resultado) => {
+      if (!ativo) return
+      setLicitacoes(
+        resultado.itens.map((l) => ({ id: l.id, numeroPregao: l.numeroPregao, orgao: l.orgao }))
+      )
     })
     return () => {
       ativo = false
@@ -188,7 +198,7 @@ export function PermissoesTab({ permissoes, perfil, onChange }: PermissoesTabPro
               Licitações atribuídas à parte
             </p>
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-ink-soft/15 p-2">
-              {mockLicitacoes.map((licitacao) => (
+              {licitacoes.map((licitacao) => (
                 <label
                   key={licitacao.id}
                   className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-forest-mist/40"

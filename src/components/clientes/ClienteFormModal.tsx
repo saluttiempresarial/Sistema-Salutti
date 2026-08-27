@@ -10,7 +10,7 @@ import { clienteService } from '@/services/clienteService'
 import { DadosEmpresaTab } from '@/components/clientes/tabs/DadosEmpresaTab'
 import { EnderecoTab } from '@/components/clientes/tabs/EnderecoTab'
 import { ContatoTab } from '@/components/clientes/tabs/ContatoTab'
-import { UsuariosClienteTab } from '@/components/clientes/tabs/UsuariosClienteTab'
+import { UsuariosClienteTab } from "./tabs/UsuariosClienteTab";
 import { ObservacoesTab } from '@/components/clientes/tabs/ObservacoesTab'
 
 interface ClienteFormModalProps {

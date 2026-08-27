@@ -9,13 +9,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Restaura a sessão salva (mock hoje; troca de aba/refresh do navegador
-  // futuramente cairia no supabase.auth.getSession()).
+  // Restaura a sessão salva no Supabase Auth ao recarregar a página.
   useEffect(() => {
-    const session = authService.getSession()
+  authService.getSession().then((session) => {
     setUser(session)
     setIsLoading(false)
-  }, [])
+  })
+}, [])
 
   async function login(credentials: LoginCredentials) {
     const { user: found, error } = await authService.signIn(credentials)
