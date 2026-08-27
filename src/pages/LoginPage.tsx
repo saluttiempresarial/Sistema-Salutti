@@ -7,15 +7,6 @@ import { TextField } from '@/components/TextField'
 import { Button } from '@/components/Button'
 import { ROLE_HOME_ROUTE } from '@/types/auth'
 
-/** Atalhos visíveis apenas em desenvolvimento, para agilizar testes manuais
- *  dos três perfis. Remover (ou ocultar atrás de uma flag) ao integrar com
- *  autenticação real. */
-const DEV_SHORTCUTS = [
-  { label: 'Administrador', email: 'admin@salutti.com' },
-  { label: 'Funcionário', email: 'funcionario@salutti.com' },
-  { label: 'Cliente', email: 'cliente@empresa.com' },
-]
-
 export function LoginPage() {
   const { login, isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
@@ -94,28 +85,6 @@ export function LoginPage() {
             Entrar
           </Button>
         </form>
-
-        <div className="mt-6 border-t border-ink-soft/10 pt-4">
-          <p className="mb-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft">
-            Acesso de teste (mock) — senha: 123456
-          </p>
-          <ul className="space-y-1">
-            {DEV_SHORTCUTS.map((shortcut) => (
-              <li key={shortcut.email}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail(shortcut.email)
-                    setPassword('123456')
-                  }}
-                  className="font-body text-xs text-forest underline decoration-dotted underline-offset-2 hover:text-forest-deep"
-                >
-                  {shortcut.label} · {shortcut.email}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
     </div>
   )

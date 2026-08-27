@@ -14,6 +14,11 @@
 //
 // Usa os componentes genéricos do projeto (Modal, Tabs, TextField,
 // SelectField, TextAreaField, CheckboxField, Button).
+//
+// PROP "carregando": true enquanto a página busca o registro completo
+// (grupos/itens) via licitacaoService.buscarPorId() antes de abrir em modo
+// edição — a listagem não traz esses dados, por design. Mostra um estado
+// simples de carregamento no lugar do formulário enquanto isso acontece.
 
 import { useEffect, useState } from 'react';
 import { Modal } from '../../../components/Modal';
@@ -125,9 +130,14 @@ interface LicitacaoFormModalProps {
   onClose: () => void;
   onSave: (dados: LicitacaoFormData) => Promise<void>;
   licitacaoEmEdicao?: Licitacao | null;
+  /** true enquanto a página está buscando o registro completo (grupos/itens)
+   *  antes de abrir em modo edição — mostra um estado de carregamento no
+   *  lugar do formulário. Opcional: se omitida, o formulário renderiza
+   *  normalmente assim que `licitacaoEmEdicao` chegar. */
+  carregando?: boolean;
 }
 
-export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao }: LicitacaoFormModalProps) {
+export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao, carregando: carregandoDados }: LicitacaoFormModalProps) {
   const [abaAtiva, setAbaAtiva] = useState('gerais');
   const [form, setForm] = useState<LicitacaoFormData>(criarFormularioVazio());
   const [salvando, setSalvando] = useState(false);
@@ -246,19 +256,27 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
       title={licitacaoEmEdicao ? `Editar licitação — ${licitacaoEmEdicao.numeroPregao}` : 'Nova licitação'}
       size="xl"
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose} disabled={salvando}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSalvar} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar licitação'}
-          </Button>
-        </>
+        carregandoDados ? undefined : (
+          <>
+            <Button variant="ghost" onClick={onClose} disabled={salvando}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSalvar} disabled={salvando}>
+              {salvando ? 'Salvando...' : 'Salvar licitação'}
+            </Button>
+          </>
+        )
       }
     >
-      <Tabs tabs={TABS} activeTab={abaAtiva} onChange={setAbaAtiva} />
+      {carregandoDados ? (
+        <div className="flex min-h-[320px] items-center justify-center">
+          <p className="font-body text-sm text-ink-soft">Carregando dados da licitação...</p>
+        </div>
+      ) : (
+        <>
+          <Tabs tabs={TABS} activeTab={abaAtiva} onChange={setAbaAtiva} />
 
-      <div className="mt-5 min-h-[320px]">
+          <div className="mt-5 min-h-[320px]">
         {/* Aba 1 — Informações Gerais */}
         {abaAtiva === 'gerais' && (
           <div className="space-y-5">
@@ -742,7 +760,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao 
             </div>
           </div>
         )}
-      </div>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }

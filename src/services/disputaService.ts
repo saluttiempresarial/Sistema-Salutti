@@ -1,6 +1,7 @@
 // src/services/disputaService.ts
 //
-// Mesmo padrão de `licitacaoService.ts` / `propostaService.ts`.
+// Camada de serviço do módulo de Disputas — conectada ao Supabase (tabela
+// `disputas`). Segue o mesmo padrão de `licitacaoService.ts`.
 //
 // PONTO IMPORTANTE: quando o resultado da disputa é definido como "ganho"
 // ou "perdido", este service atualiza automaticamente o `status` da
@@ -8,92 +9,116 @@
 // que a Mesa de Trabalho e a listagem de Licitações reflitam o resultado
 // sem precisar de uma segunda edição manual.
 
-import { Disputa, DisputaFormData, ResultadoDisputa } from '../types/disputa';
-import { mockDisputas } from '../data/mockDisputas';
-import { licitacaoService } from './licitacaoService';
+import { supabase } from '@/lib/supabaseClient'
+import { Disputa, DisputaFormData, ResultadoDisputa } from '../types/disputa'
+import { licitacaoService } from './licitacaoService'
 
-const STORAGE_KEY = 'salutti:disputas';
+/** Formato de uma linha vinda direto da tabela `disputas` do Postgres. */
+interface DisputaRow {
+  id: string
+  licitacao_id: string
+  data_sessao_realizada: string | null
+  valor_nossa_oferta_final: number | null
+  valor_vencedor: number | null
+  nome_vencedor: string | null
+  posicao_final: number | null
+  resultado: ResultadoDisputa
+  observacoes: string | null
+  link_ata_siga_pregao: string | null
+  criado_em: string
+  atualizado_em: string
+}
 
-function lerStorage(): Disputa[] {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(mockDisputas));
-    return mockDisputas;
+function paraDisputa(row: DisputaRow): Disputa {
+  return {
+    id: row.id,
+    licitacaoId: row.licitacao_id,
+    dataSessaoRealizada: row.data_sessao_realizada ?? undefined,
+    valorNossaOfertaFinal: row.valor_nossa_oferta_final ?? undefined,
+    valorVencedor: row.valor_vencedor ?? undefined,
+    nomeVencedor: row.nome_vencedor ?? undefined,
+    posicaoFinal: row.posicao_final ?? undefined,
+    resultado: row.resultado,
+    observacoes: row.observacoes ?? '',
+    linkAtaSigaPregao: row.link_ata_siga_pregao ?? undefined,
+    criadoEm: row.criado_em,
+    atualizadoEm: row.atualizado_em,
   }
-  try {
-    return JSON.parse(raw) as Disputa[];
-  } catch {
-    return mockDisputas;
-  }
 }
 
-function salvarStorage(disputas: Disputa[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(disputas));
-}
-
-function gerarId(): string {
-  return `disp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-}
-
-function simularLatencia<T>(valor: T, ms = 250): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(valor), ms));
+/** Converte o formulário para as colunas que o Supabase espera num
+ *  insert/update (sem id/criado_em/atualizado_em, que o próprio banco cuida). */
+function paraColunas(dados: Partial<DisputaFormData>) {
+  const colunas: Record<string, unknown> = {}
+  if (dados.licitacaoId !== undefined) colunas.licitacao_id = dados.licitacaoId
+  if (dados.dataSessaoRealizada !== undefined) colunas.data_sessao_realizada = dados.dataSessaoRealizada || null
+  if (dados.valorNossaOfertaFinal !== undefined) colunas.valor_nossa_oferta_final = dados.valorNossaOfertaFinal ?? null
+  if (dados.valorVencedor !== undefined) colunas.valor_vencedor = dados.valorVencedor ?? null
+  if (dados.nomeVencedor !== undefined) colunas.nome_vencedor = dados.nomeVencedor || null
+  if (dados.posicaoFinal !== undefined) colunas.posicao_final = dados.posicaoFinal ?? null
+  if (dados.resultado !== undefined) colunas.resultado = dados.resultado
+  if (dados.observacoes !== undefined) colunas.observacoes = dados.observacoes
+  if (dados.linkAtaSigaPregao !== undefined) colunas.link_ata_siga_pregao = dados.linkAtaSigaPregao || null
+  return colunas
 }
 
 async function sincronizarStatusLicitacao(licitacaoId: string, resultado: ResultadoDisputa, usuario: string) {
   if (resultado === 'ganho' || resultado === 'perdido') {
-    await licitacaoService.atualizarStatus(licitacaoId, resultado, usuario);
+    await licitacaoService.atualizarStatus(licitacaoId, resultado, usuario)
   }
 }
 
 export const disputaService = {
-  // SUPABASE: trocar por supabase.from('disputas').select('*').eq('licitacao_id', licitacaoId).maybeSingle()
   async buscarPorLicitacao(licitacaoId: string): Promise<Disputa | null> {
-    const itens = lerStorage();
-    return simularLatencia(itens.find((d) => d.licitacaoId === licitacaoId) ?? null);
+    const { data, error } = await supabase
+      .from('disputas')
+      .select('*')
+      .eq('licitacao_id', licitacaoId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    return data ? paraDisputa(data as DisputaRow) : null
   },
 
-  // SUPABASE: trocar por supabase.from('disputas').select('*, licitacao:licitacoes(*)')
   async listarTodas(): Promise<Disputa[]> {
-    const itens = lerStorage();
-    return simularLatencia(
-      [...itens].sort((a, b) => new Date(b.atualizadoEm).getTime() - new Date(a.atualizadoEm).getTime())
-    );
+    const { data, error } = await supabase
+      .from('disputas')
+      .select('*')
+      .order('atualizado_em', { ascending: false })
+    if (error) throw new Error(error.message)
+    return ((data as DisputaRow[]) ?? []).map(paraDisputa)
   },
 
-  // SUPABASE: trocar por supabase.from('disputas').insert(payload).select().single()
   async criar(dados: DisputaFormData, usuario: string): Promise<Disputa> {
-    const itens = lerStorage();
-    const agora = new Date().toISOString();
-    const nova: Disputa = { ...dados, id: gerarId(), criadoEm: agora, atualizadoEm: agora };
-    salvarStorage([...itens, nova]);
-    await sincronizarStatusLicitacao(nova.licitacaoId, nova.resultado, usuario);
-    return simularLatencia(nova);
+    const { data, error } = await supabase
+      .from('disputas')
+      .insert(paraColunas(dados))
+      .select()
+      .single()
+    if (error) throw new Error(error.message)
+
+    const row = data as DisputaRow
+    await sincronizarStatusLicitacao(row.licitacao_id, row.resultado, usuario)
+    return paraDisputa(row)
   },
 
-  // SUPABASE: trocar por supabase.from('disputas').update(payload).eq('id', id).select().single()
   async atualizar(id: string, dados: Partial<DisputaFormData>, usuario: string): Promise<Disputa> {
-    const itens = lerStorage();
-    const index = itens.findIndex((d) => d.id === id);
-    if (index === -1) throw new Error('Disputa não encontrada');
+    const { data, error } = await supabase
+      .from('disputas')
+      .update(paraColunas(dados))
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw new Error(error.message)
 
-    const atualizada: Disputa = {
-      ...itens[index],
-      ...dados,
-      atualizadoEm: new Date().toISOString(),
-    };
-    itens[index] = atualizada;
-    salvarStorage(itens);
-
+    const row = data as DisputaRow
     if (dados.resultado) {
-      await sincronizarStatusLicitacao(atualizada.licitacaoId, atualizada.resultado, usuario);
+      await sincronizarStatusLicitacao(row.licitacao_id, row.resultado, usuario)
     }
-    return simularLatencia(atualizada);
+    return paraDisputa(row)
   },
 
-  // SUPABASE: trocar por supabase.from('disputas').delete().eq('id', id)
   async excluir(id: string): Promise<void> {
-    const itens = lerStorage().filter((d) => d.id !== id);
-    salvarStorage(itens);
-    return simularLatencia(undefined);
+    const { error } = await supabase.from('disputas').delete().eq('id', id)
+    if (error) throw new Error(error.message)
   },
-};
+}

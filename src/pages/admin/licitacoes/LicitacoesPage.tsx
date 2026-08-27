@@ -50,6 +50,7 @@ export function LicitacoesPage() {
 
   const [modalAberto, setModalAberto] = useState(false);
   const [licitacaoEmEdicao, setLicitacaoEmEdicao] = useState<Licitacao | null>(null);
+  const [carregandoEdicao, setCarregandoEdicao] = useState(false);
   const [licitacaoParaExcluir, setLicitacaoParaExcluir] = useState<Licitacao | null>(null);
   const [excluindo, setExcluindo] = useState(false);
 
@@ -100,9 +101,18 @@ export function LicitacoesPage() {
     setModalAberto(true);
   }
 
-  function abrirEdicao(licitacao: Licitacao) {
-    setLicitacaoEmEdicao(licitacao);
+  // Busca o registro completo (com grupos/itens/histórico) antes de abrir o
+  // modal — o objeto vindo da listagem (`licitacaoService.listar()`) não traz
+  // esses dados, por design (evita pesar a listagem com joins desnecessários).
+  async function abrirEdicao(licitacao: Licitacao) {
+    setCarregandoEdicao(true);
     setModalAberto(true);
+    try {
+      const completa = await licitacaoService.buscarPorId(licitacao.id);
+      setLicitacaoEmEdicao(completa ?? licitacao);
+    } finally {
+      setCarregandoEdicao(false);
+    }
   }
 
   async function salvar(dados: LicitacaoFormData) {
@@ -272,6 +282,7 @@ export function LicitacoesPage() {
         onClose={() => setModalAberto(false)}
         onSave={salvar}
         licitacaoEmEdicao={licitacaoEmEdicao}
+        carregando={carregandoEdicao}
       />
 
       <ConfirmDialog
