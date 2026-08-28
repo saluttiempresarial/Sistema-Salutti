@@ -5,8 +5,37 @@
 // Administrador (ver Configurações do sistema / configuracaoService.ts) —
 // o padrão de fábrica é 3 dias úteis, 18h. Centralizado aqui para não
 // duplicar a lógica em cada tela que precisar exibir ou validar o prazo.
+//
+// CACHE EM MEMÓRIA: com a regra vindo do Supabase (configuracaoService),
+// buscá-la não é mais síncrono como era com localStorage. Para não obrigar
+// todo lugar que usa calcularPrazoInterno/classificarUrgenciaPrazo (várias
+// telas, chamados de forma síncrona dentro de useMemo/JSX) a virar
+// assíncrono, a regra é buscada UMA VEZ do banco e mantida em cache neste
+// módulo. Chame carregarRegraPrazoCache() uma vez no carregamento do app
+// (ex.: em App.tsx, dentro de um useEffect no componente raiz) para
+// popular o cache com o valor real assim que possível. Antes disso (ou se
+// a busca falhar), os cálculos usam o padrão de fábrica (3 dias úteis,
+// 18h) como fallback — nunca ficam sem funcionar.
 
 import { configuracaoService } from '../services/configuracaoService';
+import type { RegraPrazoInterno } from '../types/configuracoes';
+
+const REGRA_PADRAO: RegraPrazoInterno = { diasUteisAntes: 3, horario: '18:00' };
+
+let regraCache: RegraPrazoInterno = REGRA_PADRAO;
+
+/** Busca a regra de prazo real no Supabase e atualiza o cache em memória.
+ *  Chamar uma vez no carregamento do app (ex.: App.tsx). Também deve ser
+ *  chamada de novo depois que o Administrador salvar uma nova regra em
+ *  Configurações, para o cache não ficar desatualizado na mesma sessão. */
+export async function carregarRegraPrazoCache(): Promise<void> {
+  try {
+    regraCache = await configuracaoService.obterRegraPrazo();
+  } catch {
+    // Mantém o padrão de fábrica se a busca falhar (ex.: sem conexão) —
+    // os cálculos de prazo continuam funcionando com o valor de fallback.
+  }
+}
 
 /** Retorna true se a data (0 = domingo, 6 = sábado) cair em dia útil. */
 function isDiaUtil(date: Date): boolean {
@@ -30,10 +59,11 @@ export function subtrairDiasUteis(data: Date, dias: number): Date {
 /**
  * Calcula o prazo interno da Salutti para uma licitação: N dias úteis antes
  * da data/hora da sessão, fixado na hora configurada (padrão: 3 dias úteis
- * antes, 18h — ajustável em Configurações).
+ * antes, 18h — ajustável em Configurações). Usa o cache em memória — ver
+ * nota no topo do arquivo.
  */
 export function calcularPrazoInterno(dataAberturaSessaoISO: string): Date {
-  const { diasUteisAntes, horario } = configuracaoService.obterRegraPrazoSync();
+  const { diasUteisAntes, horario } = regraCache;
   const [hora, minuto] = horario.split(':').map(Number);
 
   const sessao = new Date(dataAberturaSessaoISO);

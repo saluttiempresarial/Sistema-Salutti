@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
@@ -14,8 +15,18 @@ import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
 import { ClienteDashboard } from '@/pages/cliente/ClienteDashboard'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { carregarRegraPrazoCache } from '@/utils/prazoUtils'
 
 export default function App() {
+  // Popula o cache em memória da regra de prazo interno (dias úteis antes +
+  // horário) uma vez, ao carregar o app — ver comentário no topo de
+  // src/utils/prazoUtils.ts. Sem isso, os cálculos de prazo usam o padrão
+  // de fábrica (3 dias úteis, 18h) mesmo que o Administrador tenha
+  // configurado outro valor em Configurações.
+  useEffect(() => {
+    carregarRegraPrazoCache()
+  }, [])
+
   return (
     // basename vem de import.meta.env.BASE_URL (configurado em vite.config.ts):
     // "/" em desenvolvimento local, "/Salutti-licitacoes/" no build para o

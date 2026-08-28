@@ -48,7 +48,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-forest-deep px-4">
       <div className="w-full max-w-sm rounded-2xl bg-paper p-8 shadow-card">
         <div className="mb-6 flex justify-center">
-          <Logo />
+          <Logo size="lg" />
         </div>
         <h1 className="mb-1 text-center font-display text-xl font-semibold text-forest-deep">
           Entrar no sistema

@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabaseClient'
 import { maskCNPJ } from '@/utils/masks'
-import type { Cliente, ClienteFormData, ClienteStatus } from '@/types/cliente'
+import type { Cliente, ClienteFormData, ClienteStatus, PorteEmpresa } from '@/types/cliente'
 
 /**
  * Camada de serviço do módulo de Clientes — conectada ao Supabase (tabela
@@ -32,6 +32,7 @@ interface ClienteRow {
   nome_fantasia: string
   cnpj: string
   segmento: string | null
+  porte: PorteEmpresa
   inscricao_estadual: string | null
   site: string | null
   cep: string | null
@@ -60,6 +61,7 @@ function paraCliente(row: ClienteRow): Cliente {
       nomeFantasia: row.nome_fantasia,
       cnpj: maskCNPJ(row.cnpj), // banco guarda só dígitos; aqui reaplica "00.000.000/0000-00" pra exibição
       segmento: row.segmento ?? '',
+      porte: row.porte ?? 'demais',
       inscricaoEstadual: row.inscricao_estadual ?? '',
       site: row.site ?? '',
     },
@@ -95,6 +97,7 @@ function paraColunas(formData: ClienteFormData) {
     nome_fantasia: formData.empresa.nomeFantasia,
     cnpj: formData.empresa.cnpj.replace(/\D/g, ''), // guarda só dígitos — evita duplicar por causa de máscara (12.345/0001-90 vs 12345000190)
     segmento: formData.empresa.segmento,
+    porte: formData.empresa.porte,
     inscricao_estadual: formData.empresa.inscricaoEstadual,
     site: formData.empresa.site,
     cep: formData.endereco.cep,

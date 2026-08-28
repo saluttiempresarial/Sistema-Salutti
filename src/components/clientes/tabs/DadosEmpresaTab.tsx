@@ -1,5 +1,5 @@
-import type { ClienteDadosEmpresa, ClienteStatus } from '@/types/cliente'
-import { SEGMENTOS_DISPONIVEIS } from '@/types/cliente'
+import type { ClienteDadosEmpresa, ClienteStatus, PorteEmpresa } from '@/types/cliente'
+import { SEGMENTOS_DISPONIVEIS, PORTE_EMPRESA_LABEL } from '@/types/cliente'
 import { TextField } from '@/components/TextField'
 import { SelectField } from '@/components/SelectField'
 import { maskCNPJ } from '@/utils/masks'
@@ -18,6 +18,8 @@ const STATUS_OPTIONS = [
   { value: 'ativo', label: 'Ativo' },
   { value: 'inativo', label: 'Inativo' },
 ]
+
+const PORTE_OPTIONS = Object.entries(PORTE_EMPRESA_LABEL).map(([value, label]) => ({ value, label }))
 
 export function DadosEmpresaTab({
   empresa,
@@ -40,7 +42,7 @@ export function DadosEmpresaTab({
         className="sm:col-span-2"
       />
       <TextField
-        label="Nome Fantasia *"
+        label="Grupo Econômico *"
         value={empresa.nomeFantasia}
         error={errors.nomeFantasia}
         onChange={(e) => {
@@ -68,6 +70,13 @@ export function DadosEmpresaTab({
           onChange({ segmento: e.target.value })
           onClearError('segmento')
         }}
+      />
+      <SelectField
+        label="Porte da empresa *"
+        value={empresa.porte}
+        placeholder="Selecione"
+        options={PORTE_OPTIONS}
+        onChange={(e) => onChange({ porte: e.target.value as PorteEmpresa })}
       />
       <TextField
         label="Inscrição Estadual"

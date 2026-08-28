@@ -580,11 +580,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 onChange={(e) => atualizarCondicoes('formaPagamento', e.target.value as FormaPagamento)}
                 options={Object.entries(FORMA_PAGAMENTO_LABEL).map(([value, label]) => ({ value, label }))}
               />
-              <TextField
+              <SelectField
                 label="Recebimento em qual banco"
                 value={form.condicoesComerciais.recebimentoBanco}
                 onChange={(e) => atualizarCondicoes('recebimentoBanco', e.target.value)}
-                placeholder="Ex: Banco do Brasil"
+                placeholder="Selecione"
+                options={[
+                  { value: 'Banco do Brasil', label: 'Banco do Brasil' },
+                  { value: 'Outros', label: 'Outros' },
+                ]}
               />
               <TextField
                 label="Prazo de pagamento (dias)"

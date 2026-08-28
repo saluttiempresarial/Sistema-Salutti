@@ -1,82 +1,155 @@
 // src/services/configuracaoService.ts
 //
-// Mesmo padrão dos demais services: hoje lê/escreve em `localStorage`; no
-// futuro, só este arquivo muda para integrar com Supabase (uma única
-// linha na tabela `configuracoes`, ou uma tabela `configuracoes_sistema`
-// com uma linha fixa — ver comentário SUPABASE: abaixo).
+// Camada de serviço do módulo de Configurações — conectada ao Supabase
+// (tabela `configuracoes`, linha única de configuração do sistema, mais a
+// tabela `links_rapidos`, separada por ter uma lista de tamanho variável).
+// Segue o mesmo padrão dos demais services.
 //
 // Outros services (`licitacaoService.ts`) e páginas (`MesaDeTrabalhoPage`)
-// já consultam este service para etapas de checklist padrão e links
+// consultam este service para a regra de prazo interno e para os links
 // rápidos, em vez de ter esses valores fixos espalhados pelo código.
 
-import { ConfiguracoesSistema, DadosEmpresa, RegraPrazoInterno, LinkRapido } from '../types/configuracoes';
-import { mockConfiguracoes } from '../data/mockConfiguracoes';
+import { supabase } from '@/lib/supabaseClient'
+import { ConfiguracoesSistema, DadosEmpresa, RegraPrazoInterno, LinkRapido } from '../types/configuracoes'
 
-const STORAGE_KEY = 'salutti:configuracoes';
-
-function lerStorage(): ConfiguracoesSistema {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(mockConfiguracoes));
-    return mockConfiguracoes;
-  }
-  try {
-    return JSON.parse(raw) as ConfiguracoesSistema;
-  } catch {
-    return mockConfiguracoes;
-  }
+/** Formato da linha única da tabela `configuracoes` do Postgres. */
+interface ConfiguracaoRow {
+  id: boolean
+  razao_social: string | null
+  nome_fantasia: string | null
+  cnpj: string | null
+  endereco: string | null
+  telefone: string | null
+  email: string | null
+  dias_uteis_antes: number
+  horario_limite: string // formato "HH:mm:ss", vindo do tipo `time` do Postgres
+  atualizado_em: string
 }
 
-function salvarStorage(config: ConfiguracoesSistema): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+interface LinkRapidoRow {
+  id: string
+  label: string
+  url: string
+  ordem: number | null
 }
 
-function simularLatencia<T>(valor: T, ms = 200): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(valor), ms));
+/** O Postgres devolve `time` como "HH:mm:ss" — o front usa só "HH:mm". */
+function paraHorarioCurto(horario: string): string {
+  return horario.slice(0, 5)
+}
+
+function paraLinkRapido(row: LinkRapidoRow): LinkRapido {
+  return { id: row.id, label: row.label, url: row.url }
+}
+
+async function buscarLinksRapidos(): Promise<LinkRapido[]> {
+  const { data, error } = await supabase
+    .from('links_rapidos')
+    .select('*')
+    .order('ordem', { ascending: true, nullsFirst: false })
+  if (error) throw new Error(error.message)
+  return ((data as LinkRapidoRow[]) ?? []).map(paraLinkRapido)
+}
+
+async function buscarConfiguracaoRow(): Promise<ConfiguracaoRow> {
+  const { data, error } = await supabase.from('configuracoes').select('*').eq('id', true).single()
+  if (error) throw new Error(error.message)
+  return data as ConfiguracaoRow
+}
+
+function paraConfiguracoesSistema(row: ConfiguracaoRow, links: LinkRapido[]): ConfiguracoesSistema {
+  return {
+    dadosEmpresa: {
+      razaoSocial: row.razao_social ?? '',
+      nomeFantasia: row.nome_fantasia ?? '',
+      cnpj: row.cnpj ?? '',
+      endereco: row.endereco ?? '',
+      telefone: row.telefone ?? '',
+      email: row.email ?? '',
+    },
+    regraPrazoInterno: {
+      diasUteisAntes: row.dias_uteis_antes,
+      horario: paraHorarioCurto(row.horario_limite),
+    },
+    linksRapidos: links,
+    atualizadoEm: row.atualizado_em,
+  }
 }
 
 export const configuracaoService = {
-  // Leitura síncrona da regra de prazo, usada por src/utils/prazoUtils.ts —
-  // como o localStorage é síncrono, não precisamos tornar prazoUtils.ts
-  // assíncrono só por causa disso. Quando migrar para Supabase, prazoUtils
-  // precisará receber a regra como parâmetro (buscada de forma assíncrona
-  // uma vez, no carregamento da página) em vez de ler daqui direto.
-  obterRegraPrazoSync(): { diasUteisAntes: number; horario: string } {
-    return lerStorage().regraPrazoInterno;
+  // ATENÇÃO: com dados vindos do Supabase, não há mais como ler a regra de
+  // prazo de forma síncrona (localStorage era síncrono; uma consulta ao
+  // banco não é). Qualquer código que chamava obterRegraPrazoSync() precisa
+  // ser ajustado para buscar a regra de forma assíncrona (ex.: uma vez, no
+  // carregamento da página, guardando o resultado em estado/contexto) e
+  // usar esse valor já carregado em vez de chamar este service de novo.
+  // Ver src/utils/prazoUtils.ts — os cálculos de prazo devem passar a
+  // receber a regra como parâmetro em vez de lê-la diretamente daqui.
+  async obterRegraPrazo(): Promise<RegraPrazoInterno> {
+    const row = await buscarConfiguracaoRow()
+    return { diasUteisAntes: row.dias_uteis_antes, horario: paraHorarioCurto(row.horario_limite) }
   },
 
-  // SUPABASE: trocar por supabase.from('configuracoes_sistema').select('*').single()
   async obter(): Promise<ConfiguracoesSistema> {
-    return simularLatencia(lerStorage());
+    const [row, links] = await Promise.all([buscarConfiguracaoRow(), buscarLinksRapidos()])
+    return paraConfiguracoesSistema(row, links)
   },
 
-  // SUPABASE: trocar por supabase.from('configuracoes_sistema').update({ dados_empresa: dados }).eq('id', 1)
   async atualizarDadosEmpresa(dados: DadosEmpresa): Promise<ConfiguracoesSistema> {
-    const atual = lerStorage();
-    const atualizado: ConfiguracoesSistema = { ...atual, dadosEmpresa: dados, atualizadoEm: new Date().toISOString() };
-    salvarStorage(atualizado);
-    return simularLatencia(atualizado);
+    const { error } = await supabase
+      .from('configuracoes')
+      .update({
+        razao_social: dados.razaoSocial,
+        nome_fantasia: dados.nomeFantasia,
+        cnpj: dados.cnpj,
+        endereco: dados.endereco,
+        telefone: dados.telefone,
+        email: dados.email,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq('id', true)
+    if (error) throw new Error(error.message)
+    return this.obter()
   },
 
-  // SUPABASE: trocar por supabase.from('configuracoes_sistema').update({ regra_prazo_interno: regra }).eq('id', 1)
   async atualizarRegraPrazo(regra: RegraPrazoInterno): Promise<ConfiguracoesSistema> {
-    const atual = lerStorage();
-    const atualizado: ConfiguracoesSistema = { ...atual, regraPrazoInterno: regra, atualizadoEm: new Date().toISOString() };
-    salvarStorage(atualizado);
-    return simularLatencia(atualizado);
+    const { error } = await supabase
+      .from('configuracoes')
+      .update({
+        dias_uteis_antes: regra.diasUteisAntes,
+        horario_limite: `${regra.horario}:00`,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq('id', true)
+    if (error) throw new Error(error.message)
+    return this.obter()
   },
 
-  // SUPABASE: trocar por supabase.from('configuracoes_sistema').update({ links_rapidos: links }).eq('id', 1)
+  // Apaga os links antigos e insere a lista nova por completo — mesma
+  // decisão de design já usada para grupos/itens em licitacaoService.ts:
+  // mais simples e sem risco de dessincronia entre linhas.
   async atualizarLinksRapidos(links: LinkRapido[]): Promise<ConfiguracoesSistema> {
-    const atual = lerStorage();
-    const atualizado: ConfiguracoesSistema = { ...atual, linksRapidos: links, atualizadoEm: new Date().toISOString() };
-    salvarStorage(atualizado);
-    return simularLatencia(atualizado);
+    const { error: erroDelete } = await supabase.from('links_rapidos').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    if (erroDelete) throw new Error(erroDelete.message)
+
+    if (links.length > 0) {
+      const { error: erroInsert } = await supabase.from('links_rapidos').insert(
+        links.map((link, index) => ({ label: link.label, url: link.url, ordem: index }))
+      )
+      if (erroInsert) throw new Error(erroInsert.message)
+    }
+
+    const { error: erroTouch } = await supabase
+      .from('configuracoes')
+      .update({ atualizado_em: new Date().toISOString() })
+      .eq('id', true)
+    if (erroTouch) throw new Error(erroTouch.message)
+
+    return this.obter()
   },
 
-  // Atalho usado pela Mesa de Trabalho
+  // Atalho usado pela Mesa de Trabalho.
   async obterLinksRapidos(): Promise<LinkRapido[]> {
-    const config = lerStorage();
-    return simularLatencia(config.linksRapidos, 50);
+    return buscarLinksRapidos()
   },
-};
+}

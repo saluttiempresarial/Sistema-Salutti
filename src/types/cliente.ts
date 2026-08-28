@@ -5,6 +5,17 @@ export const CLIENTE_STATUS_LABEL: Record<ClienteStatus, string> = {
   inativo: 'Inativo',
 }
 
+/** Porte da empresa — ME/EPP tem restrições legais de participação em
+ *  licitações de ampla concorrência (Lei Complementar 123/2006) e, por
+ *  regra da Salutti, não pode ter proposta enviada em nenhuma licitação
+ *  através do sistema (ver bloqueio no fluxo de envio de proposta). */
+export type PorteEmpresa = 'me_epp' | 'demais'
+
+export const PORTE_EMPRESA_LABEL: Record<PorteEmpresa, string> = {
+  me_epp: 'ME/EPP',
+  demais: 'Demais',
+}
+
 export interface ClienteDadosEmpresa {
   razaoSocial: string
   nomeFantasia: string
@@ -12,6 +23,7 @@ export interface ClienteDadosEmpresa {
   segmento: string
   inscricaoEstadual: string
   site: string
+  porte: PorteEmpresa
 }
 
 export interface ClienteEndereco {
@@ -65,6 +77,7 @@ export function criarClienteFormVazio(): ClienteFormData {
       segmento: '',
       inscricaoEstadual: '',
       site: '',
+      porte: 'demais',
     },
     endereco: {
       cep: '',
