@@ -18,7 +18,6 @@
 // usava mockClientesResumo, migrado junto com a limpeza dos últimos mocks.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { DashboardShell, StatCard } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissoes } from '@/hooks/usePermissoes'
@@ -43,7 +42,7 @@ const STATUS_TONE: Record<StatusLicitacao, StatusTone> = {
 
 export function FuncionarioDashboard() {
   const { user } = useAuth()
-  const { carregando: carregandoPermissoes, restricaoDados, podeAcessarModulo } = usePermissoes()
+  const { carregando: carregandoPermissoes, restricaoDados } = usePermissoes()
   const [licitacoes, setLicitacoes] = useState<Licitacao[]>([])
   const [nomesClientes, setNomesClientes] = useState<Record<string, string>>({})
   const [carregando, setCarregando] = useState(true)
@@ -107,40 +106,6 @@ export function FuncionarioDashboard() {
           hint={comPrazoUrgente.length > 0 ? 'Confira a lista abaixo' : undefined}
         />
         <StatCard label="Aguardando decisão do cliente" value={String(aguardandoCliente.length)} />
-      </div>
-
-      <div className="mt-8 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
-        <h2 className="font-display text-lg font-semibold text-forest-deep">Área do funcionário</h2>
-        <p className="mt-2 font-body text-sm text-ink-soft">
-          Cadastro de Clientes e de Funcionários são exclusivos do perfil <strong>Administrador</strong>.
-          Os módulos abaixo dependem das permissões configuradas no seu cadastro.
-        </p>
-        <div className="mt-4 flex flex-col gap-2">
-          {podeAcessarModulo('licitacoes') && (
-            <Link
-              to="/admin/licitacoes"
-              className="inline-flex w-fit items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
-            >
-              Ir para Licitações →
-            </Link>
-          )}
-          {podeAcessarModulo('disputas') && (
-            <Link
-              to="/admin/disputas"
-              className="inline-flex w-fit items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
-            >
-              Ir para Disputas →
-            </Link>
-          )}
-          {podeAcessarModulo('relatorios') && (
-            <Link
-              to="/admin/relatorios"
-              className="inline-flex w-fit items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
-            >
-              Ir para Relatórios →
-            </Link>
-          )}
-        </div>
       </div>
 
       <div className="mt-8">

@@ -15,11 +15,18 @@
 // foram atualizados nesta passada (não estão roteados no App.tsx).
 //
 // NOTA DE ESCOPO 2: os campos que o CLIENTE preenche ao decidir participar
-// (Código interno, Marca, Modelo, Preço Mínimo por item — spec 4.3 e 6.2)
-// foram modelados em `ItemLicitacao.propostaCliente` para a estrutura de
-// dados ficar completa, mas a TELA de preenchimento (Portal do Cliente)
-// não faz parte das 5 abas do cadastro de licitações e não foi construída
-// nesta passada.
+// (`ItemLicitacao.propostaCliente`) são preenchidos no Portal do Cliente,
+// no momento em que ele clica "Quero Participar" (fora das 5 abas do
+// cadastro de licitações, que é tela exclusiva do Admin/Funcionário):
+// - quantidadeOfertada: pode ser diferente da quantidade do edital
+// - valorInicial: valor ideal/inicial que o cliente gostaria de vender
+// - precoMinimo: valor MÍNIMO que o cliente autoriza a Salutti a vender
+//   (já considerando o frete, se houver) — piso para os lances durante a
+//   disputa ao vivo, quando o valor de fato pode variar entre o inicial e
+//   este mínimo
+// - marca / modelo: do produto ofertado
+// - codigoInterno: existe na estrutura de dados mas não é preenchido pelo
+//   cliente (não aparece no Portal) — reservado para uso futuro do Admin
 
 export type StatusLicitacao =
   | 'pendente'
@@ -107,7 +114,7 @@ export interface Habilitacao {
 export interface CondicoesComerciais {
   intervaloLances: string;
   formaPagamento: FormaPagamento;
-  recebimentoBanco: string; // ex.: "Banco do Brasil" — campo livre, spec cita BB como exemplo
+  recebimentoBanco: string; // "Banco do Brasil" ou "Outros" — seletor fixo
   prazoPagamentoDias?: number;
   possuiGarantias: boolean;
   garantiasDetalhe?: string; // abre quando possuiGarantias = true
@@ -120,13 +127,15 @@ export interface CondicoesComerciais {
 // Aba 5 — Itens
 // ---------------------------------------------------------------------------
 
-// Preenchido pelo CLIENTE ao decidir participar (spec 4.3 / 6.2). Estrutura
-// de dados prevista aqui; tela do Portal do Cliente é um módulo à parte.
+// Preenchido pelo CLIENTE ao clicar "Quero Participar" no Portal do
+// Cliente — ver NOTA DE ESCOPO 2 no topo do arquivo.
 export interface PropostaClienteItem {
-  codigoInterno?: string;
+  codigoInterno?: string; // não preenchido pelo cliente hoje — reservado
   marca?: string;
   modelo?: string;
-  precoMinimo?: number;
+  quantidadeOfertada?: number; // pode diferir da quantidade solicitada no edital
+  valorInicial?: number; // valor ideal/inicial que o cliente gostaria de vender
+  precoMinimo?: number; // valor mínimo autorizado (com frete já considerado) — piso para os lances
 }
 
 export interface GrupoItens {
@@ -142,7 +151,7 @@ export interface ItemLicitacao {
   descricao: string;
   unidadeMedida: string;
   quantidade: number;
-  precoReferencia: number; // valor unitário de referência
+  precoReferencia: number; // valor unitário de referência (edital) — preenchido pelo Admin
   exclusivoMeEpp: boolean;
   propostaCliente?: PropostaClienteItem;
 }

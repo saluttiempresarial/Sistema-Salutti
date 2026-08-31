@@ -7,32 +7,29 @@
 // `licitacaoService.registrarDecisaoCliente`, que já existiam prontos
 // desde a reconstrução do módulo de Licitações.
 //
-// Ao confirmar participação, o cliente também informa se deseja incluir
-// frete (spec 2.3 / 4.3: "Indicar se deseja incluir frete") — painel
-// inline que abre ao clicar em "Quero Participar", antes da confirmação
-// definitiva.
-//
-// NOTA DE ESCOPO: o preenchimento de proposta por item (Código interno,
-// Marca, Modelo, Preço Mínimo — spec 6.2) não foi construído nesta
-// passada; aqui o cliente confirma/recusa participação e informa frete.
-// Ver nota equivalente em types/licitacao.ts.
+// Ao clicar "Quero Participar", abre PropostaParticipacaoModal — o
+// cliente preenche, por item, quantidade ofertada / valor inicial / valor
+// mínimo / marca / modelo, e no final indica se deseja incluir frete,
+// antes de confirmar. Isso salva em duas chamadas: registrarPropostaCliente
+// (itens) + registrarDecisaoCliente (decisão + frete).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { DashboardShell, StatCard } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
 import { StatusPill, StatusTone } from '@/components/StatusPill'
 import { Button } from '@/components/Button'
 import { TextAreaField } from '@/components/TextAreaField'
-import { TextField } from '@/components/TextField'
-import { CheckboxField } from '@/components/CheckboxField'
 import { licitacaoService } from '@/services/licitacaoService'
 import { LicitacaoDetalheModal } from './LicitacaoDetalheModal'
+import { PropostaParticipacaoModal } from './PropostaParticipacaoModal'
 import {
   Licitacao,
   StatusLicitacao,
   STATUS_LICITACAO_LABEL,
   ModalidadeLicitacao,
   MODALIDADE_LICITACAO_LABEL,
+  PropostaClienteItem,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 
@@ -51,12 +48,14 @@ export function ClienteDashboard() {
   const [decidindoId, setDecidindoId] = useState<string | null>(null)
   const [recusandoId, setRecusandoId] = useState<string | null>(null)
   const [motivoRecusa, setMotivoRecusa] = useState('')
-  const [participandoId, setParticipandoId] = useState<string | null>(null)
-  const [incluirFrete, setIncluirFrete] = useState(false)
-  const [percentualFrete, setPercentualFrete] = useState<number | undefined>(undefined)
+
   const [detalheId, setDetalheId] = useState<string | null>(null)
   const [licitacaoDetalhe, setLicitacaoDetalhe] = useState<Licitacao | null>(null)
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false)
+
+  const [participandoId, setParticipandoId] = useState<string | null>(null)
+  const [licitacaoProposta, setLicitacaoProposta] = useState<Licitacao | null>(null)
+  const [carregandoProposta, setCarregandoProposta] = useState(false)
 
   async function abrirDetalhe(id: string) {
     setDetalheId(id)
@@ -93,16 +92,26 @@ export function ClienteDashboard() {
     [licitacoes]
   )
 
-  function abrirParticipacao(id: string) {
+  async function abrirParticipacao(id: string) {
     setParticipandoId(id)
-    setIncluirFrete(false)
-    setPercentualFrete(undefined)
+    setCarregandoProposta(true)
+    try {
+      const completa = await licitacaoService.buscarPorId(id)
+      setLicitacaoProposta(completa)
+    } finally {
+      setCarregandoProposta(false)
+    }
   }
 
-  async function confirmarParticipacao() {
+  async function confirmarParticipacaoComProposta(
+    propostas: Array<{ id: string; propostaCliente: PropostaClienteItem }>,
+    incluirFrete: boolean,
+    percentualFrete?: number
+  ) {
     if (!user || !participandoId) return
     setDecidindoId(participandoId)
     try {
+      await licitacaoService.registrarPropostaCliente(participandoId, propostas)
       await licitacaoService.registrarDecisaoCliente(participandoId, 'participar', user.name, {
         cobrarFrete: incluirFrete,
         percentualFrete: incluirFrete ? percentualFrete : undefined,
@@ -161,6 +170,15 @@ export function ClienteDashboard() {
         <StatCard label="Participando" value={String(participando.length)} />
       </div>
 
+      <div className="mt-4">
+        <Link
+          to="/cliente/calendario"
+          className="inline-flex w-fit items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
+        >
+          Ver calendário de sessões →
+        </Link>
+      </div>
+
       <div className="mt-8 space-y-4">
         {carregando && (
           <div className="rounded-xl border border-ink-soft/10 bg-white p-6 text-center font-body text-sm text-ink-soft shadow-soft">
@@ -179,7 +197,6 @@ export function ClienteDashboard() {
             const dataReferencia = licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao
             const urgencia = classificarUrgenciaPrazo(dataReferencia)
             const estaRecusando = recusandoId === licitacao.id
-            const estaParticipando = participandoId === licitacao.id
             const decidindo = decidindoId === licitacao.id
 
             return (
@@ -217,7 +234,7 @@ export function ClienteDashboard() {
                   </p>
                 </div>
 
-                {licitacao.decisaoCliente === 'pendente' && !estaRecusando && !estaParticipando && (
+                {licitacao.decisaoCliente === 'pendente' && !estaRecusando && (
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-ink-soft/10 pt-4">
                     <Button onClick={() => abrirParticipacao(licitacao.id)} disabled={decidindo}>
                       Quero Participar
@@ -225,35 +242,6 @@ export function ClienteDashboard() {
                     <Button variant="ghost" onClick={() => abrirRecusa(licitacao.id)} disabled={decidindo}>
                       Não vou participar
                     </Button>
-                  </div>
-                )}
-
-                {estaParticipando && (
-                  <div className="mt-4 space-y-3 border-t border-ink-soft/10 pt-4">
-                    <CheckboxField
-                      label="Incluir frete?"
-                      checked={incluirFrete}
-                      onChange={(e) => setIncluirFrete(e.target.checked)}
-                    />
-                    {incluirFrete && (
-                      <TextField
-                        label="Percentual de frete (%)"
-                        type="number"
-                        value={percentualFrete ?? ''}
-                        onChange={(e) =>
-                          setPercentualFrete(e.target.value === '' ? undefined : Number(e.target.value))
-                        }
-                        className="max-w-xs"
-                      />
-                    )}
-                    <div className="flex gap-2">
-                      <Button variant="ghost" onClick={() => setParticipandoId(null)} disabled={decidindo}>
-                        Cancelar
-                      </Button>
-                      <Button onClick={confirmarParticipacao} disabled={decidindo}>
-                        {decidindo ? 'Salvando...' : 'Confirmar participação'}
-                      </Button>
-                    </div>
                   </div>
                 )}
 
@@ -300,6 +288,15 @@ export function ClienteDashboard() {
         onClose={() => setDetalheId(null)}
         licitacao={licitacaoDetalhe}
         carregando={carregandoDetalhe}
+      />
+
+      <PropostaParticipacaoModal
+        isOpen={!!participandoId}
+        onClose={() => setParticipandoId(null)}
+        licitacao={licitacaoProposta}
+        carregando={carregandoProposta}
+        salvando={decidindoId === participandoId}
+        onConfirmar={confirmarParticipacaoComProposta}
       />
     </DashboardShell>
   )

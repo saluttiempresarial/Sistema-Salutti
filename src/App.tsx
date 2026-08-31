@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { AdminLayout } from '@/components/AdminLayout'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { RoleRedirect } from '@/pages/RoleRedirect'
@@ -12,8 +13,10 @@ import { LicitacoesPage } from '@/pages/admin/licitacoes/LicitacoesPage'
 import { DisputasPage } from '@/pages/admin/disputas/DisputasPage'
 import { RelatoriosPage } from '@/pages/admin/relatorios/RelatoriosPage'
 import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
+import { CalendarioPage as AdminCalendarioPage } from '@/pages/admin/CalendarioPage'
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
 import { ClienteDashboard } from '@/pages/cliente/ClienteDashboard'
+import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { carregarRegraPrazoCache } from '@/utils/prazoUtils'
 
@@ -42,7 +45,9 @@ export default function App() {
             path="/admin"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <AdminDashboard />
+                <AdminLayout>
+                  <AdminDashboard />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -51,7 +56,9 @@ export default function App() {
             path="/admin/clientes"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <ClientesPage />
+                <AdminLayout>
+                  <ClientesPage />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -60,7 +67,9 @@ export default function App() {
             path="/admin/funcionarios"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <FuncionariosPage />
+                <AdminLayout>
+                  <FuncionariosPage />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -69,7 +78,9 @@ export default function App() {
             path="/admin/licitacoes"
             element={
               <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="licitacoes">
-                <LicitacoesPage />
+                <AdminLayout>
+                  <LicitacoesPage />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -78,7 +89,20 @@ export default function App() {
             path="/admin/disputas"
             element={
               <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="disputas">
-                <DisputasPage />
+                <AdminLayout>
+                  <DisputasPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/calendario"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="licitacoes">
+                <AdminLayout>
+                  <AdminCalendarioPage />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -87,7 +111,9 @@ export default function App() {
             path="/admin/relatorios"
             element={
               <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="relatorios">
-                <RelatoriosPage />
+                <AdminLayout>
+                  <RelatoriosPage />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -96,7 +122,9 @@ export default function App() {
             path="/admin/configuracoes"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <ConfiguracoesPage />
+                <AdminLayout>
+                  <ConfiguracoesPage />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -105,7 +133,9 @@ export default function App() {
             path="/funcionario"
             element={
               <ProtectedRoute allowedRoles={['funcionario']}>
-                <FuncionarioDashboard />
+                <AdminLayout>
+                  <FuncionarioDashboard />
+                </AdminLayout>
               </ProtectedRoute>
             }
           />
@@ -115,6 +145,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['cliente']}>
                 <ClienteDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cliente/calendario"
+            element={
+              <ProtectedRoute allowedRoles={['cliente']}>
+                <ClienteCalendarioPage />
               </ProtectedRoute>
             }
           />
