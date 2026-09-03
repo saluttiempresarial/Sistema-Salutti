@@ -137,6 +137,10 @@ export interface Funcionario {
   cargo: FuncionarioCargo
   acesso: FuncionarioAcesso
   permissoes: FuncionarioPermissoes
+  /** URL pública da foto de perfil (Supabase Storage, bucket
+   *  "funcionarios-fotos") — enviada pelo próprio funcionário no Dashboard
+   *  dele, não faz parte do formulário de cadastro/edição do Admin. */
+  fotoUrl?: string
   observacoesAdministrativas: string
   historico: FuncionarioHistoricoEntrada[]
   criadoEm: string

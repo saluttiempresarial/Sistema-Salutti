@@ -134,9 +134,7 @@ export function PropostaParticipacaoModal({
               if (!form) return null
               return (
                 <div key={item.id} className="rounded-lg border border-ink-soft/15 p-4">
-                  <p className="font-body text-sm font-semibold text-ink">
-                    {item.numero} — {item.descricao}
-                  </p>
+                  <p className="font-body text-sm font-semibold text-ink">Item {item.numero}</p>
                   <p className="mt-0.5 font-body text-xs text-ink-soft">
                     Solicitado no edital: {item.quantidade} {item.unidadeMedida} · Referência:{' '}
                     {formatarMoeda(item.precoReferencia)}

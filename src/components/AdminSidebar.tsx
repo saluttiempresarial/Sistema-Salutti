@@ -9,10 +9,12 @@
 // Ícones são SVGs simples desenhados à mão (sem nenhuma biblioteca nova) —
 // evita precisar rodar npm install para esta mudança.
 
+import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissoes } from '@/hooks/usePermissoes'
+import { funcionarioService } from '@/services/funcionarioService'
 import { ROLE_LABEL } from '@/types/auth'
 
 interface ItemMenu {
@@ -125,12 +127,59 @@ export function AdminSidebar() {
     .map((parte) => parte[0]?.toUpperCase())
     .join('')
 
+  const [fotoUrl, setFotoUrl] = useState<string | undefined>(undefined)
+  const [enviandoFoto, setEnviandoFoto] = useState(false)
+  const inputFotoRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!user?.funcionarioId) return
+    let ativo = true
+    funcionarioService.getById(user.funcionarioId).then((funcionario) => {
+      if (ativo && funcionario) setFotoUrl(funcionario.fotoUrl)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [user?.funcionarioId])
+
+  async function handleSelecionarFoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = event.target.files?.[0]
+    if (!arquivo || !user) return
+    setEnviandoFoto(true)
+    try {
+      const url = await funcionarioService.uploadFoto(user.id, arquivo)
+      setFotoUrl(url)
+    } finally {
+      setEnviandoFoto(false)
+      event.target.value = ''
+    }
+  }
+
   return (
     <aside className="flex w-64 shrink-0 flex-col bg-forest-deep">
       <div className="flex items-center gap-3 border-b border-white/10 px-5 py-6">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 font-body text-sm font-semibold text-white">
-          {iniciais || '—'}
-        </div>
+        <button
+          type="button"
+          onClick={() => inputFotoRef.current?.click()}
+          disabled={enviandoFoto}
+          aria-label={fotoUrl ? 'Trocar foto de perfil' : 'Adicionar foto de perfil'}
+          className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-white/15 disabled:opacity-60"
+        >
+          {fotoUrl ? (
+            <img src={fotoUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center font-body text-sm font-semibold text-white">
+              {iniciais || '—'}
+            </span>
+          )}
+        </button>
+        <input
+          ref={inputFotoRef}
+          type="file"
+          accept="image/*"
+          onChange={handleSelecionarFoto}
+          className="hidden"
+        />
         <div>
           <p className="font-body text-sm font-semibold text-white">{user?.name ?? '—'}</p>
           <p className="font-mono text-[11px] uppercase tracking-wide text-white/60">

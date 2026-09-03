@@ -56,6 +56,7 @@ export function AdminDashboard() {
 
   return (
     <DashboardShell
+      showHeader={false}
       title={`Olá, ${user?.name ?? 'Administrador'}`}
       subtitle="Visão geral do sistema."
     >

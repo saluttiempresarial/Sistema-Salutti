@@ -5,14 +5,19 @@ interface DashboardShellProps {
   title: string
   subtitle?: string
   children: ReactNode
+  /** false quando a página já está dentro do AdminLayout (que tem seu
+   *  próprio Header) — evita mostrar o cabeçalho duas vezes. Padrão: true,
+   *  para não quebrar telas que ainda usam DashboardShell sozinho (Portal
+   *  do Cliente, que não passa pelo AdminLayout). */
+  showHeader?: boolean
 }
 
 /** Estrutura compartilhada pelos três dashboards (admin, funcionário, cliente),
  *  para manter consistência visual e evitar repetição de markup. */
-export function DashboardShell({ title, subtitle, children }: DashboardShellProps) {
+export function DashboardShell({ title, subtitle, children, showHeader = true }: DashboardShellProps) {
   return (
     <div className="min-h-screen bg-paper">
-      <Header />
+      {showHeader && <Header />}
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8">
           <h1 className="font-display text-2xl font-semibold text-forest-deep">{title}</h1>

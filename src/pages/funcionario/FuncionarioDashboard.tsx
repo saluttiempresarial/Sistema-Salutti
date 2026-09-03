@@ -16,6 +16,9 @@
 //
 // Nome do cliente: vem de clienteService.list() (Supabase real) — antes
 // usava mockClientesResumo, migrado junto com a limpeza dos últimos mocks.
+//
+// Foto de perfil: fica no avatar do menu lateral (AdminSidebar.tsx), não
+// aqui — evita duplicar o controle de upload em dois lugares da tela.
 
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardShell, StatCard } from '@/components/DashboardShell'
@@ -95,6 +98,7 @@ export function FuncionarioDashboard() {
 
   return (
     <DashboardShell
+      showHeader={false}
       title={`Olá, ${user?.name ?? 'Funcionário'}`}
       subtitle="Licitações ativas da carteira — acompanhe prazos e decisões pendentes dos clientes."
     >

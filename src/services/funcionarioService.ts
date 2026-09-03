@@ -51,6 +51,7 @@ interface FuncionarioRow {
   licitacoes_atribuidas: string[] | null
   modulos: Funcionario['permissoes']['modulos']
   observacoes_administrativas: string | null
+  foto_url: string | null
   criado_em: string
   atualizado_em: string
 }
@@ -92,6 +93,7 @@ function paraFuncionario(row: FuncionarioRow, historico: HistoricoRow[] = []): F
       modulos: row.modulos,
     },
     observacoesAdministrativas: row.observacoes_administrativas ?? '',
+    fotoUrl: row.foto_url ?? undefined,
     historico: historico.map((h) => ({
       id: h.id,
       data: h.data,
@@ -238,5 +240,35 @@ export const funcionarioService = {
     const { data, error } = await query
     if (error) throw new Error(error.message)
     return (data?.length ?? 0) > 0
+  },
+
+  /** Envia (ou substitui) a foto de perfil do funcionário logado. O caminho
+   *  dentro do bucket usa o próprio auth_user_id como pasta — é isso que a
+   *  política de segurança do Storage exige para permitir o upload (cada
+   *  funcionário só pode escrever na própria pasta). Sempre sobrescreve o
+   *  mesmo arquivo (upsert), e adiciona um parâmetro de versão na URL salva
+   *  para evitar que o navegador mostre uma foto antiga em cache.
+   *
+   *  IMPORTANTE: salva via a função atualizar_foto_propria() no banco, não
+   *  com um update direto na tabela — a RLS de `funcionarios` só libera
+   *  UPDATE para admin, então um update direto seria silenciosamente
+   *  ignorado quando quem chama é o próprio funcionário (ver
+   *  009_foto_propria_funcionario.sql). */
+  async uploadFoto(authUserId: string, arquivo: File): Promise<string> {
+    const extensao = arquivo.name.split('.').pop() ?? 'jpg'
+    const caminho = `${authUserId}/foto.${extensao}`
+
+    const { error: erroUpload } = await supabase.storage
+      .from('funcionarios-fotos')
+      .upload(caminho, arquivo, { upsert: true })
+    if (erroUpload) throw new Error(erroUpload.message)
+
+    const { data } = supabase.storage.from('funcionarios-fotos').getPublicUrl(caminho)
+    const fotoUrl = `${data.publicUrl}?t=${Date.now()}`
+
+    const { error: erroRpc } = await supabase.rpc('atualizar_foto_propria', { nova_url: fotoUrl })
+    if (erroRpc) throw new Error(erroRpc.message)
+
+    return fotoUrl
   },
 }

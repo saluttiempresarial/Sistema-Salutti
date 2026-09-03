@@ -31,7 +31,7 @@ import {
   MODALIDADE_LICITACAO_LABEL,
   PropostaClienteItem,
 } from '@/types/licitacao'
-import { formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
+import { formatarDataHora, formatarMoeda, calcularPrazoInterno, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 
 const STATUS_TONE: Record<StatusLicitacao, StatusTone> = {
   pendente: 'neutral',
@@ -91,6 +91,22 @@ export function ClienteDashboard() {
     () => licitacoes.filter((l) => l.decisaoCliente === 'participar'),
     [licitacoes]
   )
+
+  // Ordenada pelo prazo interno mais próximo de vencer primeiro — usada na
+  // tabela resumo no topo da tela.
+  const licitacoesPorPrazo = useMemo(() => {
+    return [...licitacoes].sort((a, b) => {
+      const prazoA = calcularPrazoInterno(a.dataEfetivaLicitacao || a.dataLicitacao).getTime()
+      const prazoB = calcularPrazoInterno(b.dataEfetivaLicitacao || b.dataLicitacao).getTime()
+      return prazoA - prazoB
+    })
+  }, [licitacoes])
+
+  const URGENCIA_CLASSE: Record<string, string> = {
+    vencido: 'font-medium text-red-600',
+    atencao: 'font-medium text-brass',
+    ok: 'font-medium text-forest-deep',
+  }
 
   async function abrirParticipacao(id: string) {
     setParticipandoId(id)
@@ -169,6 +185,44 @@ export function ClienteDashboard() {
         />
         <StatCard label="Participando" value={String(participando.length)} />
       </div>
+
+      {!carregando && licitacoesPorPrazo.length > 0 && (
+        <div className="mt-8 overflow-hidden rounded-xl border border-ink-soft/10 bg-white shadow-soft">
+          <table className="w-full font-body text-sm">
+            <thead className="bg-paper-2 text-left text-xs uppercase tracking-wide text-ink-soft">
+              <tr>
+                <th className="px-4 py-3">Órgão</th>
+                <th className="px-4 py-3">Número</th>
+                <th className="px-4 py-3">Cidade</th>
+                <th className="px-4 py-3">Forma de disputa</th>
+                <th className="px-4 py-3 text-right">Valor total</th>
+                <th className="px-4 py-3">Data de retorno</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-charcoal-3/10">
+              {licitacoesPorPrazo.map((licitacao) => {
+                const dataReferencia = licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao
+                const urgencia = classificarUrgenciaPrazo(dataReferencia)
+                const prazo = calcularPrazoInterno(dataReferencia)
+                return (
+                  <tr key={licitacao.id}>
+                    <td className="px-4 py-3 text-ink-soft">{licitacao.orgao}</td>
+                    <td className="px-4 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
+                    <td className="px-4 py-3 text-ink-soft">
+                      {licitacao.municipio}/{licitacao.estado}
+                    </td>
+                    <td className="px-4 py-3 text-ink-soft">{licitacao.formaDisputa || '—'}</td>
+                    <td className="px-4 py-3 text-right text-ink-soft">
+                      {licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}
+                    </td>
+                    <td className={`px-4 py-3 ${URGENCIA_CLASSE[urgencia]}`}>{formatarDataHora(prazo.toISOString())}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="mt-4">
         <Link
