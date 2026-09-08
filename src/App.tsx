@@ -16,6 +16,7 @@ import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
 import { CalendarioPage as AdminCalendarioPage } from '@/pages/admin/CalendarioPage'
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
 import { ClienteDashboard } from '@/pages/cliente/ClienteDashboard'
+import { LicitacaoDetalhePage } from '@/pages/cliente/LicitacaoDetalhePage'
 import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { carregarRegraPrazoCache } from '@/utils/prazoUtils'
@@ -145,6 +146,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['cliente']}>
                 <ClienteDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cliente/licitacoes/:id"
+            element={
+              <ProtectedRoute allowedRoles={['cliente']}>
+                <LicitacaoDetalhePage />
               </ProtectedRoute>
             }
           />

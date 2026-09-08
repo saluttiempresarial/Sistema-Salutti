@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DashboardShell, StatCard } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
+import { CalendarioLicitacoes } from '@/components/licitacoes/CalendarioLicitacoes'
 import { classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 import type { Licitacao } from '@/types/licitacao'
 
@@ -80,6 +81,13 @@ export function AdminDashboard() {
           value={carregando ? '—' : formatarMoedaResumida(valorEmDisputa)}
           hint="Licitações ativas com valor público"
         />
+      </div>
+
+      <div className="mt-8">
+        <h2 className="mb-3 font-display text-lg font-semibold text-forest-deep">Calendário</h2>
+        <div className="rounded-xl border border-ink-soft/10 bg-white p-5 shadow-soft">
+          <CalendarioLicitacoes licitacoes={licitacoesAtivas} />
+        </div>
       </div>
     </DashboardShell>
   )

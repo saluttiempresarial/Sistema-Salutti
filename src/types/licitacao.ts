@@ -16,17 +16,18 @@
 //
 // NOTA DE ESCOPO 2: os campos que o CLIENTE preenche ao decidir participar
 // (`ItemLicitacao.propostaCliente`) são preenchidos no Portal do Cliente,
-// no momento em que ele clica "Quero Participar" (fora das 5 abas do
-// cadastro de licitações, que é tela exclusiva do Admin/Funcionário):
-// - quantidadeOfertada: pode ser diferente da quantidade do edital
-// - valorInicial: valor ideal/inicial que o cliente gostaria de vender
-// - precoMinimo: valor MÍNIMO que o cliente autoriza a Salutti a vender
-//   (já considerando o frete, se houver) — piso para os lances durante a
-//   disputa ao vivo, quando o valor de fato pode variar entre o inicial e
-//   este mínimo
-// - marca / modelo: do produto ofertado
-// - codigoInterno: existe na estrutura de dados mas não é preenchido pelo
-//   cliente (não aparece no Portal) — reservado para uso futuro do Admin
+// no momento em que ele clica "Quero Participar" — estrutura alinhada 1:1
+// com a planilha real da Salutti (abas "Proposta Comercial" e "Análise da
+// Proposta"):
+// - codigoInterno / marca / modelo: identificação do produto ofertado
+// - precoMinimo: único valor de preço informado pelo cliente por item
+// - quantidade: NÃO é preenchida aqui — vem fixa de ItemLicitacao.quantidade
+// - frete: NÃO é por item — é uma taxa única (Licitacao.percentualFrete),
+//   aplicada a todos os itens da proposta de uma vez, calculando "preço +
+//   frete" e "% de diferença vs. referência" automaticamente (mesma lógica
+//   e mesmos limiares de classificação da planilha: "🚀 Forte" quando o
+//   desconto passa de 40%, "⚖️ Positiva" entre 0% e 40% de desconto,
+//   "❌ Não participar" quando o valor fica acima da referência).
 
 export type StatusLicitacao =
   | 'pendente'
@@ -128,14 +129,20 @@ export interface CondicoesComerciais {
 // ---------------------------------------------------------------------------
 
 // Preenchido pelo CLIENTE ao clicar "Quero Participar" no Portal do
-// Cliente — ver NOTA DE ESCOPO 2 no topo do arquivo.
+// Cliente — estrutura alinhada 1:1 com a planilha real da Salutti (abas
+// "Proposta Comercial" / "Análise da Proposta" da planilha de Produtos):
+// - codigoInterno / marca / modelo: identificação do produto ofertado
+// - precoMinimo: único valor de preço que o cliente informa (a planilha
+//   real não separa "valor inicial" de "valor mínimo" — é um valor só)
+// A quantidade NÃO é preenchida aqui — vem fixa de ItemLicitacao.quantidade
+// (definida pelo Analista na Análise do Edital), igual na planilha real.
+// O frete também não é por item: é uma taxa única (Licitacao.percentualFrete)
+// aplicada a todos os itens da proposta de uma vez.
 export interface PropostaClienteItem {
-  codigoInterno?: string; // não preenchido pelo cliente hoje — reservado
+  codigoInterno?: string;
   marca?: string;
   modelo?: string;
-  quantidadeOfertada?: number; // pode diferir da quantidade solicitada no edital
-  valorInicial?: number; // valor ideal/inicial que o cliente gostaria de vender
-  precoMinimo?: number; // valor mínimo autorizado (com frete já considerado) — piso para os lances
+  precoMinimo?: number;
 }
 
 export interface GrupoItens {

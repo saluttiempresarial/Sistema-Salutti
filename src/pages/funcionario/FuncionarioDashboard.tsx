@@ -27,6 +27,7 @@ import { usePermissoes } from '@/hooks/usePermissoes'
 import { StatusPill, StatusTone } from '@/components/StatusPill'
 import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
+import { CalendarioLicitacoes } from '@/components/licitacoes/CalendarioLicitacoes'
 import {
   Licitacao,
   StatusLicitacao,
@@ -110,6 +111,13 @@ export function FuncionarioDashboard() {
           hint={comPrazoUrgente.length > 0 ? 'Confira a lista abaixo' : undefined}
         />
         <StatCard label="Aguardando decisão do cliente" value={String(aguardandoCliente.length)} />
+      </div>
+
+      <div className="mt-8">
+        <h2 className="mb-3 font-display text-lg font-semibold text-forest-deep">Calendário</h2>
+        <div className="rounded-xl border border-ink-soft/10 bg-white p-5 shadow-soft">
+          <CalendarioLicitacoes licitacoes={licitacoes} />
+        </div>
       </div>
 
       <div className="mt-8">

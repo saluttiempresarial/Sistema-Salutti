@@ -100,8 +100,6 @@ interface ItemRow {
   proposta_codigo_interno: string | null
   proposta_marca: string | null
   proposta_modelo: string | null
-  proposta_quantidade_ofertada: number | null
-  proposta_valor_inicial: number | null
   proposta_preco_minimo: number | null
 }
 
@@ -118,18 +116,11 @@ function paraGrupo(row: GrupoRow): GrupoItens {
 
 function paraItem(row: ItemRow): ItemLicitacao {
   const propostaCliente =
-    row.proposta_codigo_interno ||
-    row.proposta_marca ||
-    row.proposta_modelo ||
-    row.proposta_quantidade_ofertada != null ||
-    row.proposta_valor_inicial != null ||
-    row.proposta_preco_minimo != null
+    row.proposta_codigo_interno || row.proposta_marca || row.proposta_modelo || row.proposta_preco_minimo != null
       ? {
           codigoInterno: row.proposta_codigo_interno ?? undefined,
           marca: row.proposta_marca ?? undefined,
           modelo: row.proposta_modelo ?? undefined,
-          quantidadeOfertada: row.proposta_quantidade_ofertada ?? undefined,
-          valorInicial: row.proposta_valor_inicial ?? undefined,
           precoMinimo: row.proposta_preco_minimo ?? undefined,
         }
       : undefined
@@ -287,8 +278,6 @@ async function substituirGruposEItens(
         proposta_codigo_interno: item.propostaCliente?.codigoInterno || null,
         proposta_marca: item.propostaCliente?.marca || null,
         proposta_modelo: item.propostaCliente?.modelo || null,
-        proposta_quantidade_ofertada: item.propostaCliente?.quantidadeOfertada ?? null,
-        proposta_valor_inicial: item.propostaCliente?.valorInicial ?? null,
         proposta_preco_minimo: item.propostaCliente?.precoMinimo ?? null,
       }))
     )
@@ -520,10 +509,9 @@ export const licitacaoService = {
         supabase
           .from('itens_licitacao')
           .update({
+            proposta_codigo_interno: propostaCliente.codigoInterno || null,
             proposta_marca: propostaCliente.marca || null,
             proposta_modelo: propostaCliente.modelo || null,
-            proposta_quantidade_ofertada: propostaCliente.quantidadeOfertada ?? null,
-            proposta_valor_inicial: propostaCliente.valorInicial ?? null,
             proposta_preco_minimo: propostaCliente.precoMinimo ?? null,
           })
           .eq('id', id)

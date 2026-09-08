@@ -93,7 +93,7 @@ export function CalendarioLicitacoes({ licitacoes }: CalendarioLicitacoesProps) 
   const nomeMes = mesReferencia.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
   return (
-    <div>
+    <div className="max-w-xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
@@ -104,7 +104,7 @@ export function CalendarioLicitacoes({ licitacoes }: CalendarioLicitacoesProps) 
           >
             ‹
           </button>
-          <p className="font-display text-lg font-semibold capitalize text-forest-deep">{nomeMes}</p>
+          <p className="font-display text-base font-semibold capitalize text-forest-deep">{nomeMes}</p>
           <button
             type="button"
             onClick={mesProximo}
@@ -135,7 +135,7 @@ export function CalendarioLicitacoes({ licitacoes }: CalendarioLicitacoesProps) 
         {DIAS_SEMANA.map((dia) => (
           <div
             key={dia}
-            className="bg-paper-2 px-2 py-2 text-center font-mono text-[11px] uppercase tracking-wide text-ink-soft"
+            className="bg-paper-2 px-1.5 py-1.5 text-center font-mono text-[10px] uppercase tracking-wide text-ink-soft"
           >
             {dia}
           </div>
@@ -144,23 +144,23 @@ export function CalendarioLicitacoes({ licitacoes }: CalendarioLicitacoesProps) 
         {celulas.map((celula, index) => {
           const eventos = celula.dia != null ? eventosPorDia.get(String(celula.dia)) ?? [] : []
           return (
-            <div key={index} className="min-h-[92px] bg-white p-1.5">
+            <div key={index} className="min-h-[56px] bg-white p-1">
               {celula.dia != null && (
                 <>
-                  <p className="font-body text-xs text-ink-soft">{celula.dia}</p>
-                  <div className="mt-1 flex flex-col gap-1">
-                    {eventos.slice(0, 3).map((evento, i) => (
+                  <p className="font-body text-[11px] text-ink-soft">{celula.dia}</p>
+                  <div className="mt-0.5 flex flex-col gap-0.5">
+                    {eventos.slice(0, 2).map((evento, i) => (
                       <p
                         key={i}
-                        className={`truncate rounded px-1.5 py-0.5 font-body text-[11px] ${URGENCIA_ESTILO[evento.urgencia]}`}
+                        className={`truncate rounded px-1 py-px font-body text-[10px] ${URGENCIA_ESTILO[evento.urgencia]}`}
                         title={evento.label}
                       >
                         {evento.tipo === 'prazo' ? '⏱ ' : ''}
                         {evento.label}
                       </p>
                     ))}
-                    {eventos.length > 3 && (
-                      <p className="font-body text-[11px] text-ink-soft">+{eventos.length - 3} mais</p>
+                    {eventos.length > 2 && (
+                      <p className="font-body text-[10px] text-ink-soft">+{eventos.length - 2} mais</p>
                     )}
                   </div>
                 </>
