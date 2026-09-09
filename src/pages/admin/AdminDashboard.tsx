@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DashboardShell, StatCard } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
-import { CalendarioLicitacoes } from '@/components/licitacoes/CalendarioLicitacoes'
+import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 import type { Licitacao } from '@/types/licitacao'
 

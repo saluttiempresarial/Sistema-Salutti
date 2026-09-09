@@ -10,6 +10,7 @@ import { AdminDashboard } from '@/pages/admin/AdminDashboard'
 import { ClientesPage } from '@/pages/admin/ClientesPage'
 import { FuncionariosPage } from '@/pages/admin/FuncionariosPage'
 import { LicitacoesPage } from '@/pages/admin/licitacoes/LicitacoesPage'
+import { PropostaComercialPage as AdminPropostaComercialPage } from '@/pages/admin/licitacoes/PropostaComercialPage'
 import { DisputasPage } from '@/pages/admin/disputas/DisputasPage'
 import { RelatoriosPage } from '@/pages/admin/relatorios/RelatoriosPage'
 import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
@@ -17,6 +18,7 @@ import { CalendarioPage as AdminCalendarioPage } from '@/pages/admin/CalendarioP
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
 import { ClienteDashboard } from '@/pages/cliente/ClienteDashboard'
 import { LicitacaoDetalhePage } from '@/pages/cliente/LicitacaoDetalhePage'
+import { PropostaComercialPage as ClientePropostaComercialPage } from '@/pages/cliente/PropostaComercialPage'
 import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { carregarRegraPrazoCache } from '@/utils/prazoUtils'
@@ -81,6 +83,17 @@ export default function App() {
               <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="licitacoes">
                 <AdminLayout>
                   <LicitacoesPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/licitacoes/:id/proposta"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="licitacoes">
+                <AdminLayout>
+                  <AdminPropostaComercialPage />
                 </AdminLayout>
               </ProtectedRoute>
             }
@@ -155,6 +168,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['cliente']}>
                 <LicitacaoDetalhePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cliente/licitacoes/:id/proposta"
+            element={
+              <ProtectedRoute allowedRoles={['cliente']}>
+                <ClientePropostaComercialPage />
               </ProtectedRoute>
             }
           />

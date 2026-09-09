@@ -27,7 +27,7 @@ import { usePermissoes } from '@/hooks/usePermissoes'
 import { StatusPill, StatusTone } from '@/components/StatusPill'
 import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
-import { CalendarioLicitacoes } from '@/components/licitacoes/CalendarioLicitacoes'
+import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import {
   Licitacao,
   StatusLicitacao,

@@ -140,6 +140,7 @@ export interface CondicoesComerciais {
 // aplicada a todos os itens da proposta de uma vez.
 export interface PropostaClienteItem {
   codigoInterno?: string;
+  descricaoProduto?: string; // descrição do produto ofertado pelo cliente (planilha real: coluna "Descrição" do bloco Proposta Comercial — diferente da Descrição do item de referência)
   marca?: string;
   modelo?: string;
   precoMinimo?: number;
@@ -206,6 +207,12 @@ export interface Licitacao {
   // Aba 5 — Itens
   grupos: GrupoItens[];
   itens: ItemLicitacao[];
+  // Contagem de itens cadastrados — usada na listagem (LicitacoesPage) para
+  // indicar rapidamente se o Analista já cadastrou itens nesta licitação,
+  // sem precisar carregar o array `itens` completo (que listar() não traz,
+  // por design). Em telas que já carregam os itens completos (buscarPorId),
+  // é sempre igual a itens.length.
+  totalItens?: number;
 
   // Seção 4.3 — Decisão do Cliente (fora das 5 abas do cadastro)
   decisaoCliente: DecisaoCliente;

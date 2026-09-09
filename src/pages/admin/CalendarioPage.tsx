@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react'
 import { usePermissoes } from '@/hooks/usePermissoes'
 import { licitacaoService } from '@/services/licitacaoService'
-import { CalendarioLicitacoes } from '@/components/licitacoes/CalendarioLicitacoes'
+import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { Licitacao } from '@/types/licitacao'
 
 export function CalendarioPage() {

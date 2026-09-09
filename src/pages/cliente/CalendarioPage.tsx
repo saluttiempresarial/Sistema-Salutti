@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
-import { CalendarioLicitacoes } from '@/components/licitacoes/CalendarioLicitacoes'
+import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { Licitacao } from '@/types/licitacao'
 
 export function CalendarioPage() {

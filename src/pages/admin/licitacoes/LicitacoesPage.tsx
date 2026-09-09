@@ -5,6 +5,7 @@
 // status, paginação, e modal de formulário para criar/editar.
 
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { usePermissoes } from '../../../hooks/usePermissoes';
 import { Pagination } from '../../../components/Pagination';
@@ -191,13 +192,15 @@ export function LicitacoesPage() {
               <th className="px-4 py-3">Valor</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Decisão do cliente</th>
+              <th className="px-4 py-3">Itens</th>
+              <th className="px-4 py-3 text-right">Proposta</th>
               {podeEditar && <th className="px-4 py-3 text-right">Ações</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-charcoal-3/10">
             {carregando && (
               <tr>
-                <td colSpan={podeEditar ? 9 : 8} className="px-4 py-8 text-center text-ink-soft">
+                <td colSpan={podeEditar ? 11 : 10} className="px-4 py-8 text-center text-ink-soft">
                   Carregando licitações...
                 </td>
               </tr>
@@ -205,7 +208,7 @@ export function LicitacoesPage() {
 
             {!carregando && itens.length === 0 && (
               <tr>
-                <td colSpan={podeEditar ? 9 : 8} className="px-4 py-8 text-center text-ink-soft">
+                <td colSpan={podeEditar ? 11 : 10} className="px-4 py-8 text-center text-ink-soft">
                   Nenhuma licitação encontrada.
                 </td>
               </tr>
@@ -251,6 +254,18 @@ export function LicitacoesPage() {
                       >
                         {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-ink-soft">
+                      {licitacao.totalItens ? (
+                        `${licitacao.totalItens} ${licitacao.totalItens === 1 ? 'item' : 'itens'}`
+                      ) : (
+                        <span className="text-brass">Sem itens</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link to={`/admin/licitacoes/${licitacao.id}/proposta`} className="text-forest-deep hover:underline">
+                        Ver proposta
+                      </Link>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button

@@ -1,4 +1,4 @@
-// src/components/licitacoes/CalendarioLicitacoes.tsx
+// src/components/Licitacoes/CalendarioLicitacoes.tsx
 //
 // Calendário mensal simples: mostra a data da sessão de cada licitação e o
 // prazo interno já calculado (N dias úteis antes — ver prazoUtils.ts).

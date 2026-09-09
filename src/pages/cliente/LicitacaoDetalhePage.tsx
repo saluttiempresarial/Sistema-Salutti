@@ -8,8 +8,10 @@
 // aba "Pontos de Atenção" (notas internas da Salutti) — mais os botões de
 // decisão (Quero Participar / Não vou participar) no rodapé.
 //
-// "Quero Participar" abre PropostaParticipacaoModal por cima desta página
-// (continua sendo um modal, só a tela de leitura deixou de ser popup).
+// "Quero Participar" navega para /cliente/licitacoes/:id/proposta — página
+// própria com a tabela de Proposta Comercial (deixou de ser um modal por
+// cima desta página: a tabela, igual à planilha real da Salutti, tem
+// colunas demais para caber num popup).
 
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -19,7 +21,6 @@ import { Tabs } from '@/components/Tabs'
 import { Button } from '@/components/Button'
 import { TextAreaField } from '@/components/TextAreaField'
 import { licitacaoService } from '@/services/licitacaoService'
-import { PropostaParticipacaoModal } from './PropostaParticipacaoModal'
 import {
   Licitacao,
   ItemLicitacao,
@@ -28,7 +29,6 @@ import {
   FormaPagamento,
   FORMA_PAGAMENTO_LABEL,
   DECISAO_CLIENTE_LABEL,
-  PropostaClienteItem,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda } from '@/utils/prazoUtils'
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '@/utils/licitacaoCalculos'
@@ -87,7 +87,6 @@ export function LicitacaoDetalhePage() {
   const [recusando, setRecusando] = useState(false)
   const [motivoRecusa, setMotivoRecusa] = useState('')
   const [decidindo, setDecidindo] = useState(false)
-  const [propostaAberta, setPropostaAberta] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -110,26 +109,6 @@ export function LicitacaoDetalhePage() {
       await licitacaoService.registrarDecisaoCliente(id, 'recusar', user.name, {
         motivoRecusa: motivoRecusa.trim() || undefined,
       })
-      navigate('/cliente')
-    } finally {
-      setDecidindo(false)
-    }
-  }
-
-  async function confirmarParticipacaoComProposta(
-    propostas: Array<{ id: string; propostaCliente: PropostaClienteItem }>,
-    incluirFrete: boolean,
-    percentualFrete?: number
-  ) {
-    if (!user || !id) return
-    setDecidindo(true)
-    try {
-      await licitacaoService.registrarPropostaCliente(id, propostas)
-      await licitacaoService.registrarDecisaoCliente(id, 'participar', user.name, {
-        cobrarFrete: incluirFrete,
-        percentualFrete: incluirFrete ? percentualFrete : undefined,
-      })
-      setPropostaAberta(false)
       navigate('/cliente')
     } finally {
       setDecidindo(false)
@@ -333,7 +312,7 @@ export function LicitacaoDetalhePage() {
               </div>
             ) : licitacao.decisaoCliente === 'pendente' ? (
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => setPropostaAberta(true)} disabled={decidindo}>
+                <Button onClick={() => navigate(`/cliente/licitacoes/${id}/proposta`)} disabled={decidindo}>
                   Quero Participar
                 </Button>
                 <Button variant="ghost" onClick={() => setRecusando(true)} disabled={decidindo}>
@@ -351,13 +330,6 @@ export function LicitacaoDetalhePage() {
         </div>
       )}
 
-      <PropostaParticipacaoModal
-        isOpen={propostaAberta}
-        onClose={() => setPropostaAberta(false)}
-        licitacao={licitacao}
-        salvando={decidindo}
-        onConfirmar={confirmarParticipacaoComProposta}
-      />
     </DashboardShell>
   )
 }

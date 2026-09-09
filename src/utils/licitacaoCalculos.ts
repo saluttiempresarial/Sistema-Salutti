@@ -47,3 +47,65 @@ export function competitividadeItem(item: ItemLicitacao, valorFrete = 0): number
   if (denominador === 0) return null;
   return item.precoReferencia / denominador;
 }
+
+// ---------------------------------------------------------------------------
+// Análise da Proposta — bloco "Produtos" da planilha real da Salutti.
+//
+// Regra extraída DIRETO da fórmula da planilha (coluna STATUS), não é uma
+// estimativa: Diferença% = (Preço Mínimo + Frete) ÷ Valor Unit. Referência − 1
+//   - Diferença = 0%        -> "= Referência"
+//   - 0% a −40% (exclusive)  -> "⚖️ Positiva"
+//   - abaixo de −40%         -> "🚀 Forte"
+//   - acima de 0%            -> "❌ Não participar"
+//
+// Usada tanto na página de Proposta Comercial do Cliente quanto na do Admin
+// — precisa ser a MESMA regra nos dois lugares, por isso fica centralizada
+// aqui em vez de duplicada em cada tela.
+// ---------------------------------------------------------------------------
+
+export interface AnaliseItemProposta {
+  precoComFrete: number | null;
+  valorTotal: number | null;
+  percentualDiferenca: number | null;
+}
+
+/** Calcula preço com frete, valor total e % de diferença vs. referência
+ *  para um item — null em cada campo enquanto o preço mínimo ou a taxa de
+ *  frete ainda não tiverem sido preenchidos. */
+export function calcularAnaliseItem(
+  item: ItemLicitacao,
+  taxaFretePercentual: number,
+  taxaFretePreenchida: boolean
+): AnaliseItemProposta {
+  const precoMinimo = item.propostaCliente?.precoMinimo;
+  if (!taxaFretePreenchida || precoMinimo == null) {
+    return { precoComFrete: null, valorTotal: null, percentualDiferenca: null };
+  }
+  const precoComFrete = precoMinimo * (1 + taxaFretePercentual / 100);
+  const valorTotal = precoComFrete * item.quantidade;
+  const percentualDiferenca = item.precoReferencia > 0 ? precoComFrete / item.precoReferencia - 1 : null;
+  return { precoComFrete, valorTotal, percentualDiferenca };
+}
+
+export interface StatusAnaliseProposta {
+  label: string;
+  classe: string;
+}
+
+/** Classificação de competitividade — mesmos limiares e textos da planilha
+ *  real (coluna "Análise da Proposta"): corte fixo em -40%. */
+export function classificarStatusProposta(percentualDiferenca: number | null): StatusAnaliseProposta {
+  if (percentualDiferenca === null) {
+    return { label: '—', classe: 'bg-paper-2 text-ink-soft' };
+  }
+  if (percentualDiferenca === 0) {
+    return { label: '= Referência', classe: 'bg-paper-2 text-ink-soft' };
+  }
+  if (percentualDiferenca < 0) {
+    if (percentualDiferenca <= -0.4) {
+      return { label: '🚀 Forte', classe: 'bg-forest text-white' };
+    }
+    return { label: '⚖️ Positiva', classe: 'bg-forest-mist text-forest-deep' };
+  }
+  return { label: '❌ Não participar', classe: 'bg-red-50 text-red-700' };
+}

@@ -98,6 +98,7 @@ interface ItemRow {
   preco_referencia: number
   exclusivo_me_epp: boolean
   proposta_codigo_interno: string | null
+  proposta_descricao: string | null
   proposta_marca: string | null
   proposta_modelo: string | null
   proposta_preco_minimo: number | null
@@ -116,9 +117,14 @@ function paraGrupo(row: GrupoRow): GrupoItens {
 
 function paraItem(row: ItemRow): ItemLicitacao {
   const propostaCliente =
-    row.proposta_codigo_interno || row.proposta_marca || row.proposta_modelo || row.proposta_preco_minimo != null
+    row.proposta_codigo_interno ||
+    row.proposta_descricao ||
+    row.proposta_marca ||
+    row.proposta_modelo ||
+    row.proposta_preco_minimo != null
       ? {
           codigoInterno: row.proposta_codigo_interno ?? undefined,
+          descricaoProduto: row.proposta_descricao ?? undefined,
           marca: row.proposta_marca ?? undefined,
           modelo: row.proposta_modelo ?? undefined,
           precoMinimo: row.proposta_preco_minimo ?? undefined,
@@ -171,6 +177,7 @@ function paraLicitacao(
     pontosAtencao: row.pontos_atencao ?? '',
     grupos: grupos.map(paraGrupo),
     itens: itens.map(paraItem),
+    totalItens: itens.length,
     decisaoCliente: row.decisao_cliente,
     motivoRecusaCliente: row.motivo_recusa_cliente ?? undefined,
     decisaoClienteEm: row.decisao_cliente_em ?? undefined,
@@ -276,6 +283,7 @@ async function substituirGruposEItens(
         preco_referencia: item.precoReferencia,
         exclusivo_me_epp: item.exclusivoMeEpp,
         proposta_codigo_interno: item.propostaCliente?.codigoInterno || null,
+        proposta_descricao: item.propostaCliente?.descricaoProduto || null,
         proposta_marca: item.propostaCliente?.marca || null,
         proposta_modelo: item.propostaCliente?.modelo || null,
         proposta_preco_minimo: item.propostaCliente?.precoMinimo ?? null,
@@ -364,7 +372,27 @@ export const licitacaoService = {
     if (error) throw new Error(error.message)
 
     const linhas = data as LicitacaoRow[]
-    const itens = linhas.map((row) => paraLicitacao(row))
+
+    // Contagem de itens por licitação — só a coluna licitacao_id (leve),
+    // não os itens completos, para a listagem poder mostrar "Nº de itens"
+    // sem pesar a consulta com os dados de referência/proposta de cada um.
+    const idsLinhas = linhas.map((row) => row.id)
+    const totalItensPorLicitacao: Record<string, number> = {}
+    if (idsLinhas.length > 0) {
+      const { data: itensContagem, error: erroContagem } = await supabase
+        .from('itens_licitacao')
+        .select('licitacao_id')
+        .in('licitacao_id', idsLinhas)
+      if (erroContagem) throw new Error(erroContagem.message)
+      ;(itensContagem as Array<{ licitacao_id: string }> | null)?.forEach((row) => {
+        totalItensPorLicitacao[row.licitacao_id] = (totalItensPorLicitacao[row.licitacao_id] ?? 0) + 1
+      })
+    }
+
+    const itens = linhas.map((row) => ({
+      ...paraLicitacao(row),
+      totalItens: totalItensPorLicitacao[row.id] ?? 0,
+    }))
 
     return { itens, total: count ?? 0, page, pageSize }
   },
@@ -510,9 +538,39 @@ export const licitacaoService = {
           .from('itens_licitacao')
           .update({
             proposta_codigo_interno: propostaCliente.codigoInterno || null,
+            proposta_descricao: propostaCliente.descricaoProduto || null,
             proposta_marca: propostaCliente.marca || null,
             proposta_modelo: propostaCliente.modelo || null,
             proposta_preco_minimo: propostaCliente.precoMinimo ?? null,
+          })
+          .eq('id', id)
+          .eq('licitacao_id', licitacaoId)
+      )
+    ).then((resultados) => {
+      const erro = resultados.find((r) => r.error)?.error
+      if (erro) throw new Error(erro.message)
+    })
+  },
+
+  // Chamado pela página de Proposta Comercial (Admin) quando o Admin edita
+  // os campos de referência (Descrição, Unidade, Quantidade, Valor Unit.
+  // Referência) diretamente ali, sem passar pela aba "Itens" do formulário
+  // completo. Assim como registrarPropostaCliente(), atualiza só os campos
+  // de referência de cada linha já existente — não mexe em proposta_* nem
+  // em grupos/itens (não apaga e reinsere), preservando o id do item.
+  async atualizarItensReferencia(
+    licitacaoId: string,
+    itens: Array<Pick<ItemLicitacao, 'id' | 'descricao' | 'unidadeMedida' | 'quantidade' | 'precoReferencia'>>
+  ): Promise<void> {
+    await Promise.all(
+      itens.map(({ id, descricao, unidadeMedida, quantidade, precoReferencia }) =>
+        supabase
+          .from('itens_licitacao')
+          .update({
+            descricao,
+            unidade_medida: unidadeMedida,
+            quantidade,
+            preco_referencia: precoReferencia,
           })
           .eq('id', id)
           .eq('licitacao_id', licitacaoId)

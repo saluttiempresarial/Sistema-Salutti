@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom'
 import { DashboardShell, StatCard } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
-import { CalendarioLicitacoes } from '@/components/licitacoes/CalendarioLicitacoes'
+import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { Licitacao } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda, calcularPrazoInterno, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 
