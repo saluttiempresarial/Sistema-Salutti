@@ -16,12 +16,13 @@ export const mockLicitacoes: Licitacao[] = [
     orgao: 'Prefeitura Municipal de Osasco',
     estado: 'SP',
     municipio: 'Osasco',
+    distanciaMatriz: '25km',
     modalidade: 'pregao_eletronico',
     formaDisputa: 'Aberto',
     modoDisputa: 'Eletrônico',
     participacao: 'Ampla',
-    capag: true,
-    restricoesMeEpp: false,
+    capag: 'B (3,96%)',
+    restricoesMeEpp: 'Não é exclusiva. A preferência para ME/EPP não será aplicada.',
     linkEdital: 'https://www.gov.br/compras/pt-br/exemplo-pe-045-2026',
     valorTotalLicitacao: 480000,
 
@@ -29,12 +30,12 @@ export const mockLicitacoes: Licitacao[] = [
     status: 'em_analise',
 
     habilitacao: {
-      exigeAtestado: true,
-      exigeQuantidadeMinima: false,
+      exigeAtestado: 'Sim, atestado de capacidade técnica em serviços de limpeza predial de porte similar.',
       qualificacaoTecnica: 'Atestado de capacidade técnica em serviços de limpeza predial de porte similar.',
       qualificacaoEconomicoFinanceira: 'Capital social mínimo de 10% do valor estimado.',
       regularidadeFiscal: 'Certidões federal, estadual, municipal, FGTS e trabalhista em dia.',
-      exigeAmostras: false,
+      exigeAmostras: '',
+      outrosRequisitos: '',
     },
 
     condicoesComerciais: {
@@ -52,7 +53,7 @@ export const mockLicitacoes: Licitacao[] = [
     pontosAtencao:
       'Cliente pediu para priorizar, é a segunda vez que participa desse órgão. Verificar exigência de atestado antes de confirmar participação.',
 
-    grupos: [{ id: 'grp-1', nome: 'Grupo 1 — Materiais de limpeza' }],
+    grupos: [{ id: 'grp-1', numero: '1', nome: 'Grupo 1 — Materiais de limpeza' }],
     itens: [
       {
         id: 'item-1',
@@ -107,25 +108,26 @@ export const mockLicitacoes: Licitacao[] = [
     orgao: 'Governo do Estado de São Paulo',
     estado: 'SP',
     municipio: 'São Paulo',
+    distanciaMatriz: '15km',
     modalidade: 'concorrencia',
     formaDisputa: 'Aberto-Fechado',
     modoDisputa: 'Eletrônico',
     participacao: 'Ampla',
-    capag: false,
-    restricoesMeEpp: false,
+    capag: 'Não se aplica.',
+    restricoesMeEpp: 'Não é exclusiva. A preferência para ME/EPP não será aplicada.',
     valorTotalLicitacao: 1250000,
 
     clienteId: 'cli-005',
     status: 'enviado',
 
     habilitacao: {
-      exigeAtestado: true,
-      exigeQuantidadeMinima: true,
+      exigeAtestado: 'Sim, atestado com fornecimento mínimo de 500 unidades de equipamentos similares.',
       qualificacaoTecnica: 'Atestado com fornecimento mínimo de 500 unidades de equipamentos similares.',
       qualificacaoEconomicoFinanceira: 'Índices contábeis conforme edital, capital social mínimo de R$ 100.000,00.',
       regularidadeFiscal: 'Certidões federal, estadual, municipal, FGTS e trabalhista em dia.',
-      exigeAmostras: true,
+      exigeAmostras: 'Sim. O licitante classificado em primeiro lugar deverá apresentar a amostra.',
       prazoEntregaAmostraDias: 5,
+      outrosRequisitos: '',
     },
 
     condicoesComerciais: {
@@ -186,24 +188,25 @@ export const mockLicitacoes: Licitacao[] = [
     orgao: 'Prefeitura Municipal de Barueri',
     estado: 'SP',
     municipio: 'Barueri',
+    distanciaMatriz: '30km',
     modalidade: 'pregao_eletronico',
     formaDisputa: 'Aberto',
     modoDisputa: 'Eletrônico',
     participacao: 'Exclusiva ME/EPP',
-    capag: true,
-    restricoesMeEpp: true,
+    capag: 'B (3,96%)',
+    restricoesMeEpp: 'Exclusiva para ME/EPP, conforme art. 48 da LC 123/2006.',
     valorTotalLicitacao: 320000,
 
     clienteId: 'cli-003',
     status: 'perdido',
 
     habilitacao: {
-      exigeAtestado: false,
-      exigeQuantidadeMinima: false,
+      exigeAtestado: '',
       qualificacaoTecnica: '',
       qualificacaoEconomicoFinanceira: '',
       regularidadeFiscal: 'Certidões federal, estadual e municipal em dia.',
-      exigeAmostras: false,
+      exigeAmostras: '',
+      outrosRequisitos: '',
     },
 
     condicoesComerciais: {
@@ -254,24 +257,25 @@ export const mockLicitacoes: Licitacao[] = [
     orgao: 'Câmara Municipal de Cotia',
     estado: 'SP',
     municipio: 'Cotia',
+    distanciaMatriz: '40km',
     modalidade: 'tomada_de_precos',
     formaDisputa: 'Fechado',
     modoDisputa: 'Presencial',
     participacao: 'Ampla',
-    capag: false,
-    restricoesMeEpp: false,
+    capag: '',
+    restricoesMeEpp: '',
     valorTotalLicitacao: undefined, // orçamento sigiloso
 
     clienteId: 'cli-001',
     status: 'pendente',
 
     habilitacao: {
-      exigeAtestado: true,
-      exigeQuantidadeMinima: false,
+      exigeAtestado: '',
       qualificacaoTecnica: '',
       qualificacaoEconomicoFinanceira: '',
       regularidadeFiscal: '',
-      exigeAmostras: false,
+      exigeAmostras: '',
+      outrosRequisitos: '',
     },
 
     condicoesComerciais: {

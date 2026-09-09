@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Funcionario } from '@/types/funcionario'
 import { funcionarioParaFormData } from '@/types/funcionario'
+import { useAuth } from '@/context/AuthContext'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Tabs } from '@/components/Tabs'
@@ -39,6 +40,7 @@ export function FuncionarioFormModal({
   onClose,
   onSaved,
 }: FuncionarioFormModalProps) {
+  const { user } = useAuth()
   const isEdicao = Boolean(funcionarioEmEdicao)
   const [activeTab, setActiveTab] = useState<TabId>('pessoal')
   const [isSaving, setIsSaving] = useState(false)
@@ -82,10 +84,11 @@ export function FuncionarioFormModal({
 
     setIsSaving(true)
     try {
+      const autor = user?.name ?? 'Sistema'
       if (funcionarioEmEdicao) {
-        await funcionarioService.update(funcionarioEmEdicao.id, formData)
+        await funcionarioService.update(funcionarioEmEdicao.id, formData, autor)
       } else {
-        await funcionarioService.create(formData)
+        await funcionarioService.create(formData, autor)
       }
       onSaved()
     } catch (err) {
