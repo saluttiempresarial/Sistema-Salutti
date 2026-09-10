@@ -87,7 +87,10 @@ export function calcularAnaliseItem(
   return { precoComFrete, valorTotal, percentualDiferenca };
 }
 
+export type ChaveStatusProposta = 'indefinido' | 'referencia' | 'positiva' | 'forte' | 'nao_participar';
+
 export interface StatusAnaliseProposta {
+  chave: ChaveStatusProposta;
   label: string;
   classe: string;
 }
@@ -96,16 +99,16 @@ export interface StatusAnaliseProposta {
  *  real (coluna "Análise da Proposta"): corte fixo em -40%. */
 export function classificarStatusProposta(percentualDiferenca: number | null): StatusAnaliseProposta {
   if (percentualDiferenca === null) {
-    return { label: '—', classe: 'bg-paper-2 text-ink-soft' };
+    return { chave: 'indefinido', label: '— Sem preço', classe: 'bg-paper-2 text-ink-soft' };
   }
   if (percentualDiferenca === 0) {
-    return { label: '= Referência', classe: 'bg-paper-2 text-ink-soft' };
+    return { chave: 'referencia', label: '= Referência', classe: 'bg-paper-2 text-ink-soft' };
   }
   if (percentualDiferenca < 0) {
     if (percentualDiferenca <= -0.4) {
-      return { label: '🚀 Forte', classe: 'bg-forest text-white' };
+      return { chave: 'forte', label: '🚀 Forte', classe: 'bg-forest text-white' };
     }
-    return { label: '⚖️ Positiva', classe: 'bg-forest-mist text-forest-deep' };
+    return { chave: 'positiva', label: '⚖️ Positiva', classe: 'bg-forest-mist text-forest-deep' };
   }
-  return { label: '❌ Não participar', classe: 'bg-red-50 text-red-700' };
+  return { chave: 'nao_participar', label: '❌ Não participar', classe: 'bg-red-50 text-red-700' };
 }

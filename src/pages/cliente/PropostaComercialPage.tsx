@@ -79,6 +79,7 @@ export function PropostaComercialPage() {
             licitacao={licitacao}
             podeEditarItens={false}
             podeEditarPropostaComercial={true}
+            mostrarResumo={true}
             salvando={salvando}
             onSalvar={handleSalvar}
             textoBotaoSalvar="Confirmar participação"
