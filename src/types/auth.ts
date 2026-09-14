@@ -24,6 +24,15 @@ export interface AuthUser {
   // permissões granulares do funcionário (ver src/hooks/usePermissoes.ts).
   // Só existe (e só faz sentido) para role === 'funcionario'.
   funcionarioId?: string
+  // Vincula um login de perfil "cliente" ao registro da linha em
+  // usuarios_cliente (diferente de clienteId, que é a empresa) — usado
+  // para identificar qual usuário específico da empresa está logado.
+  // Só existe (e só faz sentido) para role === 'cliente'.
+  usuarioClienteId?: string
+  // true quando a pessoa precisa trocar a senha no próximo login (ex.:
+  // senha temporária definida pelo Admin no cadastro). Hoje só vem
+  // preenchido para funcionário — ver authService.ts.
+  forcarTrocaSenha?: boolean
 }
 
 /** Formato mockado hoje; ao integrar com Supabase, o campo `password`

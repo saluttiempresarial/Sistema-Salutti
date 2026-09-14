@@ -85,7 +85,7 @@ export function AdminDashboard() {
 
       <div className="mt-8">
         <h2 className="mb-3 font-display text-lg font-semibold text-forest-deep">Calendário</h2>
-        <div className="rounded-xl border border-ink-soft/10 bg-white p-5 shadow-soft">
+        <div className="w-fit rounded-xl border-2 border-forest bg-white p-5 shadow-soft">
           <CalendarioLicitacoes licitacoes={licitacoesAtivas} />
         </div>
       </div>

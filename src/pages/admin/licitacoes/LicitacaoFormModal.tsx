@@ -59,6 +59,38 @@ function gerarIdLocal(prefixo: string): string {
   return `${prefixo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+// Rascunho local (só no navegador) do formulário de NOVA licitação — não
+// se aplica à edição de uma licitação já existente (essa já está salva de
+// verdade no banco). Guarda automaticamente enquanto a pessoa digita, para
+// não perder o preenchimento se ela precisar sair da página no meio.
+const CHAVE_RASCUNHO_NOVA_LICITACAO = 'salutti:rascunho-nova-licitacao';
+
+function lerRascunhoSalvo(): LicitacaoFormData | null {
+  try {
+    const bruto = window.localStorage.getItem(CHAVE_RASCUNHO_NOVA_LICITACAO);
+    return bruto ? (JSON.parse(bruto) as LicitacaoFormData) : null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarRascunho(dados: LicitacaoFormData) {
+  try {
+    window.localStorage.setItem(CHAVE_RASCUNHO_NOVA_LICITACAO, JSON.stringify(dados));
+  } catch {
+    // Armazenamento cheio ou indisponível (modo privado, etc.) — o
+    // rascunho é só uma conveniência, não é crítico falhar silenciosamente.
+  }
+}
+
+function limparRascunho() {
+  try {
+    window.localStorage.removeItem(CHAVE_RASCUNHO_NOVA_LICITACAO);
+  } catch {
+    // idem acima
+  }
+}
+
 /** Converte um ISO string (UTC, como salvo no banco/estado) para o formato
  *  "AAAA-MM-DDTHH:mm" que o input datetime-local espera, respeitando o
  *  fuso horário LOCAL do navegador — ao contrário de um slice() direto no
@@ -142,12 +174,47 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [form, setForm] = useState<LicitacaoFormData>(criarFormularioVazio());
   const [salvando, setSalvando] = useState(false);
   const [clientes, setClientes] = useState<Array<{ value: string; label: string }>>([]);
+  const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setAbaAtiva('gerais');
-    setForm(licitacaoEmEdicao ? { ...licitacaoEmEdicao } : criarFormularioVazio());
+
+    if (licitacaoEmEdicao) {
+      // Editando uma licitação existente — rascunho local não se aplica.
+      setForm({ ...licitacaoEmEdicao });
+      setRascunhoRestaurado(false);
+      return;
+    }
+
+    // Nova licitação: se existir um rascunho salvo no navegador, restaura.
+    const rascunho = lerRascunhoSalvo();
+    if (rascunho) {
+      setForm(rascunho);
+      setRascunhoRestaurado(true);
+    } else {
+      setForm(criarFormularioVazio());
+      setRascunhoRestaurado(false);
+    }
   }, [isOpen, licitacaoEmEdicao]);
+
+  // Salva o formulário no navegador a cada mudança (só em modo "nova
+  // licitação" — editar uma já existente não usa rascunho local). Um
+  // pequeno atraso evita gravar a cada tecla digitada.
+  useEffect(() => {
+    if (!isOpen || licitacaoEmEdicao) return;
+    const temConteudo =
+      form.portal || form.numeroPregao || form.orgao || form.objeto || form.dataLicitacao || form.itens.length > 0;
+    if (!temConteudo) return;
+    const timer = window.setTimeout(() => salvarRascunho(form), 500);
+    return () => window.clearTimeout(timer);
+  }, [form, isOpen, licitacaoEmEdicao]);
+
+  function descartarRascunho() {
+    limparRascunho();
+    setForm(criarFormularioVazio());
+    setRascunhoRestaurado(false);
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -236,6 +303,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     setSalvando(true);
     try {
       await onSave(form);
+      if (!licitacaoEmEdicao) limparRascunho();
       onClose();
     } finally {
       setSalvando(false);
@@ -275,6 +343,21 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       ) : (
         <>
           <Tabs tabs={TABS} activeTab={abaAtiva} onChange={setAbaAtiva} />
+
+          {rascunhoRestaurado && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-brass-pale px-3 py-2">
+              <p className="font-body text-xs text-brass">
+                Rascunho restaurado do preenchimento anterior, salvo automaticamente neste navegador.
+              </p>
+              <button
+                type="button"
+                onClick={descartarRascunho}
+                className="whitespace-nowrap font-body text-xs font-semibold text-brass underline hover:no-underline"
+              >
+                Descartar e começar do zero
+              </button>
+            </div>
+          )}
 
           <div className="mt-5 min-h-[320px]">
         {/* Aba 1 — Informações Gerais */}

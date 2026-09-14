@@ -8,8 +8,12 @@
 // - Cabeçalho fixo durante rolagem vertical (sticky), dentro de um
 //   container com altura máxima e scroll próprio — a rolagem horizontal
 //   acontece SÓ dentro da tabela, nunca na página inteira.
-// - Colunas "Item" e "Descrição (referência)" fixas durante rolagem
+// - Colunas "Grupo", "Item" e "Descrição" fixas durante rolagem
 //   horizontal (sticky left), para nunca perder a identidade da linha.
+// - JÁ TESTAMOS larguras em % (sem rolagem horizontal) e revertemos:
+//   em telas reais isso cortava/sobrepunha texto ("Grup", "ME/EP", "500"
+//   sobre "9720") — pior que ter uma barra de rolagem. Largura fixa em
+//   px + rolagem horizontal é a versão sem esse problema.
 // - Campos editáveis (Proposta Comercial) com fundo verde-claro,
 //   visualmente diferentes dos campos somente-leitura (Itens de
 //   Referência, quando quem está vendo não pode editá-los), que aparecem
@@ -41,18 +45,19 @@ import {
   ChaveStatusProposta,
 } from '@/utils/licitacaoCalculos'
 
-// Largura de CADA uma das 19 colunas da tabela, definida explicitamente
-// (usada num <colgroup>, com table-layout fixed) — sem isso, o navegador
-// recalcula as larguras sozinho e desalinha as faixas coloridas dos 3
-// blocos com as colunas de verdade, além de espremer "Item" e "Cód.
-// Produto" (bug relatado). Os dois primeiros valores (Item e Descrição)
-// também definem o offset `left` das colunas fixas na rolagem horizontal.
+// Largura de CADA uma das 19 colunas, em pixels fixos — testamos larguras
+// proporcionais (%) para tentar eliminar a rolagem horizontal, mas em
+// telas reais (mesmo 1920px, dependendo do zoom/layout) isso cortava e
+// sobrepunha texto ("Grup", "ME/EP", "500" sobre "9720") — pior que ter
+// uma barra de rolagem. Voltamos ao valor fixo em px, testado sem esse
+// problema; a rolagem horizontal é aceitável, texto ilegível não é.
+const LARGURA_COL_GRUPO = 72
 const LARGURA_COL_ITEM = 76
 const LARGURA_COL_DESCRICAO_REF = 260
 const LARGURAS_COLUNAS = [
+  LARGURA_COL_GRUPO, // Grupo — fixa
   LARGURA_COL_ITEM, // Item (referência) — fixa
   LARGURA_COL_DESCRICAO_REF, // Descrição (referência) — fixa
-  76, // Grupo
   88, // ME/EPP
   96, // Unid.
   88, // Quant.
@@ -65,7 +70,7 @@ const LARGURAS_COLUNAS = [
   150, // Fabricante
   140, // Modelo
   130, // Preço mínimo R$
-  170, // Preço mínimo R$ + frete (cabeçalho carrega tambem o input de frete)
+  170, // Preço mínimo R$ + frete
   140, // Valor total
   100, // Diferença
   170, // Status
@@ -214,16 +219,22 @@ const LinhaItem = memo(function LinhaItem({
 
   return (
     <tr className="group border-t border-ink-soft/10 align-top hover:bg-paper-2/30">
-      {/* --- Colunas fixas na rolagem horizontal: Item + Descrição --- */}
+      {/* --- Colunas fixas na rolagem horizontal: Grupo + Item + Descrição --- */}
       <td
         className="sticky z-10 whitespace-nowrap border-r border-ink-soft/10 bg-white px-3 py-2 group-hover:bg-[#FBFAF6]"
         style={{ left: 0 }}
+      >
+        <p className="font-body text-sm text-ink-soft">{grupoLabel}</p>
+      </td>
+      <td
+        className="sticky z-10 whitespace-nowrap border-r border-ink-soft/10 bg-white px-3 py-2 group-hover:bg-[#FBFAF6]"
+        style={{ left: LARGURA_COL_GRUPO }}
       >
         <p className="font-body text-sm font-medium text-ink">{item.numero}</p>
       </td>
       <td
         className="sticky z-10 border-r border-ink-soft/10 bg-white px-3 py-2 group-hover:bg-[#FBFAF6]"
-        style={{ left: LARGURA_COL_ITEM }}
+        style={{ left: LARGURA_COL_GRUPO + LARGURA_COL_ITEM }}
       >
         {podeEditarItens ? (
           <textarea
@@ -238,9 +249,6 @@ const LinhaItem = memo(function LinhaItem({
       </td>
 
       {/* --- Bloco Itens (Referência) --- */}
-      <td className="whitespace-nowrap px-3 py-2">
-        <p className="font-body text-sm text-ink-soft">{grupoLabel}</p>
-      </td>
       <td className="whitespace-nowrap px-3 py-2">
         <p className="font-body text-sm text-ink-soft">{item.exclusivoMeEpp ? 'Sim' : 'Não'}</p>
       </td>
@@ -734,12 +742,15 @@ export function PropostaComercialTable({
                 style={{ left: 0 }}
               />
               <th
-                colSpan={1}
                 className="sticky top-0 z-30 h-9 border-r border-white/20 bg-charcoal"
-                style={{ left: LARGURA_COL_ITEM }}
+                style={{ left: LARGURA_COL_GRUPO }}
               />
               <th
-                colSpan={7}
+                className="sticky top-0 z-30 h-9 border-r border-white/20 bg-charcoal"
+                style={{ left: LARGURA_COL_GRUPO + LARGURA_COL_ITEM }}
+              />
+              <th
+                colSpan={6}
                 className="sticky top-0 z-20 h-9 border-r border-white/20 bg-charcoal px-3 py-1.5 text-left font-body text-[11px] font-semibold uppercase tracking-wide text-white"
               >
                 ● Referência
@@ -762,15 +773,20 @@ export function PropostaComercialTable({
                 className="sticky top-9 z-30 whitespace-nowrap border-r border-ink-soft/10 bg-white px-3 py-2"
                 style={{ left: 0 }}
               >
+                Grupo
+              </th>
+              <th
+                className="sticky top-9 z-30 whitespace-nowrap border-r border-ink-soft/10 bg-white px-3 py-2"
+                style={{ left: LARGURA_COL_GRUPO }}
+              >
                 Item
               </th>
               <th
                 className="sticky top-9 z-30 whitespace-nowrap border-r border-ink-soft/10 bg-white px-3 py-2"
-                style={{ left: LARGURA_COL_ITEM }}
+                style={{ left: LARGURA_COL_GRUPO + LARGURA_COL_ITEM }}
               >
                 Descrição
               </th>
-              <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Grupo</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">ME/EPP</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Unid.</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Quant.</th>

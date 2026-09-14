@@ -42,9 +42,12 @@ export function PropostaComercialPage() {
     }
   }, [id])
 
+  const [erro, setErro] = useState<string | null>(null)
+
   async function handleSalvar(payload: SalvarPropostaComercialPayload) {
     if (!user || !id) return
     setSalvando(true)
+    setErro(null)
     try {
       await licitacaoService.registrarPropostaCliente(id, payload.propostaPorItem)
       await licitacaoService.registrarDecisaoCliente(id, 'participar', user.name, {
@@ -52,6 +55,10 @@ export function PropostaComercialPage() {
         percentualFrete: payload.incluirFrete ? payload.percentualFrete : undefined,
       })
       navigate('/cliente')
+    } catch (e) {
+      const mensagem = e instanceof Error ? e.message : 'Erro desconhecido ao salvar a proposta.'
+      console.error('Falha ao confirmar participação:', e)
+      setErro(mensagem)
     } finally {
       setSalvando(false)
     }
@@ -75,6 +82,12 @@ export function PropostaComercialPage() {
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
+          {erro && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <p className="font-body text-sm font-semibold text-red-700">Não foi possível confirmar a participação</p>
+              <p className="mt-0.5 font-body text-xs text-red-700">{erro}</p>
+            </div>
+          )}
           <PropostaComercialTable
             licitacao={licitacao}
             podeEditarItens={false}

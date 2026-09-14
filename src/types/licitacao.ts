@@ -50,7 +50,8 @@ export type ModalidadeLicitacao =
   | 'tomada_de_precos'
   | 'convite'
   | 'dispensa'
-  | 'inexigibilidade';
+  | 'inexigibilidade'
+  | 'srp';
 
 export const MODALIDADE_LICITACAO_LABEL: Record<ModalidadeLicitacao, string> = {
   pregao_eletronico: 'Pregão Eletrônico',
@@ -59,6 +60,7 @@ export const MODALIDADE_LICITACAO_LABEL: Record<ModalidadeLicitacao, string> = {
   convite: 'Convite',
   dispensa: 'Dispensa',
   inexigibilidade: 'Inexigibilidade',
+  srp: 'Sistema de Registro de Preços (SRP)',
 };
 
 export type DecisaoCliente = 'pendente' | 'participar' | 'recusar';

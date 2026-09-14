@@ -180,21 +180,21 @@ export function LicitacoesPage() {
         </select>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-charcoal-3/10 bg-white shadow-soft">
+      <div className="overflow-x-auto rounded-xl border border-charcoal-3/10 bg-white shadow-soft">
         <table className="w-full font-body text-sm">
           <thead className="bg-paper-2 text-left text-xs uppercase tracking-wide text-ink-soft">
             <tr>
-              <th className="px-4 py-3">Pregão</th>
+              <th className="whitespace-nowrap px-4 py-3">Pregão</th>
               <th className="px-4 py-3">Órgão</th>
-              <th className="px-4 py-3">Modalidade</th>
+              <th className="whitespace-nowrap px-4 py-3">Modalidade</th>
               <th className="px-4 py-3">Cliente</th>
-              <th className="px-4 py-3">Data da licitação</th>
-              <th className="px-4 py-3">Valor</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Decisão do cliente</th>
-              <th className="px-4 py-3">Itens</th>
-              <th className="px-4 py-3 text-right">Proposta</th>
-              {podeEditar && <th className="px-4 py-3 text-right">Ações</th>}
+              <th className="whitespace-nowrap px-4 py-3">Data da licitação</th>
+              <th className="whitespace-nowrap px-4 py-3">Valor</th>
+              <th className="whitespace-nowrap px-4 py-3">Status</th>
+              <th className="whitespace-nowrap px-4 py-3">Decisão do cliente</th>
+              <th className="whitespace-nowrap px-4 py-3">Itens</th>
+              <th className="whitespace-nowrap px-4 py-3 text-right">Proposta</th>
+              {podeEditar && <th className="whitespace-nowrap px-4 py-3 text-right">Ações</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-charcoal-3/10">
@@ -221,13 +221,13 @@ export function LicitacoesPage() {
 
                 return (
                   <tr key={licitacao.id} className="hover:bg-paper-2/60">
-                    <td className="px-4 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
-                    <td className="px-4 py-3 text-ink-soft">{licitacao.orgao}</td>
-                    <td className="px-4 py-3 text-ink-soft">
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
+                    <td className="max-w-[220px] truncate px-4 py-3 text-ink-soft" title={licitacao.orgao}>{licitacao.orgao}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
                       {MODALIDADE_LICITACAO_LABEL[licitacao.modalidade as ModalidadeLicitacao] ?? licitacao.modalidade}
                     </td>
-                    <td className="px-4 py-3 text-ink-soft">{nomeCliente(licitacao.clienteId)}</td>
-                    <td className="px-4 py-3 text-ink-soft">
+                    <td className="max-w-[180px] truncate px-4 py-3 text-ink-soft" title={nomeCliente(licitacao.clienteId)}>{nomeCliente(licitacao.clienteId)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
                       {formatarDataHora(dataReferencia)}
                       {urgencia === 'vencido' && (
                         <span className="ml-2 text-xs font-medium text-red-600">⚠ vencido</span>
@@ -236,13 +236,13 @@ export function LicitacoesPage() {
                         <span className="ml-2 text-xs font-medium text-brass">⚠ prazo próximo</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-ink-soft">
+                    <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
                       {licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="whitespace-nowrap px-4 py-3">
                       <StatusPill label={STATUS_LICITACAO_LABEL[licitacao.status]} tone={STATUS_TONE[licitacao.status]} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="whitespace-nowrap px-4 py-3">
                       <span
                         className={`rounded-full px-2 py-0.5 font-body text-xs ${
                           licitacao.decisaoCliente === 'participar'
@@ -255,19 +255,19 @@ export function LicitacoesPage() {
                         {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-ink-soft">
+                    <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
                       {licitacao.totalItens ? (
                         `${licitacao.totalItens} ${licitacao.totalItens === 1 ? 'item' : 'itens'}`
                       ) : (
                         <span className="text-brass">Sem itens</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
                       <Link to={`/admin/licitacoes/${licitacao.id}/proposta`} className="text-forest-deep hover:underline">
                         Ver proposta
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
                       <button
                         type="button"
                         onClick={() => abrirEdicao(licitacao)}

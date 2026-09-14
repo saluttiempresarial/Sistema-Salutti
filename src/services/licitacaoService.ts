@@ -488,63 +488,51 @@ export const licitacaoService = {
   },
 
   // Chamado pelo Portal do Cliente (spec 2.3 / 6.2 — botões "Quero Participar" / "Não vou participar").
+  // Passa por uma função no banco (registrar_decisao_cliente) em vez do
+  // atualizar() genérico — assim só os campos de decisão/frete podem ser
+  // alterados por essa via, e o histórico é gravado dentro da mesma
+  // função (o Cliente não precisa de permissão direta em historico_acoes).
   async registrarDecisaoCliente(
     id: string,
     decisao: 'participar' | 'recusar',
     nomeCliente: string,
     opcoes: { motivoRecusa?: string; cobrarFrete?: boolean; percentualFrete?: number } = {}
   ): Promise<Licitacao> {
-    const agora = new Date().toISOString()
-    const descricao =
-      decisao === 'participar'
-        ? 'Cliente confirmou participação nesta licitação'
-        : `Cliente recusou participar${opcoes.motivoRecusa ? ` — motivo: ${opcoes.motivoRecusa}` : ''}`
+    const { error } = await supabase.rpc('registrar_decisao_cliente', {
+      p_licitacao_id: id,
+      p_decisao: decisao,
+      p_usuario: nomeCliente,
+      p_motivo_recusa: decisao === 'recusar' ? opcoes.motivoRecusa ?? null : null,
+      p_cobrar_frete: opcoes.cobrarFrete ?? false,
+      p_percentual_frete: opcoes.cobrarFrete ? opcoes.percentualFrete ?? null : null,
+    })
+    if (error) throw new Error(error.message)
 
-    const atualizada = await this.atualizar(
-      id,
-      {
-        decisaoCliente: decisao,
-        decisaoClienteEm: agora,
-        motivoRecusaCliente: decisao === 'recusar' ? opcoes.motivoRecusa : undefined,
-        cobrarFrete: opcoes.cobrarFrete ?? false,
-        percentualFrete: opcoes.cobrarFrete ? opcoes.percentualFrete : undefined,
-      },
-      nomeCliente
-    )
-
-    // registrarHistorico já rodou dentro de atualizar() com uma mensagem
-    // genérica — aqui sobrescrevemos a última entrada com uma descrição
-    // mais específica dessa ação.
-    const historico = await buscarHistorico(id)
-    if (historico.length > 0) {
-      await supabase.from('historico_acoes').update({ descricao }).eq('id', historico[0].id)
-    }
-
+    const atualizada = await this.buscarPorId(id)
+    if (!atualizada) throw new Error('Licitação não encontrada após registrar decisão')
     return atualizada
   },
 
   // Chamado pelo Portal do Cliente ao clicar "Quero Participar" — salva a
   // proposta preenchida por item (quantidade ofertada, valor inicial,
-  // valor mínimo, marca, modelo). Diferente de criar()/atualizar(), aqui
-  // os itens NÃO são apagados e reinseridos — só os campos proposta_* de
-  // cada linha já existente são atualizados, preservando o id do item.
+  // valor mínimo, marca, modelo). Passa por uma função no banco
+  // (atualizar_proposta_item_cliente) em vez de UPDATE direto — assim só
+  // os campos proposta_* podem ser alterados por essa via, nunca os
+  // campos de referência (RLS sozinho não restringe colunas, só linhas).
   async registrarPropostaCliente(
-    licitacaoId: string,
+    _licitacaoId: string,
     itens: Array<{ id: string; propostaCliente: PropostaClienteItem }>
   ): Promise<void> {
     await Promise.all(
       itens.map(({ id, propostaCliente }) =>
-        supabase
-          .from('itens_licitacao')
-          .update({
-            proposta_codigo_interno: propostaCliente.codigoInterno || null,
-            proposta_descricao: propostaCliente.descricaoProduto || null,
-            proposta_marca: propostaCliente.marca || null,
-            proposta_modelo: propostaCliente.modelo || null,
-            proposta_preco_minimo: propostaCliente.precoMinimo ?? null,
-          })
-          .eq('id', id)
-          .eq('licitacao_id', licitacaoId)
+        supabase.rpc('atualizar_proposta_item_cliente', {
+          p_item_id: id,
+          p_codigo_interno: propostaCliente.codigoInterno || null,
+          p_descricao_produto: propostaCliente.descricaoProduto || null,
+          p_marca: propostaCliente.marca || null,
+          p_modelo: propostaCliente.modelo || null,
+          p_preco_minimo: propostaCliente.precoMinimo ?? null,
+        })
       )
     ).then((resultados) => {
       const erro = resultados.find((r) => r.error)?.error

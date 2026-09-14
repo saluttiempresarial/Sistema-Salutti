@@ -12,7 +12,7 @@ import { usePermissoes } from '../../../hooks/usePermissoes';
 import { licitacaoService } from '../../../services/licitacaoService';
 import { disputaService } from '../../../services/disputaService';
 import { clienteService } from '../../../services/clienteService';
-import { Licitacao, STATUS_LICITACAO_LABEL, MODALIDADE_LICITACAO_LABEL } from '../../../types/licitacao';
+import { Licitacao, ModalidadeLicitacao, STATUS_LICITACAO_LABEL, MODALIDADE_LICITACAO_LABEL } from '../../../types/licitacao';
 import { Disputa, RESULTADO_DISPUTA_LABEL } from '../../../types/disputa';
 import { formatarDataHora, formatarMoeda } from '../../../utils/prazoUtils';
 import { totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
@@ -185,7 +185,7 @@ export function RelatoriosPage() {
         linhas: licitacoesFiltradas.map((l) => ({
           numeroPregao: l.numeroPregao,
           orgao: l.orgao,
-          modalidade: MODALIDADE_LICITACAO_LABEL[l.modalidade],
+          modalidade: MODALIDADE_LICITACAO_LABEL[l.modalidade as ModalidadeLicitacao] ?? l.modalidade,
           cliente: nomeCliente(l.clienteId),
           valorTotal: l.valorTotalLicitacao != null ? formatarMoeda(l.valorTotalLicitacao) : 'Sigiloso',
           dataLicitacao: formatarDataHora(l.dataEfetivaLicitacao || l.dataLicitacao),
