@@ -21,6 +21,7 @@ import { Tabs } from '@/components/Tabs'
 import { Button } from '@/components/Button'
 import { TextAreaField } from '@/components/TextAreaField'
 import { licitacaoService } from '@/services/licitacaoService'
+import { clienteService } from '@/services/clienteService'
 import {
   Licitacao,
   ItemLicitacao,
@@ -31,7 +32,8 @@ import {
   DECISAO_CLIENTE_LABEL,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda } from '@/utils/prazoUtils'
-import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '@/utils/licitacaoCalculos'
+import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp } from '@/utils/licitacaoCalculos'
+import { PorteEmpresa } from '@/types/cliente'
 
 const TABS = [
   { id: 'gerais', label: 'Informações Gerais' },
@@ -87,6 +89,21 @@ export function LicitacaoDetalhePage() {
   const [recusando, setRecusando] = useState(false)
   const [motivoRecusa, setMotivoRecusa] = useState('')
   const [decidindo, setDecidindo] = useState(false)
+  const [porteCliente, setPorteCliente] = useState<PorteEmpresa | null>(null)
+
+  // Porte da empresa do cliente logado — usado pra bloquear "Quero
+  // Participar" de vez quando a licitação inteira é exclusiva ME/EPP e a
+  // empresa é "Demais" (ver licitacaoExclusivaMeEpp em licitacaoCalculos).
+  useEffect(() => {
+    if (!user?.clienteId) return
+    let ativo = true
+    clienteService.getById(user.clienteId).then((cliente) => {
+      if (ativo && cliente) setPorteCliente(cliente.empresa.porte)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [user?.clienteId])
 
   useEffect(() => {
     if (!id) return
@@ -311,14 +328,26 @@ export function LicitacaoDetalhePage() {
                 </div>
               </div>
             ) : licitacao.decisaoCliente === 'pendente' ? (
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => navigate(`/cliente/licitacoes/${id}/proposta`)} disabled={decidindo}>
-                  Quero Participar
-                </Button>
-                <Button variant="ghost" onClick={() => setRecusando(true)} disabled={decidindo}>
-                  Não vou participar
-                </Button>
-              </div>
+              licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens) && porteCliente === 'demais' ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
+                    🔒 Esta licitação é exclusiva para participação de empresas ME/EPP — sua empresa não pode
+                    enviar proposta aqui.
+                  </p>
+                  <Button variant="ghost" onClick={() => setRecusando(true)} disabled={decidindo}>
+                    Não vou participar
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => navigate(`/cliente/licitacoes/${id}/proposta`)} disabled={decidindo}>
+                    Quero Participar
+                  </Button>
+                  <Button variant="ghost" onClick={() => setRecusando(true)} disabled={decidindo}>
+                    Não vou participar
+                  </Button>
+                </div>
+              )
             ) : (
               <p className="font-body text-xs text-ink-soft">
                 {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}

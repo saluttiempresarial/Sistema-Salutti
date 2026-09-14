@@ -37,6 +37,7 @@
 import { memo, useMemo, useState, useEffect } from 'react'
 import { Button } from '@/components/Button'
 import { Licitacao, ItemLicitacao, PropostaClienteItem } from '@/types/licitacao'
+import { PorteEmpresa } from '@/types/cliente'
 import { formatarMoeda } from '@/utils/prazoUtils'
 import {
   calcularAnaliseItem,
@@ -127,6 +128,12 @@ interface PropostaComercialTableProps {
   salvando?: boolean
   onSalvar: (payload: SalvarPropostaComercialPayload) => Promise<void>
   textoBotaoSalvar?: string
+  /** Porte da empresa do Cliente logado — só passado na tela do Cliente.
+   *  Quando presente e igual a 'demais', bloqueia a Proposta Comercial
+   *  nos itens marcados como exclusivo ME/EPP (item.exclusivoMeEpp) —
+   *  participação de empresa "Demais" nesses itens é irregular. Undefined
+   *  na tela do Admin (edita tudo, sem essa restrição). */
+  porteCliente?: PorteEmpresa
 }
 
 /** Input de campo EDITÁVEL — fundo verde-claro, para se diferenciar
@@ -150,6 +157,21 @@ function CampoBloqueado({ children }: { children: React.ReactNode }) {
         🔒
       </span>
       <span className="font-body text-sm text-ink-soft">{children}</span>
+    </div>
+  )
+}
+
+/** Célula bloqueada especificamente por regra de ME/EPP — visualmente
+ *  diferente do CampoBloqueado comum (que é sobre PERFIL de quem está
+ *  vendo); aqui o bloqueio é sobre o ITEM em si, pra ficar claro que é
+ *  uma regra do edital, não uma limitação da conta do cliente. */
+function CampoBloqueadoMeEpp() {
+  return (
+    <div className="flex items-center gap-1.5 rounded-md bg-brass-pale/60 px-2 py-1" title="Este item é exclusivo para participação de empresas ME/EPP">
+      <span aria-hidden className="text-xs text-brass">
+        🔒
+      </span>
+      <span className="font-body text-xs text-brass">Exclusivo ME/EPP</span>
     </div>
   )
 }
@@ -191,6 +213,9 @@ interface LinhaItemProps {
    *  planilha original (coluna I, fórmula =SOMA(...), aparece uma vez por
    *  grupo). null nas demais linhas do mesmo grupo. */
   subtotalGrupo: number | null
+  /** Ver PropostaComercialTableProps.porteCliente — repassado linha a
+   *  linha pra decidir se ESSE item específico deve ficar bloqueado. */
+  porteCliente?: PorteEmpresa
   onChangeItem: <K extends keyof PropostaItemForm>(itemId: string, campo: K, valor: PropostaItemForm[K]) => void
   onChangeReferencia: <K extends keyof ItemReferenciaForm>(
     itemId: string,
@@ -211,11 +236,18 @@ const LinhaItem = memo(function LinhaItem({
   podeEditarPropostaComercial,
   grupoLabel,
   subtotalGrupo,
+  porteCliente,
   onChangeItem,
   onChangeReferencia,
 }: LinhaItemProps) {
   const status = classificarStatusProposta(analise?.percentualDiferenca ?? null)
   const valorTotalReferencia = referencia.quantidade * referencia.precoReferencia
+  // Item exclusivo ME/EPP + empresa "Demais" = participação irregular —
+  // bloqueia a Proposta Comercial só deste item (os outros itens da
+  // mesma licitação continuam normais). Não afeta o Admin (porteCliente
+  // vem undefined na tela dele).
+  const bloqueadoMeEpp = item.exclusivoMeEpp && porteCliente === 'demais'
+  const podeEditarEsteItem = podeEditarPropostaComercial && !bloqueadoMeEpp
 
   return (
     <tr className="group border-t border-ink-soft/10 align-top hover:bg-paper-2/30">
@@ -298,7 +330,9 @@ const LinhaItem = memo(function LinhaItem({
         <p className="font-body text-sm text-ink-soft">{item.numero}</p>
       </td>
       <td className="px-3 py-2">
-        {podeEditarPropostaComercial ? (
+        {bloqueadoMeEpp ? (
+          <CampoBloqueadoMeEpp />
+        ) : podeEditarEsteItem ? (
           <InputEditavel
             value={form.codigoInterno}
             onChange={(e) => onChangeItem(item.id, 'codigoInterno', e.target.value)}
@@ -308,7 +342,9 @@ const LinhaItem = memo(function LinhaItem({
         )}
       </td>
       <td className="px-3 py-2">
-        {podeEditarPropostaComercial ? (
+        {bloqueadoMeEpp ? (
+          <CampoBloqueadoMeEpp />
+        ) : podeEditarEsteItem ? (
           <textarea
             value={form.descricaoProduto}
             onChange={(e) => onChangeItem(item.id, 'descricaoProduto', e.target.value)}
@@ -320,21 +356,27 @@ const LinhaItem = memo(function LinhaItem({
         )}
       </td>
       <td className="px-3 py-2">
-        {podeEditarPropostaComercial ? (
+        {bloqueadoMeEpp ? (
+          <CampoBloqueadoMeEpp />
+        ) : podeEditarEsteItem ? (
           <InputEditavel value={form.marca} onChange={(e) => onChangeItem(item.id, 'marca', e.target.value)} />
         ) : (
           <CampoBloqueado>{form.marca || '—'}</CampoBloqueado>
         )}
       </td>
       <td className="px-3 py-2">
-        {podeEditarPropostaComercial ? (
+        {bloqueadoMeEpp ? (
+          <CampoBloqueadoMeEpp />
+        ) : podeEditarEsteItem ? (
           <InputEditavel value={form.modelo} onChange={(e) => onChangeItem(item.id, 'modelo', e.target.value)} />
         ) : (
           <CampoBloqueado>{form.modelo || '—'}</CampoBloqueado>
         )}
       </td>
       <td className="px-3 py-2">
-        {podeEditarPropostaComercial ? (
+        {bloqueadoMeEpp ? (
+          <CampoBloqueadoMeEpp />
+        ) : podeEditarEsteItem ? (
           <InputEditavel
             type="number"
             value={form.precoMinimo}
@@ -362,9 +404,15 @@ const LinhaItem = memo(function LinhaItem({
         </p>
       </td>
       <td className="whitespace-nowrap px-3 py-2">
-        <span className={`inline-block rounded-full px-2.5 py-1 font-body text-xs font-medium ${status.classe}`}>
-          {status.label}
-        </span>
+        {bloqueadoMeEpp ? (
+          <span className="inline-block rounded-full bg-brass-pale px-2.5 py-1 font-body text-xs font-medium text-brass">
+            🔒 Exclusivo ME/EPP
+          </span>
+        ) : (
+          <span className={`inline-block rounded-full px-2.5 py-1 font-body text-xs font-medium ${status.classe}`}>
+            {status.label}
+          </span>
+        )}
       </td>
     </tr>
   )
@@ -422,6 +470,7 @@ export function PropostaComercialTable({
   salvando,
   onSalvar,
   textoBotaoSalvar = 'Salvar alterações',
+  porteCliente,
 }: PropostaComercialTableProps) {
   const [formPorItem, setFormPorItem] = useState<Record<string, PropostaItemForm>>(() => {
     const inicial: Record<string, PropostaItemForm> = {}
@@ -489,6 +538,7 @@ export function PropostaComercialTable({
   }, [licitacao, formPorItem, referenciaPorItem, taxaFreteNumero, taxaPreenchida, podeEditarItens])
 
   const resumo = useMemo<ResumoProposta>(() => {
+    const itensParticipaveis = licitacao.itens.filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais'))
     const acc: ResumoProposta = {
       forte: 0,
       positiva: 0,
@@ -497,9 +547,9 @@ export function PropostaComercialTable({
       valorTotalReferencia: 0,
       valorTotalProposta: 0,
       itensPreenchidos: 0,
-      totalItens: licitacao.itens.length,
+      totalItens: itensParticipaveis.length,
     }
-    licitacao.itens.forEach((item) => {
+    itensParticipaveis.forEach((item) => {
       const referencia = referenciaPorItem[item.id]
       if (referencia) acc.valorTotalReferencia += referencia.quantidade * referencia.precoReferencia
       const analise = analisePorItem[item.id]
@@ -513,7 +563,7 @@ export function PropostaComercialTable({
       else if (status.chave === 'indefinido') acc.semPreco += 1
     })
     return acc
-  }, [licitacao, referenciaPorItem, analisePorItem, formPorItem])
+  }, [licitacao, referenciaPorItem, analisePorItem, formPorItem, porteCliente])
 
   // Filtra por busca (descrição de referência, descrição ofertada ou
   // código do produto) e por status — mantém a estrutura de grupos,
@@ -562,17 +612,19 @@ export function PropostaComercialTable({
   }, [licitacao.grupos])
 
   async function handleSalvar() {
-    const propostaPorItem = licitacao.itens.map((item) => {
-      const form = formPorItem[item.id]
-      const propostaCliente: PropostaClienteItem = {
-        codigoInterno: form.codigoInterno || undefined,
-        descricaoProduto: form.descricaoProduto || undefined,
-        marca: form.marca || undefined,
-        modelo: form.modelo || undefined,
-        precoMinimo: form.precoMinimo === '' ? undefined : Number(form.precoMinimo),
-      }
-      return { id: item.id, propostaCliente }
-    })
+    const propostaPorItem = licitacao.itens
+      .filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais'))
+      .map((item) => {
+        const form = formPorItem[item.id]
+        const propostaCliente: PropostaClienteItem = {
+          codigoInterno: form.codigoInterno || undefined,
+          descricaoProduto: form.descricaoProduto || undefined,
+          marca: form.marca || undefined,
+          modelo: form.modelo || undefined,
+          precoMinimo: form.precoMinimo === '' ? undefined : Number(form.precoMinimo),
+        }
+        return { id: item.id, propostaCliente }
+      })
 
     const itensReferencia = podeEditarItens
       ? licitacao.itens.map((item) => {
@@ -603,6 +655,7 @@ export function PropostaComercialTable({
         podeEditarPropostaComercial={podeEditarPropostaComercial}
         grupoLabel={item.grupoId ? grupoNumeroPorId[item.grupoId] ?? '—' : '—'}
         subtotalGrupo={ehPrimeiroDoGrupo && item.grupoId ? subtotalPorGrupo[item.grupoId] ?? null : null}
+        porteCliente={porteCliente}
         onChangeItem={atualizarItem}
         onChangeReferencia={atualizarReferencia}
       />
@@ -619,6 +672,14 @@ export function PropostaComercialTable({
           <EstatisticaResumo icone="📋" label="Total de itens" valor={String(resumo.totalItens)} />
           <EstatisticaResumo icone="✅" label="Preenchidos" valor={String(resumo.itensPreenchidos)} corValor="text-forest-deep" />
           <EstatisticaResumo icone="🕐" label="Pendentes" valor={String(resumo.totalItens - resumo.itensPreenchidos)} />
+          {licitacao.itens.length > resumo.totalItens && (
+            <p className="w-full font-body text-xs text-brass">
+              🔒 {licitacao.itens.length - resumo.totalItens}{' '}
+              {licitacao.itens.length - resumo.totalItens === 1 ? 'item' : 'itens'} exclusivo(s) ME/EPP não{' '}
+              {licitacao.itens.length - resumo.totalItens === 1 ? 'entra' : 'entram'} nesta contagem — sua empresa não
+              pode participar deles.
+            </p>
+          )}
           <div className="min-w-[180px] flex-1">
             <div className="mb-1 flex items-center justify-between font-body text-xs text-ink-soft">
               <span>

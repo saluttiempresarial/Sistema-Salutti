@@ -16,8 +16,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { DashboardShell } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
+import { clienteService } from '@/services/clienteService'
 import { PropostaComercialTable, SalvarPropostaComercialPayload } from '@/components/Licitacoes/PropostaComercialTable'
 import { Licitacao } from '@/types/licitacao'
+import { licitacaoExclusivaMeEpp } from '@/utils/licitacaoCalculos'
+import { PorteEmpresa } from '@/types/cliente'
 
 export function PropostaComercialPage() {
   const { id } = useParams<{ id: string }>()
@@ -27,6 +30,7 @@ export function PropostaComercialPage() {
   const [licitacao, setLicitacao] = useState<Licitacao | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
+  const [porteCliente, setPorteCliente] = useState<PorteEmpresa | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -41,6 +45,20 @@ export function PropostaComercialPage() {
       ativo = false
     }
   }, [id])
+
+  // Porte da empresa do cliente logado — usado pra bloquear, item a item,
+  // a Proposta Comercial em itens marcados como exclusivo ME/EPP quando
+  // a empresa não é ME/EPP (regra de negócio: participação irregular).
+  useEffect(() => {
+    if (!user?.clienteId) return
+    let ativo = true
+    clienteService.getById(user.clienteId).then((cliente) => {
+      if (ativo && cliente) setPorteCliente(cliente.empresa.porte)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [user?.clienteId])
 
   const [erro, setErro] = useState<string | null>(null)
 
@@ -80,6 +98,21 @@ export function PropostaComercialPage() {
         <div className="mt-6 flex min-h-[240px] items-center justify-center">
           <p className="font-body text-sm text-ink-soft">Carregando itens...</p>
         </div>
+      ) : licitacaoExclusivaMeEpp(licitacao.itens) && porteCliente === 'demais' ? (
+        <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 text-center shadow-soft">
+          <p className="mb-3 font-body text-sm font-semibold text-brass">
+            🔒 Esta licitação é exclusiva para participação de empresas ME/EPP
+          </p>
+          <p className="mb-4 font-body text-sm text-ink-soft">
+            Sua empresa está classificada como "Demais" e não pode enviar proposta nesta licitação.
+          </p>
+          <Link
+            to={`/cliente/licitacoes/${id}`}
+            className="font-body text-sm font-semibold text-forest hover:underline"
+          >
+            ← Voltar para os detalhes da licitação
+          </Link>
+        </div>
       ) : (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
           {erro && (
@@ -96,6 +129,7 @@ export function PropostaComercialPage() {
             salvando={salvando}
             onSalvar={handleSalvar}
             textoBotaoSalvar="Confirmar participação"
+            porteCliente={porteCliente ?? undefined}
           />
         </div>
       )}

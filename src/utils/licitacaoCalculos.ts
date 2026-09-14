@@ -12,6 +12,17 @@ export function totalReferenciaItem(item: ItemLicitacao): number {
   return item.precoReferencia * item.quantidade;
 }
 
+/**
+ * Detecta se a licitação inteira é exclusiva ME/EPP (todos os itens
+ * marcados como exclusivoMeEpp — diferente do caso mais comum, que é só
+ * um item ou outro dentro de uma licitação mista). Usada pra bloquear o
+ * "Quero Participar" de vez pra uma empresa "Demais", em vez de deixar
+ * ela abrir a Proposta Comercial e ver todos os itens travados um a um.
+ */
+export function licitacaoExclusivaMeEpp(itens: ItemLicitacao[]): boolean {
+  return itens.length > 0 && itens.every((item) => item.exclusivoMeEpp);
+}
+
 /** Soma dos totais de referência de todos os itens que compõem um grupo. */
 export function totalReferenciaGrupo(itens: ItemLicitacao[], grupoId: string): number {
   return itens

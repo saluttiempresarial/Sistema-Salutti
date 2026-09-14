@@ -44,6 +44,7 @@ import {
   DECISAO_CLIENTE_LABEL,
 } from '../../../types/licitacao';
 import { clienteService } from '../../../services/clienteService';
+import { PorteEmpresa } from '../../../types/cliente';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 
@@ -173,8 +174,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [abaAtiva, setAbaAtiva] = useState('gerais');
   const [form, setForm] = useState<LicitacaoFormData>(criarFormularioVazio());
   const [salvando, setSalvando] = useState(false);
-  const [clientes, setClientes] = useState<Array<{ value: string; label: string }>>([]);
+  const [clientes, setClientes] = useState<Array<{ value: string; label: string; porte: PorteEmpresa }>>([]);
   const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
+  const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -223,7 +225,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     // lista de clientes deste seletor não costuma passar disso.
     clienteService.list({ page: 1, pageSize: 200 }).then((resultado) => {
       if (!ativo) return;
-      setClientes(resultado.data.map((c) => ({ value: c.id, label: c.empresa.nomeFantasia })));
+      setClientes(resultado.data.map((c) => ({ value: c.id, label: c.empresa.nomeFantasia, porte: c.empresa.porte })));
     });
     return () => {
       ativo = false;
@@ -812,7 +814,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
 
                   <div className="space-y-3">
                     {itensDoGrupo.map((item) => (
-                      <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} />
+                      <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} />
                     ))}
                     {itensDoGrupo.length === 0 && (
                       <p className="font-body text-xs italic text-ink-soft">Nenhum item neste grupo ainda.</p>
@@ -831,7 +833,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 <p className="mb-3 font-body text-sm font-semibold text-ink">Itens individuais</p>
                 <div className="space-y-3">
                   {itensIndividuais.map((item) => (
-                    <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} />
+                    <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} />
                   ))}
                   {itensIndividuais.length === 0 && (
                     <p className="font-body text-xs italic text-ink-soft">Nenhum item individual ainda.</p>
@@ -860,10 +862,17 @@ function ItemLicitacaoRow({
   item,
   onChange,
   onRemover,
+  clienteEhDemais,
 }: {
   item: ItemLicitacao;
   onChange: <K extends keyof ItemLicitacao>(id: string, campo: K, valor: ItemLicitacao[K]) => void;
   onRemover: (id: string) => void;
+  /** true quando o cliente atribuído a esta licitação é classificado como
+   *  "Demais" — usado só pra mostrar um aviso quando o item também é
+   *  marcado "Exclusivo para ME/EPP" (esse cliente não vai poder enviar
+   *  proposta nele). Não impede o cadastro — o dado pode estar certo
+   *  mesmo assim, é uma informação real do edital. */
+  clienteEhDemais?: boolean;
 }) {
   return (
     <div className="relative rounded-lg bg-paper-2/60 p-3">
@@ -932,6 +941,12 @@ function ItemLicitacaoRow({
           checked={item.exclusivoMeEpp}
           onChange={(e) => onChange(item.id, 'exclusivoMeEpp', e.target.checked)}
         />
+        {item.exclusivoMeEpp && clienteEhDemais && (
+          <p className="mt-1.5 rounded-md bg-brass-pale/60 px-2.5 py-1.5 font-body text-xs text-brass">
+            ⚠️ O cliente desta licitação é classificado como "Demais" — ele não vai poder enviar proposta
+            neste item (o sistema bloqueia isso automaticamente na Proposta Comercial dele).
+          </p>
+        )}
       </div>
     </div>
   );

@@ -5,10 +5,11 @@ export const CLIENTE_STATUS_LABEL: Record<ClienteStatus, string> = {
   inativo: 'Inativo',
 }
 
-/** Porte da empresa — ME/EPP tem restrições legais de participação em
- *  licitações de ampla concorrência (Lei Complementar 123/2006) e, por
- *  regra da Salutti, não pode ter proposta enviada em nenhuma licitação
- *  através do sistema (ver bloqueio no fluxo de envio de proposta). */
+/** Porte da empresa — ME/EPP tem preferência legal em licitações (Lei
+ *  Complementar 123/2006). No sistema, a regra é o inverso: um item
+ *  marcado como exclusivo ME/EPP (ItemLicitacao.exclusivoMeEpp) bloqueia
+ *  a Proposta Comercial apenas para clientes classificados como "demais"
+ *  — participação de empresa "Demais" nesse item seria irregular. */
 export type PorteEmpresa = 'me_epp' | 'demais'
 
 export const PORTE_EMPRESA_LABEL: Record<PorteEmpresa, string> = {
