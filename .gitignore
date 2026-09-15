@@ -1,5 +1,9 @@
 node_modules
-   dist
-   .env
+dist
+.env
 
-   
+# Pasta interna do Supabase CLI (cache de versões, configuração local do
+# "supabase link") — gerada automaticamente pela ferramenta, não é
+# código do projeto, não precisa ser versionada.
+supabase/temp
+supabase/.temp
