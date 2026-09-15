@@ -82,7 +82,7 @@ export function ClientesPage() {
   return (
     <DashboardShell
       title="Cadastro de Clientes"
-      subtitle="Gerencie as empresas clientes com acesso ao sistema — dados mockados, prontos para integração com Supabase."
+      subtitle="Gerencie as empresas clientes com acesso ao sistema."
     >
       <div className="rounded-xl border border-ink-soft/10 bg-white p-5 shadow-soft">
         <ClienteFilters

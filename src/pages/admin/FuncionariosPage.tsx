@@ -85,7 +85,7 @@ export function FuncionariosPage() {
   return (
     <DashboardShell
       title="Cadastro de Funcionários"
-      subtitle="Gerencie os funcionários com acesso ao sistema — dados mockados, prontos para integração com Supabase."
+      subtitle="Gerencie os funcionários com acesso ao sistema."
     >
       <div className="rounded-xl border border-ink-soft/10 bg-white p-5 shadow-soft">
         <FuncionarioFilters

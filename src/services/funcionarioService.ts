@@ -1,16 +1,14 @@
 import { supabase } from '@/lib/supabaseClient'
 import type { Funcionario, FuncionarioFormData, FuncionarioStatus } from '@/types/funcionario'
+import { loginUsuarioService } from '@/services/loginUsuarioService'
 
 /**
  * Camada de serviço do módulo de Funcionários — conectada ao Supabase
  * (tabela `funcionarios`). Segue o mesmo padrão de `clienteService.ts`.
  *
- * IMPORTANTE (login): a criação/redefinição de senha via
- * `supabase.auth.admin.createUser` exige a service_role key, que nunca
- * pode ficar no front-end. Por enquanto, este service só grava a "ficha"
- * do funcionário na tabela `funcionarios` — o login (Supabase Auth) e o
- * vínculo de `auth_user_id` continuam feitos manualmente pelo painel do
- * Supabase até existir uma Edge Function dedicada para isso.
+ * IMPORTANTE (login): a criação/redefinição de senha usa a Edge Function
+ * `gerenciar-login-usuario` (ver loginUsuarioService) — ela é quem tem
+ * acesso à service_role key, nunca este arquivo.
  *
  * IMPORTANTE (histórico): diferente do mock, o histórico não fica dentro
  * do registro do funcionário — vem da tabela `historico_acoes`, filtrada
@@ -204,6 +202,19 @@ export const funcionarioService = {
     if (error) throw new Error(error.message)
 
     const row = data as FuncionarioRow
+
+    if (formData.senhaTemporaria) {
+      try {
+        await loginUsuarioService.criar('funcionarios', row.id, formData.pessoal.email, formData.senhaTemporaria)
+      } catch (erroLogin) {
+        // Sem login, o cadastro fica "órfão" (nunca consegue logar) e
+        // ocupa o e-mail, travando uma nova tentativa. Desfaz o cadastro
+        // pra a pessoa poder tentar de novo, em vez de acumular lixo.
+        await supabase.from('funcionarios').delete().eq('id', row.id)
+        throw erroLogin
+      }
+    }
+
     await registrarHistorico(row.id, 'Cadastro inicial do funcionário.', autor)
 
     return paraFuncionario(row, await buscarHistorico(row.id))
@@ -217,6 +228,10 @@ export const funcionarioService = {
       .select()
       .single()
     if (error) throw new Error(error.message)
+
+    if (formData.senhaTemporaria) {
+      await loginUsuarioService.redefinirSenha('funcionarios', id, formData.pessoal.email, formData.senhaTemporaria)
+    }
 
     await registrarHistorico(
       id,

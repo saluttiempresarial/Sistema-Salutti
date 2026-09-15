@@ -1,18 +1,14 @@
 import { supabase } from '@/lib/supabaseClient'
 import type { UsuarioCliente, UsuarioClienteFormData } from '@/types/usuarioCliente'
+import { loginUsuarioService } from '@/services/loginUsuarioService'
 
 /**
  * Camada de serviço dos usuários (gestor/operador) de cada Cliente —
  * tabela `usuarios_cliente` no Supabase.
  *
- * IMPORTANTE sobre login de verdade: criar a LINHA em `usuarios_cliente`
- * (feito aqui) é só metade do trabalho — falta vincular essa pessoa a um
- * login real do Supabase Auth (campo auth_user_id, hoje sempre nulo até
- * isso ser feito). Enviar convite por e-mail exige a "service_role key"
- * (a chave "perigosa" que nunca pode ficar no código do site) rodando
- * dentro de uma Supabase Edge Function — isso é um passo separado, ainda
- * não implementado. Por ora, o cadastro fica pronto no banco, mas a
- * pessoa ainda não consegue logar de fato.
+ * Login de verdade (Supabase Auth + auth_user_id) é criado/redefinido via
+ * a Edge Function `gerenciar-login-usuario` (ver loginUsuarioService) —
+ * ela é quem tem acesso à service_role key, nunca este arquivo.
  */
 
 export interface UsuarioClienteListResult {
@@ -83,7 +79,22 @@ export const usuarioClienteService = {
       .select()
       .single()
     if (error) throw new Error(error.message)
-    return paraUsuarioCliente(data as UsuarioClienteRow)
+
+    const row = data as UsuarioClienteRow
+
+    if (formData.senhaTemporaria) {
+      try {
+        await loginUsuarioService.criar('usuarios_cliente', row.id, formData.email, formData.senhaTemporaria)
+      } catch (erroLogin) {
+        // Ver o mesmo comentário em funcionarioService.create — sem isso,
+        // uma falha na criação do login deixa um cadastro "órfão" pra
+        // trás, travando o e-mail pra uma nova tentativa.
+        await supabase.from('usuarios_cliente').delete().eq('id', row.id)
+        throw erroLogin
+      }
+    }
+
+    return paraUsuarioCliente(row)
   },
 
   async update(id: string, formData: UsuarioClienteFormData): Promise<UsuarioCliente> {
@@ -102,6 +113,11 @@ export const usuarioClienteService = {
       .select()
       .single()
     if (error) throw new Error(error.message)
+
+    if (formData.senhaTemporaria) {
+      await loginUsuarioService.redefinirSenha('usuarios_cliente', id, formData.email, formData.senhaTemporaria)
+    }
+
     return paraUsuarioCliente(data as UsuarioClienteRow)
   },
 
