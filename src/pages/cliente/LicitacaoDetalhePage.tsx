@@ -32,7 +32,7 @@ import {
   DECISAO_CLIENTE_LABEL,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda } from '@/utils/prazoUtils'
-import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp } from '@/utils/licitacaoCalculos'
+import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
 
 const TABS = [
@@ -349,11 +349,25 @@ export function LicitacaoDetalhePage() {
                 </div>
               )
             ) : (
-              <p className="font-body text-xs text-ink-soft">
-                {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}
-                {licitacao.decisaoClienteEm && ` em ${formatarDataHora(licitacao.decisaoClienteEm)}`}
-                {licitacao.motivoRecusaCliente && ` — "${licitacao.motivoRecusaCliente}"`}
-              </p>
+              <div className="space-y-2">
+                <p className="font-body text-xs text-ink-soft">
+                  {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}
+                  {licitacao.decisaoClienteEm && ` em ${formatarDataHora(licitacao.decisaoClienteEm)}`}
+                  {licitacao.motivoRecusaCliente && ` — "${licitacao.motivoRecusaCliente}"`}
+                </p>
+                {licitacao.decisaoCliente === 'participar' && (
+                  podeEditarPropostaCliente(licitacao) ? (
+                    <Button onClick={() => navigate(`/cliente/licitacoes/${id}/proposta`)} disabled={decidindo}>
+                      Editar proposta
+                    </Button>
+                  ) : (
+                    <p className="rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft">
+                      O prazo para editar a proposta já encerrou (até {DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias
+                      antes da sessão da licitação).
+                    </p>
+                  )
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -86,6 +86,7 @@ export function FuncionariosPage() {
     <DashboardShell
       title="Cadastro de Funcionários"
       subtitle="Gerencie os funcionários com acesso ao sistema."
+      showHeader={false}
     >
       <div className="rounded-xl border border-ink-soft/10 bg-white p-5 shadow-soft">
         <FuncionarioFilters

@@ -57,6 +57,9 @@ interface LicitacaoRow {
   municipio: string
   distancia_matriz: string | null
   modalidade: Licitacao['modalidade']
+  estrutura: string
+  tipo_contratacao: string
+  procedimento: string
   forma_disputa: string
   modo_disputa: string
   participacao: string
@@ -162,13 +165,19 @@ function paraLicitacao(
     municipio: row.municipio,
     distanciaMatriz: row.distancia_matriz ?? '',
     modalidade: row.modalidade,
+    estrutura: row.estrutura,
+    tipoContratacao: row.tipo_contratacao,
+    procedimento: row.procedimento,
     formaDisputa: row.forma_disputa,
     modoDisputa: row.modo_disputa,
     participacao: row.participacao,
     capag: row.capag ?? '',
     restricoesMeEpp: row.restricoes_me_epp ?? '',
     linkEdital: row.link_edital ?? undefined,
-    nomeArquivoEdital: row.arquivo_edital_path ?? undefined,
+    // Coluna arquivo_edital_path continua sendo um único texto no banco
+    // (ainda é upload simulado, sem Storage de verdade por trás) — vários
+    // nomes de arquivo são guardados juntos, separados por vírgula.
+    nomesArquivosEdital: row.arquivo_edital_path ? row.arquivo_edital_path.split(', ').filter(Boolean) : [],
     valorTotalLicitacao: row.valor_total_licitacao ?? undefined,
     clienteId: row.cliente_id,
     status: row.status,
@@ -210,13 +219,16 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     municipio: dados.municipio,
     distancia_matriz: dados.distanciaMatriz || null,
     modalidade: dados.modalidade,
+    estrutura: dados.estrutura,
+    tipo_contratacao: dados.tipoContratacao,
+    procedimento: dados.procedimento,
     forma_disputa: dados.formaDisputa,
     modo_disputa: dados.modoDisputa,
     participacao: dados.participacao,
     capag: dados.capag,
     restricoes_me_epp: dados.restricoesMeEpp,
     link_edital: dados.linkEdital || null,
-    arquivo_edital_path: dados.nomeArquivoEdital || null,
+    arquivo_edital_path: dados.nomesArquivosEdital && dados.nomesArquivosEdital.length > 0 ? dados.nomesArquivosEdital.join(', ') : null,
     valor_total_licitacao: dados.valorTotalLicitacao ?? null,
     status: dados.status,
     habilitacao: dados.habilitacao,

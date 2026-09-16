@@ -37,6 +37,16 @@ import {
   FORMA_PAGAMENTO_LABEL,
   ModalidadeLicitacao,
   MODALIDADE_LICITACAO_LABEL,
+  MODALIDADE_LICITACAO_DESCRICAO,
+  ParticipacaoLicitacao,
+  PARTICIPACAO_LICITACAO_LABEL,
+  PARTICIPACAO_LICITACAO_DESCRICAO,
+  EstruturaLicitacao,
+  ESTRUTURA_LICITACAO_LABEL,
+  TipoContratacaoLicitacao,
+  TIPO_CONTRATACAO_LICITACAO_LABEL,
+  ProcedimentoLicitacao,
+  PROCEDIMENTO_LICITACAO_LABEL,
   Habilitacao,
   CondicoesComerciais,
   ItemLicitacao,
@@ -119,10 +129,13 @@ function criarFormularioVazio(): LicitacaoFormData {
     formaDisputa: '',
     modoDisputa: '',
     participacao: '',
+    estrutura: '',
+    tipoContratacao: '',
+    procedimento: '',
     capag: '',
     restricoesMeEpp: '',
     linkEdital: '',
-    nomeArquivoEdital: '',
+    nomesArquivosEdital: [] as string[],
     valorTotalLicitacao: undefined,
 
     clienteId: '',
@@ -432,12 +445,17 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 placeholder="Ex: Prefeitura Municipal de..."
               />
               <div className="col-span-2">
-                <TextAreaField
+                <SelectField
                   label="Objeto da licitação"
                   value={form.objeto}
                   onChange={(e) => atualizarCampo('objeto', e.target.value)}
-                  rows={2}
-                  placeholder="Descreva o objeto desta licitação"
+                  placeholder="Selecione"
+                  options={[
+                    { value: 'Produto', label: 'Produto' },
+                    { value: 'Serviços', label: 'Serviços' },
+                    { value: 'Obra', label: 'Obra' },
+                    { value: 'Serviços Técnicos', label: 'Serviços Técnicos' },
+                  ]}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -462,14 +480,21 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value)}
                 placeholder="Ex: 120km ou cerca de 2h de viagem"
               />
-              <SelectField
-                label="Modalidade *"
-                required
-                value={form.modalidade}
-                onChange={(e) => atualizarCampo('modalidade', e.target.value as ModalidadeLicitacao)}
-                placeholder="Selecione"
-                options={Object.entries(MODALIDADE_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
-              />
+              <div>
+                <SelectField
+                  label="Modalidade *"
+                  required
+                  value={form.modalidade}
+                  onChange={(e) => atualizarCampo('modalidade', e.target.value as ModalidadeLicitacao)}
+                  placeholder="Selecione"
+                  options={Object.entries(MODALIDADE_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+                />
+                {form.modalidade && (
+                  <p className="mt-1 font-body text-xs text-ink-soft">
+                    {MODALIDADE_LICITACAO_DESCRICAO[form.modalidade as ModalidadeLicitacao]}
+                  </p>
+                )}
+              </div>
               <SelectField
                 label="Forma de disputa"
                 value={form.formaDisputa}
@@ -492,15 +517,40 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   { value: 'Fechado/Aberto', label: 'Fechado/Aberto' },
                 ]}
               />
+              <div>
+                <SelectField
+                  label="Participação"
+                  value={form.participacao}
+                  onChange={(e) => atualizarCampo('participacao', e.target.value as ParticipacaoLicitacao)}
+                  placeholder="Selecione"
+                  options={Object.entries(PARTICIPACAO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+                />
+                {form.participacao && (
+                  <p className="mt-1 font-body text-xs text-ink-soft">
+                    {PARTICIPACAO_LICITACAO_DESCRICAO[form.participacao as ParticipacaoLicitacao]}
+                  </p>
+                )}
+              </div>
               <SelectField
-                label="Participação"
-                value={form.participacao}
-                onChange={(e) => atualizarCampo('participacao', e.target.value)}
+                label="Estrutura"
+                value={form.estrutura}
+                onChange={(e) => atualizarCampo('estrutura', e.target.value as EstruturaLicitacao)}
                 placeholder="Selecione"
-                options={[
-                  { value: 'Individual', label: 'Individual' },
-                  { value: 'Por lote', label: 'Por lote' },
-                ]}
+                options={Object.entries(ESTRUTURA_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+              />
+              <SelectField
+                label="Tipo de contratação"
+                value={form.tipoContratacao}
+                onChange={(e) => atualizarCampo('tipoContratacao', e.target.value as TipoContratacaoLicitacao)}
+                placeholder="Selecione"
+                options={Object.entries(TIPO_CONTRATACAO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+              />
+              <SelectField
+                label="Procedimento"
+                value={form.procedimento}
+                onChange={(e) => atualizarCampo('procedimento', e.target.value as ProcedimentoLicitacao)}
+                placeholder="Selecione"
+                options={Object.entries(PROCEDIMENTO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
               <TextField
                 label="Valor total da licitação (R$)"
@@ -521,19 +571,44 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
 
             <div>
               <label className="mb-1.5 block font-mono text-xs uppercase tracking-wide text-ink-soft">
-                PDF do edital
+                Documentos do edital
               </label>
               <input
                 type="file"
-                accept="application/pdf"
-                onChange={(e) => atualizarCampo('nomeArquivoEdital', e.target.files?.[0]?.name ?? '')}
+                multiple
+                onChange={(e) =>
+                  atualizarCampo('nomesArquivosEdital', Array.from(e.target.files ?? []).map((arquivo) => arquivo.name))
+                }
                 className="block w-full font-body text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-forest-mist file:px-3.5 file:py-2 file:font-body file:text-sm file:font-medium file:text-forest-deep"
               />
-              {form.nomeArquivoEdital && (
-                <p className="mt-1 font-body text-xs text-ink-soft">
-                  Arquivo selecionado: {form.nomeArquivoEdital}{' '}
-                  <span className="italic">(upload simulado — sem backend de arquivos ainda)</span>
-                </p>
+              
+              {(form.nomesArquivosEdital ?? []).length > 0 && (
+                <div className="mt-1.5 font-body text-xs text-ink-soft">
+                  <p>
+                    {(form.nomesArquivosEdital ?? []).length}{' '}
+                    {(form.nomesArquivosEdital ?? []).length === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}:
+                  </p>
+                  <ul className="ml-4 list-disc">
+                    {(form.nomesArquivosEdital ?? []).map((nome, indice) => (
+                      <li key={`${nome}-${indice}`} className="flex items-center gap-2">
+                        <span>{nome}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            atualizarCampo(
+                              'nomesArquivosEdital',
+                              (form.nomesArquivosEdital ?? []).filter((_, i) => i !== indice)
+                            )
+                          }
+                          className="font-body text-xs font-semibold text-red-600 hover:underline"
+                        >
+                          Remover
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="italic">(upload simulado — sem backend de arquivos ainda)</p>
+                </div>
               )}
             </div>
 

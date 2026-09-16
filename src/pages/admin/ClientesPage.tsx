@@ -83,6 +83,7 @@ export function ClientesPage() {
     <DashboardShell
       title="Cadastro de Clientes"
       subtitle="Gerencie as empresas clientes com acesso ao sistema."
+      showHeader={false}
     >
       <div className="rounded-xl border border-ink-soft/10 bg-white p-5 shadow-soft">
         <ClienteFilters

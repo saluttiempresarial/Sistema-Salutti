@@ -5,7 +5,25 @@
 // (LicitacaoFormModal) e outras telas que precisem exibir os mesmos totais
 // (ex.: RelatoriosPage, Portal do Cliente, quando forem revisados).
 
-import { ItemLicitacao } from '@/types/licitacao';
+import { ItemLicitacao, Licitacao } from '@/types/licitacao';
+
+// Quantidade de dias de antecedência, antes da data da sessão, em que o
+// Cliente ainda pode editar a Proposta Comercial já enviada (decidido
+// com o Márcio). Depois desse prazo, a edição fica bloqueada.
+export const DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE = 3;
+
+/**
+ * true quando o Cliente ainda pode editar a Proposta Comercial que já
+ * enviou — considera a data efetiva da sessão (se a licitação foi
+ * remarcada) ou a data original, subtraindo os dias de antecedência.
+ */
+export function podeEditarPropostaCliente(licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>): boolean {
+  const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
+  const limiteEdicao = new Date(dataSessao);
+  limiteEdicao.setDate(limiteEdicao.getDate() - DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE);
+  return new Date() <= limiteEdicao;
+}
+
 
 /** Total de referência de um item: valor unitário de referência × quantidade. */
 export function totalReferenciaItem(item: ItemLicitacao): number {

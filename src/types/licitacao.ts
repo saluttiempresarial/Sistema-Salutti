@@ -44,22 +44,54 @@ export const STATUS_LICITACAO_LABEL: Record<StatusLicitacao, string> = {
   perdido: 'Perdido',
 };
 
-export type ModalidadeLicitacao =
-  | 'pregao_eletronico'
-  | 'concorrencia'
-  | 'tomada_de_precos'
-  | 'convite'
-  | 'dispensa'
-  | 'inexigibilidade'
-  | 'srp';
+export type ModalidadeLicitacao = 'pregao_eletronico' | 'concorrencia';
 
 export const MODALIDADE_LICITACAO_LABEL: Record<ModalidadeLicitacao, string> = {
-  pregao_eletronico: 'Pregão Eletrônico',
+  pregao_eletronico: 'Pregão',
   concorrencia: 'Concorrência',
-  tomada_de_precos: 'Tomada de Preços',
-  convite: 'Convite',
+};
+
+// Texto de apoio exibido junto ao dropdown de Modalidade, explicando a
+// diferença entre as duas opções (definição combinada com o Márcio).
+export const MODALIDADE_LICITACAO_DESCRICAO: Record<ModalidadeLicitacao, string> = {
+  pregao_eletronico: 'Aquisição de bens e contratação de serviços comuns.',
+  concorrencia: 'Contratação de maior complexidade.',
+};
+
+export type ParticipacaoLicitacao = 'exclusiva_me_epp' | 'ampla_concorrencia';
+
+export const PARTICIPACAO_LICITACAO_LABEL: Record<ParticipacaoLicitacao, string> = {
+  exclusiva_me_epp: 'Exclusiva ME/EPP',
+  ampla_concorrencia: 'Ampla concorrência',
+};
+
+export const PARTICIPACAO_LICITACAO_DESCRICAO: Record<ParticipacaoLicitacao, string> = {
+  exclusiva_me_epp: 'Participação exclusiva.',
+  ampla_concorrencia: 'Participação geral.',
+};
+
+// Substituiu o antigo campo "Participação" (Individual / Por lote), que
+// não tinha relação com ME/EPP — esse conceito de organização dos itens
+// agora mora aqui, com nome próprio.
+export type EstruturaLicitacao = 'item' | 'lote_grupo';
+
+export const ESTRUTURA_LICITACAO_LABEL: Record<EstruturaLicitacao, string> = {
+  item: 'Item',
+  lote_grupo: 'Lote/Grupo',
+};
+
+export type TipoContratacaoLicitacao = 'licitacao' | 'dispensa' | 'inexigibilidade';
+
+export const TIPO_CONTRATACAO_LICITACAO_LABEL: Record<TipoContratacaoLicitacao, string> = {
+  licitacao: 'Licitação',
   dispensa: 'Dispensa',
   inexigibilidade: 'Inexigibilidade',
+};
+
+export type ProcedimentoLicitacao = 'convencional' | 'srp';
+
+export const PROCEDIMENTO_LICITACAO_LABEL: Record<ProcedimentoLicitacao, string> = {
+  convencional: 'Contratação convencional',
   srp: 'Sistema de Registro de Preços (SRP)',
 };
 
@@ -183,13 +215,16 @@ export interface Licitacao {
   municipio: string;
   distanciaMatriz: string; // texto livre, ex: "120km" ou "cerca de 2h de viagem"
   modalidade: string;
+  estrutura: string; // dropdown: Item / Lote-Grupo — antes era "participacao" (Individual/Por lote)
+  tipoContratacao: string; // dropdown: Licitação / Dispensa / Inexigibilidade
+  procedimento: string; // dropdown: Contratação convencional / Sistema de Registro de Preços (SRP)
   formaDisputa: string;
   modoDisputa: string; // dropdown: Aberto / Fechado / Aberto-Fechado / Fechado-Aberto
-  participacao: string; // dropdown: Individual / Por lote
+  participacao: string; // dropdown: Exclusiva ME/EPP / Ampla concorrência (antes era Individual/Por lote — ver EstruturaLicitacao)
   capag: string; // texto livre, ex: "B (3,96%)"
   restricoesMeEpp: string; // texto livre, ex: "Não é exclusiva. A preferência para ME/EPP não será aplicada"
   linkEdital?: string;
-  nomeArquivoEdital?: string; // simula o upload do PDF do edital (mock); real vai para Supabase Storage
+  nomesArquivosEdital?: string[]; // simula o upload dos documentos do edital (mock) — qualquer tipo de arquivo, vários por licitação; real vai para Supabase Storage
   valorTotalLicitacao?: number; // ausente/undefined = orçamento sigiloso
 
   // Vinculação operacional — não é uma das 5 abas da spec, mas necessária
