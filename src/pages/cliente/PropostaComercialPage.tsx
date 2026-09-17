@@ -113,14 +113,14 @@ export function PropostaComercialPage() {
             ← Voltar para os detalhes da licitação
           </Link>
         </div>
-      ) : licitacao.decisaoCliente === 'participar' && !podeEditarPropostaCliente(licitacao) ? (
+      ) : !podeEditarPropostaCliente(licitacao) ? (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 text-center shadow-soft">
           <p className="mb-3 font-body text-sm font-semibold text-brass">
-            O prazo para editar esta proposta já encerrou
+            O prazo para participar desta licitação já encerrou
           </p>
           <p className="mb-4 font-body text-sm text-ink-soft">
-            A edição só é permitida até {DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias antes da data da sessão desta
-            licitação.
+            O preenchimento da proposta só é permitido até {DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias antes da data
+            da sessão desta licitação.
           </p>
           <Link
             to={`/cliente/licitacoes/${id}`}

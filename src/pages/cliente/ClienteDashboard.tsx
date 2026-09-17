@@ -16,6 +16,7 @@ import { licitacaoService } from '@/services/licitacaoService'
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { Licitacao } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda, calcularPrazoInterno, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
+import { prazoPropostaClienteInfo } from '@/utils/licitacaoCalculos'
 
 const URGENCIA_CLASSE: Record<string, string> = {
   vencido: 'font-medium text-red-600',
@@ -117,6 +118,7 @@ export function ClienteDashboard() {
                 <th className="whitespace-nowrap px-4 py-3 text-right">Valor total</th>
                 <th className="whitespace-nowrap px-4 py-3">Data da licitação</th>
                 <th className="whitespace-nowrap px-4 py-3">Data de retorno</th>
+                <th className="whitespace-nowrap px-4 py-3">Prazo para proposta</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-charcoal-3/10">
@@ -146,6 +148,15 @@ export function ClienteDashboard() {
                     <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{formatarDataHora(dataReferencia)}</td>
                     <td className={`whitespace-nowrap px-4 py-3 ${URGENCIA_CLASSE[urgencia]}`}>
                       {formatarDataHora(prazo.toISOString())}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {licitacao.decisaoCliente === 'recusar' ? (
+                        <span className="text-ink-soft">—</span>
+                      ) : (
+                        <span className={URGENCIA_CLASSE[prazoPropostaClienteInfo(licitacao).urgencia]}>
+                          {prazoPropostaClienteInfo(licitacao).texto}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 )

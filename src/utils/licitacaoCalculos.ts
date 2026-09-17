@@ -24,6 +24,29 @@ export function podeEditarPropostaCliente(licitacao: Pick<Licitacao, 'dataLicita
   return new Date() <= limiteEdicao;
 }
 
+/**
+ * Texto e classificação de urgência do prazo de proposta, para exibir
+ * na listagem principal do Cliente (ex.: "Faltam 2 dias", "Prazo
+ * encerrado"). A classificação usa as mesmas classes de cor já usadas
+ * para o prazo interno (vermelho/amarelo/verde).
+ */
+export function prazoPropostaClienteInfo(
+  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>
+): { texto: string; urgencia: 'vencido' | 'atencao' | 'ok' } {
+  const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
+  const limiteEdicao = new Date(dataSessao);
+  limiteEdicao.setDate(limiteEdicao.getDate() - DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE);
+
+  const diffMs = limiteEdicao.getTime() - new Date().getTime();
+  const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDias < 0) return { texto: 'Prazo encerrado', urgencia: 'vencido' };
+  if (diffDias === 0) return { texto: 'Encerra hoje', urgencia: 'vencido' };
+  if (diffDias === 1) return { texto: 'Falta 1 dia', urgencia: 'atencao' };
+  if (diffDias <= 3) return { texto: `Faltam ${diffDias} dias`, urgencia: 'atencao' };
+  return { texto: `Faltam ${diffDias} dias`, urgencia: 'ok' };
+}
+
 
 /** Total de referência de um item: valor unitário de referência × quantidade. */
 export function totalReferenciaItem(item: ItemLicitacao): number {

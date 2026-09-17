@@ -328,7 +328,12 @@ export function LicitacaoDetalhePage() {
                 </div>
               </div>
             ) : licitacao.decisaoCliente === 'pendente' ? (
-              licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens) && porteCliente === 'demais' ? (
+              !podeEditarPropostaCliente(licitacao) ? (
+                <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
+                  🔒 O prazo para participar desta licitação já encerrou (até {DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE}{' '}
+                  dias antes da sessão).
+                </p>
+              ) : licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens) && porteCliente === 'demais' ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
                     🔒 Esta licitação é exclusiva para participação de empresas ME/EPP — sua empresa não pode

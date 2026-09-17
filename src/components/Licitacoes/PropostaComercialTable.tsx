@@ -59,13 +59,11 @@ const LARGURAS_COLUNAS = [
   LARGURA_COL_GRUPO, // Grupo — fixa
   LARGURA_COL_ITEM, // Item (referência) — fixa
   LARGURA_COL_DESCRICAO_REF, // Descrição (referência) — fixa
-  88, // ME/EPP
   96, // Unid.
   88, // Quant.
   118, // Valor unit. ref.
   130, // Valor total ref.
   150, // Valor total ref. (grupo)
-  76, // Item (repetido, bloco Proposta Comercial)
   140, // Cód. produto
   220, // Descrição ofertada
   150, // Fabricante
@@ -281,9 +279,6 @@ const LinhaItem = memo(function LinhaItem({
       </td>
 
       {/* --- Bloco Itens (Referência) --- */}
-      <td className="whitespace-nowrap px-3 py-2">
-        <p className="font-body text-sm text-ink-soft">{item.exclusivoMeEpp ? 'Sim' : 'Não'}</p>
-      </td>
       <td className="px-3 py-2">
         {podeEditarItens ? (
           <InputEditavel
@@ -326,9 +321,6 @@ const LinhaItem = memo(function LinhaItem({
       </td>
 
       {/* --- Bloco Proposta Comercial --- */}
-      <td className="whitespace-nowrap px-3 py-2">
-        <p className="font-body text-sm text-ink-soft">{item.numero}</p>
-      </td>
       <td className="px-3 py-2">
         {bloqueadoMeEpp ? (
           <CampoBloqueadoMeEpp />
@@ -489,6 +481,7 @@ export function PropostaComercialTable({
   const [taxaFrete, setTaxaFrete] = useState<number | ''>(licitacao.percentualFrete ?? '')
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<ChaveStatusProposta | 'todos'>('todos')
+  const [filtroGrupo, setFiltroGrupo] = useState<string>('todos')
   const [filtroPreenchimento, setFiltroPreenchimento] = useState<'todos' | 'preenchidos' | 'pendentes'>('todos')
   const [mostrarFiltrosAvancados, setMostrarFiltrosAvancados] = useState(false)
 
@@ -571,6 +564,7 @@ export function PropostaComercialTable({
   const itensFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
     return licitacao.itens.filter((item) => {
+      if (filtroGrupo !== 'todos' && item.grupoId !== filtroGrupo) return false
       const form = formPorItem[item.id]
       const preenchido = form?.precoMinimo !== '' && form?.precoMinimo != null
       if (filtroPreenchimento === 'preenchidos' && !preenchido) return false
@@ -586,7 +580,7 @@ export function PropostaComercialTable({
       }
       return true
     })
-  }, [licitacao.itens, busca, filtroStatus, filtroPreenchimento, analisePorItem, formPorItem])
+  }, [licitacao.itens, busca, filtroStatus, filtroGrupo, filtroPreenchimento, analisePorItem, formPorItem])
 
   // Subtotal por grupo/lote (2º campo "Valor Total Referência R$" da
   // planilha original — fórmula =SOMA(...) por grupo). Calculado sobre
@@ -670,6 +664,25 @@ export function PropostaComercialTable({
       {mostrarResumo && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-ink-soft/15 bg-white p-4 shadow-soft">
           <EstatisticaResumo icone="📋" label="Total de itens" valor={String(resumo.totalItens)} />
+          {licitacao.grupos.length >= 2 && (
+            <div>
+              <label className="mb-1 block font-body text-[11px] uppercase tracking-wide text-ink-soft">
+                Filtrar por grupo/lote
+              </label>
+              <select
+                value={filtroGrupo}
+                onChange={(e) => setFiltroGrupo(e.target.value)}
+                className="rounded-lg border border-ink-soft/20 bg-white px-3 py-1.5 font-body text-sm text-ink outline-none focus:border-forest"
+              >
+                <option value="todos">Todos os grupos</option>
+                {licitacao.grupos.map((grupo) => (
+                  <option key={grupo.id} value={grupo.id}>
+                    Grupo {grupo.numero}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <EstatisticaResumo icone="✅" label="Preenchidos" valor={String(resumo.itensPreenchidos)} corValor="text-forest-deep" />
           <EstatisticaResumo icone="🕐" label="Pendentes" valor={String(resumo.totalItens - resumo.itensPreenchidos)} />
           {licitacao.itens.length > resumo.totalItens && (
@@ -782,7 +795,7 @@ export function PropostaComercialTable({
         </div>
       )}
 
-      {(busca || filtroStatus !== 'todos' || filtroPreenchimento !== 'todos') && (
+      {(busca || filtroStatus !== 'todos' || filtroGrupo !== 'todos' || filtroPreenchimento !== 'todos') && (
         <p className="font-body text-xs text-ink-soft">
           Mostrando {itensFiltrados.length} de {licitacao.itens.length} itens.
         </p>
@@ -811,13 +824,13 @@ export function PropostaComercialTable({
                 style={{ left: LARGURA_COL_GRUPO + LARGURA_COL_ITEM }}
               />
               <th
-                colSpan={6}
+                colSpan={5}
                 className="sticky top-0 z-20 h-9 border-r border-white/20 bg-charcoal px-3 py-1.5 text-left font-body text-[11px] font-semibold uppercase tracking-wide text-white"
               >
                 ● Referência
               </th>
               <th
-                colSpan={8}
+                colSpan={7}
                 className="sticky top-0 z-20 h-9 border-r border-white/20 bg-forest px-3 py-1.5 text-left font-body text-[11px] font-semibold uppercase tracking-wide text-white"
               >
                 ● Proposta comercial
@@ -848,7 +861,6 @@ export function PropostaComercialTable({
               >
                 Descrição
               </th>
-              <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">ME/EPP</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Unid.</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Quant.</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Valor unit. ref.</th>
@@ -856,7 +868,6 @@ export function PropostaComercialTable({
               <th className="sticky top-9 z-20 leading-tight border-r border-ink-soft/10 bg-white px-3 py-2" title="Subtotal do grupo/lote (soma dos itens do grupo) — aparece uma vez por grupo, igual à planilha original">
                 Valor total ref. (grupo)
               </th>
-              <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Item</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Cód. produto</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Descrição ofertada</th>
               <th className="sticky top-9 z-20 leading-tight bg-white px-3 py-2">Fabricante</th>
@@ -915,6 +926,33 @@ export function PropostaComercialTable({
           </tbody>
         </table>
       </div>
+
+      {mostrarResumo && resumo.itensPreenchidos > 0 && (() => {
+        const percentualTotal =
+          resumo.valorTotalReferencia > 0
+            ? (resumo.valorTotalProposta - resumo.valorTotalReferencia) / resumo.valorTotalReferencia
+            : null
+        const statusGeral = classificarStatusProposta(percentualTotal)
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-ink-soft/15 bg-white p-4 shadow-soft">
+            <div>
+              <p className="font-body text-xs uppercase tracking-wide text-ink-soft">Resultado geral da proposta</p>
+              <p className="mt-1 font-body text-sm text-ink">
+                Valor da proposta: <span className="font-semibold">{formatarMoeda(resumo.valorTotalProposta)}</span>
+                {percentualTotal != null && (
+                  <span className="text-ink-soft"> ({(percentualTotal * 100).toFixed(1)}%)</span>
+                )}
+              </p>
+              <p className="font-body text-sm text-ink-soft">
+                Valor de referência: {formatarMoeda(resumo.valorTotalReferencia)}
+              </p>
+            </div>
+            <span className={`inline-block rounded-full px-3 py-1.5 font-body text-sm font-medium ${statusGeral.classe}`}>
+              {statusGeral.label}
+            </span>
+          </div>
+        )
+      })()}
 
       {podeEditarAlgumaCoisa && (
         <div className="flex justify-end">
