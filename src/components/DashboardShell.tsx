@@ -18,8 +18,8 @@ export function DashboardShell({ title, subtitle, children, showHeader = true }:
   return (
     <div className="min-h-screen bg-paper">
       {showHeader && <Header />}
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-8">
+      <main className="mx-auto max-w-6xl px-6 py-6">
+        <div className="mb-4">
           <h1 className="font-display text-2xl font-semibold text-forest-deep">{title}</h1>
           {subtitle && <p className="mt-1 font-body text-sm text-ink-soft">{subtitle}</p>}
         </div>

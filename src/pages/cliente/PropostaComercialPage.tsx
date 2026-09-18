@@ -89,7 +89,7 @@ export function PropostaComercialPage() {
     >
       <Link
         to={id ? `/cliente/licitacoes/${id}` : '/cliente'}
-        className="mb-4 inline-flex items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
+        className="mb-2 inline-flex items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
       >
         ← Voltar
       </Link>

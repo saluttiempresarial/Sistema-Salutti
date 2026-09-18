@@ -704,13 +704,15 @@ export function PropostaComercialTable({
               <div className="h-full rounded-full bg-forest transition-all" style={{ width: `${progressoPct}%` }} />
             </div>
           </div>
-          <EstatisticaResumo icone="💰" label="Valor referência" valor={formatarMoeda(resumo.valorTotalReferencia)} />
-          <EstatisticaResumo
-            icone="💰"
-            label="Valor da proposta"
-            valor={formatarMoeda(resumo.valorTotalProposta)}
-            corValor="text-forest-deep"
-          />
+          <div className="flex flex-col gap-2">
+            <EstatisticaResumo icone="💰" label="Valor referência" valor={formatarMoeda(resumo.valorTotalReferencia)} />
+            <EstatisticaResumo
+              icone="💰"
+              label="Valor da proposta"
+              valor={formatarMoeda(resumo.valorTotalProposta)}
+              corValor="text-forest-deep"
+            />
+          </div>
         </div>
       )}
 
@@ -802,7 +804,7 @@ export function PropostaComercialTable({
       )}
 
       {/* --- Tabela: cabeçalho fixo + colunas Item/Descrição fixas — scroll interno --- */}
-      <div className="max-h-[65vh] overflow-auto rounded-xl border border-ink-soft/15">
+      <div className="max-h-[78vh] overflow-auto rounded-xl border border-ink-soft/15">
         <table className="w-full table-fixed border-separate border-spacing-0 font-body text-sm">
           <colgroup>
             {LARGURAS_COLUNAS.map((largura, i) => (
@@ -916,43 +918,60 @@ export function PropostaComercialTable({
 
             {itensFiltrados.length === 0 && (
               <tr>
-                <td colSpan={19} className="px-3 py-6 text-center font-body text-sm italic text-ink-soft">
+                <td colSpan={17} className="px-3 py-6 text-center font-body text-sm italic text-ink-soft">
                   {licitacao.itens.length === 0
                     ? 'Nenhum item cadastrado nesta licitação ainda.'
                     : 'Nenhum item encontrado com esse filtro/busca.'}
                 </td>
               </tr>
             )}
+
+            {mostrarResumo && resumo.itensPreenchidos > 0 && itensFiltrados.length > 0 && (() => {
+              const percentualTotal =
+                resumo.valorTotalReferencia > 0
+                  ? (resumo.valorTotalProposta - resumo.valorTotalReferencia) / resumo.valorTotalReferencia
+                  : null
+              const statusGeral = classificarStatusProposta(percentualTotal)
+              return (
+                <tr className="border-t-2 border-ink-soft/30 bg-paper-2/50">
+                  <td className="sticky whitespace-nowrap bg-paper-2/50 px-3 py-2" style={{ left: 0 }} />
+                  <td className="sticky whitespace-nowrap bg-paper-2/50 px-3 py-2" style={{ left: LARGURA_COL_GRUPO }} />
+                  <td
+                    className="sticky whitespace-nowrap bg-paper-2/50 px-3 py-2 font-body text-sm font-semibold text-ink"
+                    style={{ left: LARGURA_COL_GRUPO + LARGURA_COL_ITEM }}
+                  >
+                    TOTAL GERAL
+                  </td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="whitespace-nowrap px-3 py-2 font-body text-sm font-semibold text-ink">
+                    {formatarMoeda(resumo.valorTotalReferencia)}
+                  </td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
+                  <td className="whitespace-nowrap px-3 py-2 font-body text-sm font-semibold text-forest-deep">
+                    {formatarMoeda(resumo.valorTotalProposta)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-body text-sm font-semibold text-ink">
+                    {percentualTotal != null ? `${(percentualTotal * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className={`inline-block rounded-full px-2.5 py-1 font-body text-xs font-medium ${statusGeral.classe}`}>
+                      {statusGeral.label}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })()}
           </tbody>
         </table>
       </div>
-
-      {mostrarResumo && resumo.itensPreenchidos > 0 && (() => {
-        const percentualTotal =
-          resumo.valorTotalReferencia > 0
-            ? (resumo.valorTotalProposta - resumo.valorTotalReferencia) / resumo.valorTotalReferencia
-            : null
-        const statusGeral = classificarStatusProposta(percentualTotal)
-        return (
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-ink-soft/15 bg-white p-4 shadow-soft">
-            <div>
-              <p className="font-body text-xs uppercase tracking-wide text-ink-soft">Resultado geral da proposta</p>
-              <p className="mt-1 font-body text-sm text-ink">
-                Valor da proposta: <span className="font-semibold">{formatarMoeda(resumo.valorTotalProposta)}</span>
-                {percentualTotal != null && (
-                  <span className="text-ink-soft"> ({(percentualTotal * 100).toFixed(1)}%)</span>
-                )}
-              </p>
-              <p className="font-body text-sm text-ink-soft">
-                Valor de referência: {formatarMoeda(resumo.valorTotalReferencia)}
-              </p>
-            </div>
-            <span className={`inline-block rounded-full px-3 py-1.5 font-body text-sm font-medium ${statusGeral.classe}`}>
-              {statusGeral.label}
-            </span>
-          </div>
-        )
-      })()}
 
       {podeEditarAlgumaCoisa && (
         <div className="flex justify-end">
