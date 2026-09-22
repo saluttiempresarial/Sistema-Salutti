@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../../../context/AuthContext';
 import { usePermissoes } from '../../../hooks/usePermissoes';
 import { Pagination } from '../../../components/Pagination';
@@ -54,6 +55,7 @@ export function LicitacoesPage() {
   const [carregandoEdicao, setCarregandoEdicao] = useState(false);
   const [licitacaoParaExcluir, setLicitacaoParaExcluir] = useState<Licitacao | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [exportando, setExportando] = useState(false);
 
   // Mapa id -> nome fantasia, carregado direto do Supabase (tabela `clientes`).
   // Substituiu o antigo `mockClientesResumo` — que era uma lista fixa de
@@ -141,6 +143,60 @@ export function LicitacoesPage() {
     return nomesClientes[clienteId] ?? '—';
   }
 
+  // Exporta para Excel todas as licitações que batem com a busca/filtro de
+  // status atuais — não só a página visível na tabela (a listagem aqui é
+  // paginada de 8 em 8). Por isso busca de novo com um pageSize alto, em vez
+  // de reaproveitar `itens`.
+  async function exportarExcel() {
+    setExportando(true);
+    try {
+      const resultado = await licitacaoService.listar({
+        busca,
+        status: statusFiltro,
+        page: 1,
+        pageSize: 10000,
+        ...restricaoDados,
+      });
+
+      const linhas = resultado.itens.map((licitacao) => {
+        const dataReferencia = licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao;
+        return {
+          Pregão: licitacao.numeroPregao,
+          Órgão: licitacao.orgao,
+          Modalidade:
+            MODALIDADE_LICITACAO_LABEL[licitacao.modalidade as ModalidadeLicitacao] ?? licitacao.modalidade,
+          Cliente: nomeCliente(licitacao.clienteId),
+          'Data da licitação': dataReferencia ? formatarDataHora(dataReferencia) : '—',
+          Valor: licitacao.valorTotalLicitacao != null ? licitacao.valorTotalLicitacao : 'Sigiloso',
+          Status: STATUS_LICITACAO_LABEL[licitacao.status],
+          'Decisão do cliente': DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente],
+          Itens: licitacao.totalItens ?? 0,
+        };
+      });
+
+      const planilha = XLSX.utils.json_to_sheet(linhas);
+      planilha['!cols'] = [
+        { wch: 18 }, // Pregão
+        { wch: 40 }, // Órgão
+        { wch: 20 }, // Modalidade
+        { wch: 28 }, // Cliente
+        { wch: 20 }, // Data da licitação
+        { wch: 16 }, // Valor
+        { wch: 14 }, // Status
+        { wch: 20 }, // Decisão do cliente
+        { wch: 10 }, // Itens
+      ];
+
+      const livro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(livro, planilha, 'Licitações');
+
+      const hoje = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(livro, `licitacoes-salutti-${hoje}.xlsx`);
+    } finally {
+      setExportando(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-paper p-8">
       <header className="mb-6 flex items-center justify-between">
@@ -150,7 +206,12 @@ export function LicitacoesPage() {
             Cadastro e acompanhamento de todas as licitações em andamento.
           </p>
         </div>
-        {podeEditar && <Button onClick={abrirNova}>+ Nova licitação</Button>}
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={exportarExcel} disabled={exportando}>
+            {exportando ? 'Exportando...' : '⭳ Exportar Excel'}
+          </Button>
+          {podeEditar && <Button onClick={abrirNova}>+ Nova licitação</Button>}
+        </div>
       </header>
 
       <div className="mb-4 flex gap-3 font-body text-sm">

@@ -4,12 +4,27 @@
 // /cliente/licitacoes/:id/proposta, aberta ao clicar "Quero Participar"
 // em LicitacaoDetalhePage. Substitui o antigo PropostaParticipacaoModal
 // (que abria por cima da página, como popup) — agora é uma página própria,
-// porque a tabela (Itens + Proposta Comercial + Análise, igual à planilha
-// real da Salutti) tem colunas demais para caber num modal.
+// porque a visualização (Itens + Proposta Comercial + Análise) tem
+// informação demais para caber num modal.
 //
 // Ao confirmar, salva a proposta comercial (registrarPropostaCliente) e
 // registra a decisão do cliente como "participar" (registrarDecisaoCliente)
 // — mesmo fluxo que o modal antigo fazia, só que em tela cheia.
+//
+// Usa PropostaComercialCards (visualização em cartões por Grupo → Item,
+// no lugar da tabela densa estilo planilha — PropostaComercialTable
+// continua existindo e sendo usada em outras telas, mas aqui o Cliente já
+// vê o novo formato).
+//
+// Duas checagens que antes só existiam na tela anterior (LicitacaoDetalhePage)
+// foram reforçadas aqui também, porque é nesta tela que o Cliente de fato
+// edita e salva:
+//   1. Porte da empresa (porteCliente) — sem isso, o bloqueio de itens
+//      "Exclusivo ME/EPP" (por item, não pela licitação inteira) nunca
+//      era aplicado nesta tela.
+//   2. Prazo de edição (podeEditarPropostaCliente) — sem isso, um Cliente
+//      que já estivesse com esta tela aberta continuava conseguindo salvar
+//      mesmo depois do prazo de 3 dias antes da sessão vencer.
 
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -17,10 +32,13 @@ import { DashboardShell } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
-import { PropostaComercialTable, SalvarPropostaComercialPayload } from '@/components/Licitacoes/PropostaComercialTable'
+import {
+  PropostaComercialCards,
+  SalvarPropostaComercialPayload,
+} from '@/components/Licitacoes/PropostaComercialCards'
 import { Licitacao } from '@/types/licitacao'
-import { licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
+import { podeEditarPropostaCliente, prazoPropostaClienteInfo } from '@/utils/licitacaoCalculos'
 
 export function PropostaComercialPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,6 +49,7 @@ export function PropostaComercialPage() {
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [porteCliente, setPorteCliente] = useState<PorteEmpresa | null>(null)
+  const [erroPrazo, setErroPrazo] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -46,9 +65,9 @@ export function PropostaComercialPage() {
     }
   }, [id])
 
-  // Porte da empresa do cliente logado — usado pra bloquear, item a item,
-  // a Proposta Comercial em itens marcados como exclusivo ME/EPP quando
-  // a empresa não é ME/EPP (regra de negócio: participação irregular).
+  // Porte da empresa do cliente logado — necessário para o bloqueio de
+  // itens "Exclusivo ME/EPP" dentro do próprio card do item (ver
+  // PropostaComercialCards, prop porteCliente).
   useEffect(() => {
     if (!user?.clienteId) return
     let ativo = true
@@ -60,12 +79,18 @@ export function PropostaComercialPage() {
     }
   }, [user?.clienteId])
 
-  const [erro, setErro] = useState<string | null>(null)
+  const dentroDoPrazo = licitacao ? podeEditarPropostaCliente(licitacao) : true
 
   async function handleSalvar(payload: SalvarPropostaComercialPayload) {
-    if (!user || !id) return
+    if (!user || !id || !licitacao) return
+    // Revalidação no momento do envio — evita salvar uma proposta iniciada
+    // dentro do prazo mas confirmada só depois dele vencer (ex.: aba aberta
+    // há dias, computador que ficou hibernando, etc.).
+    if (!podeEditarPropostaCliente(licitacao)) {
+      setErroPrazo('O prazo para editar e confirmar esta proposta já foi encerrado. Atualize a página para ver a situação atual.')
+      return
+    }
     setSalvando(true)
-    setErro(null)
     try {
       await licitacaoService.registrarPropostaCliente(id, payload.propostaPorItem)
       await licitacaoService.registrarDecisaoCliente(id, 'participar', user.name, {
@@ -73,10 +98,6 @@ export function PropostaComercialPage() {
         percentualFrete: payload.incluirFrete ? payload.percentualFrete : undefined,
       })
       navigate('/cliente')
-    } catch (e) {
-      const mensagem = e instanceof Error ? e.message : 'Erro desconhecido ao salvar a proposta.'
-      console.error('Falha ao confirmar participação:', e)
-      setErro(mensagem)
     } finally {
       setSalvando(false)
     }
@@ -89,7 +110,7 @@ export function PropostaComercialPage() {
     >
       <Link
         to={id ? `/cliente/licitacoes/${id}` : '/cliente'}
-        className="mb-2 inline-flex items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
+        className="mb-4 inline-flex items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
       >
         ← Voltar
       </Link>
@@ -98,54 +119,27 @@ export function PropostaComercialPage() {
         <div className="mt-6 flex min-h-[240px] items-center justify-center">
           <p className="font-body text-sm text-ink-soft">Carregando itens...</p>
         </div>
-      ) : licitacaoExclusivaMeEpp(licitacao.itens) && porteCliente === 'demais' ? (
-        <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 text-center shadow-soft">
-          <p className="mb-3 font-body text-sm font-semibold text-brass">
-            🔒 Esta licitação é exclusiva para participação de empresas ME/EPP
-          </p>
-          <p className="mb-4 font-body text-sm text-ink-soft">
-            Sua empresa está classificada como "Demais" e não pode enviar proposta nesta licitação.
-          </p>
-          <Link
-            to={`/cliente/licitacoes/${id}`}
-            className="font-body text-sm font-semibold text-forest hover:underline"
-          >
-            ← Voltar para os detalhes da licitação
-          </Link>
-        </div>
-      ) : !podeEditarPropostaCliente(licitacao) ? (
-        <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 text-center shadow-soft">
-          <p className="mb-3 font-body text-sm font-semibold text-brass">
-            O prazo para participar desta licitação já encerrou
-          </p>
-          <p className="mb-4 font-body text-sm text-ink-soft">
-            O preenchimento da proposta só é permitido até {DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias antes da data
-            da sessão desta licitação.
-          </p>
-          <Link
-            to={`/cliente/licitacoes/${id}`}
-            className="font-body text-sm font-semibold text-forest hover:underline"
-          >
-            ← Voltar para os detalhes da licitação
-          </Link>
-        </div>
       ) : (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
-          {erro && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-              <p className="font-body text-sm font-semibold text-red-700">Não foi possível confirmar a participação</p>
-              <p className="mt-0.5 font-body text-xs text-red-700">{erro}</p>
-            </div>
+          {!dentroDoPrazo && (
+            <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 font-body text-xs text-amber-800">
+              O prazo para editar e confirmar esta proposta já foi encerrado
+              ({prazoPropostaClienteInfo(licitacao).texto}). A visualização abaixo é somente leitura.
+            </p>
           )}
-          <PropostaComercialTable
+          {erroPrazo && (
+            <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
+              {erroPrazo}
+            </p>
+          )}
+          <PropostaComercialCards
             licitacao={licitacao}
             podeEditarItens={false}
-            podeEditarPropostaComercial={true}
-            mostrarResumo={true}
+            podeEditarPropostaComercial={dentroDoPrazo}
+            porteCliente={porteCliente ?? undefined}
             salvando={salvando}
             onSalvar={handleSalvar}
-            textoBotaoSalvar={licitacao.decisaoCliente === 'participar' ? 'Salvar alterações' : 'Confirmar participação'}
-            porteCliente={porteCliente ?? undefined}
+            textoBotaoSalvar="Confirmar participação"
           />
         </div>
       )}

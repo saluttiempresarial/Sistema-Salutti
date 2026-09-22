@@ -104,10 +104,13 @@ export function ClienteDashboard() {
       )}
 
       {!carregando && licitacoesPorPrazo.length > 0 && (
-        <div
-          className="mt-8 overflow-x-auto rounded-xl border border-ink-soft/10 bg-white shadow-soft [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <table className="w-full font-body text-sm">
+        <>
+          <p className="mt-8 flex items-center gap-1.5 font-body text-xs text-ink-soft">
+            <span aria-hidden="true">↔</span>
+            Arraste a tabela para o lado para ver todas as colunas.
+          </p>
+          <div className="mt-2 overflow-x-auto rounded-xl border border-ink-soft/10 bg-white shadow-soft">
+            <table className="w-full min-w-[960px] font-body text-sm">
             <thead className="bg-paper-2 text-left text-xs uppercase tracking-wide text-ink-soft">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">Portal</th>
@@ -163,7 +166,8 @@ export function ClienteDashboard() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       <div className="mt-8">

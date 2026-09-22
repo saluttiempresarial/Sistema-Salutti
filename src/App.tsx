@@ -6,6 +6,7 @@ import { AdminLayout } from '@/components/AdminLayout'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { RoleRedirect } from '@/pages/RoleRedirect'
+import { TrocarSenhaPage } from '@/pages/TrocarSenhaPage'
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
 import { ClientesPage } from '@/pages/admin/ClientesPage'
 import { FuncionariosPage } from '@/pages/admin/FuncionariosPage'
@@ -43,6 +44,19 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/redirecionando" element={<RoleRedirect />} />
+
+          {/* Troca de senha obrigatória (senha temporária definida pelo
+              Admin no cadastro). Sem allowedRoles: qualquer perfil
+              autenticado pode cair aqui — o ProtectedRoute é quem decide,
+              via user.forcarTrocaSenha, se a pessoa é redirecionada pra cá. */}
+          <Route
+            path="/trocar-senha"
+            element={
+              <ProtectedRoute>
+                <TrocarSenhaPage />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/admin"

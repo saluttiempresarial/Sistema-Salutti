@@ -18,9 +18,19 @@ interface ProtectedRouteProps {
   requiredModule?: ModuloPermissao
 }
 
+/** Rota da tela obrigatória de troca de senha — mantida aqui, e não só no
+ *  Login, porque é o ProtectedRoute quem precisa reconhecê-la para não
+ *  criar um loop de redirecionamento nela mesma (ver checagem abaixo). */
+const ROTA_TROCAR_SENHA = '/trocar-senha'
+
 /**
  * Protege uma rota simulando o comportamento que um backend real teria:
  * - Sem sessão -> redireciona para /login, guardando de onde veio.
+ * - Logado mas com `forcarTrocaSenha` pendente -> redireciona para
+ *   /trocar-senha, qualquer que seja a rota (exceto ela mesma). Antes,
+ *   essa obrigatoriedade só era aplicada no momento do login — quem
+ *   recarregava a página (F5) ou acessava outra URL direto driblava a
+ *   troca obrigatória, porque nada aqui revalidava a flag depois.
  * - Logado mas com perfil não autorizado -> redireciona para o dashboard
  *   correto do próprio perfil (evita que um cliente acesse /admin, etc.).
  * - Funcionário sem permissão de visualização no módulo (`requiredModule`)
@@ -43,6 +53,10 @@ export function ProtectedRoute({ children, allowedRoles, requiredModule }: Prote
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  if (user.forcarTrocaSenha && location.pathname !== ROTA_TROCAR_SENHA) {
+    return <Navigate to={ROTA_TROCAR_SENHA} replace />
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {

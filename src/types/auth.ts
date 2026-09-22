@@ -52,6 +52,11 @@ export interface AuthContextValue {
   isLoading: boolean
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>
   logout: () => void
+  /** Reconsulta a sessão atual (authService.getSession) e atualiza o `user`
+   *  em memória — necessário depois de qualquer ação que mude um dado já
+   *  carregado no AuthUser sem passar por um novo login, como a troca de
+   *  senha obrigatória zerando `forcarTrocaSenha`. */
+  refreshUser: () => Promise<void>
 }
 
 /** Mapa de para onde cada perfil deve ser redirecionado após o login. */
