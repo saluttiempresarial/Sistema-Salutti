@@ -88,14 +88,31 @@ interface FormReferencia {
   precoReferencia: string
 }
 
-function numeroParaCampo(valor: number | null | undefined): string {
-  return valor != null ? String(valor).replace('.', ',') : ''
+// `casas` limita quantas casas decimais o valor guarda (o corte só acontece
+// na conversão de volta pra número — nunca no texto que a pessoa está
+// digitando). Preço (referência/proposta) usa 6 casas; frete usa 2.
+function numeroParaCampo(valor: number | null | undefined, casas = 6): string {
+  if (valor == null) return ''
+  const texto = valor
+    .toFixed(casas)
+    .replace(/0+$/, '')
+    .replace(/,$|\.$/, '')
+    .replace('.', ',')
+  return texto === '' || texto === '-' ? '0' : texto
 }
 
-function campoParaNumero(valor: string): number | undefined {
-  if (!valor.trim()) return undefined
-  const numero = parseFloat(valor.replace(',', '.'))
-  return isNaN(numero) ? undefined : numero
+// Aceita tanto vírgula decimal com ponto de milhar ("1.234,5678") quanto
+// ponto decimal solto ("1234.5678") — sem isso, um valor como "1.234,56"
+// vira "1.23456" ao trocar só a vírgula por ponto (o ponto de milhar não é
+// removido antes), corrompendo o número silenciosamente.
+function campoParaNumero(valor: string, casas = 6): number | undefined {
+  const limpo = valor.trim()
+  if (!limpo) return undefined
+  const semSeparadorMilhar = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo
+  const numero = parseFloat(semSeparadorMilhar)
+  if (isNaN(numero)) return undefined
+  const fator = Math.pow(10, casas)
+  return Math.round(numero * fator) / fator
 }
 
 function montarFormPropostaInicial(itens: ItemLicitacao[]): Record<string, FormProposta> {
@@ -116,7 +133,12 @@ function montarFormReferenciaInicial(itens: ItemLicitacao[]): Record<string, For
     mapa[item.id] = {
       unidadeMedida: item.unidadeMedida,
       quantidade: String(item.quantidade),
-      precoReferencia: numeroParaCampo(item.precoReferencia),
+      // 10 casas — mesmo limite usado no cadastro da licitação
+      // (LicitacaoFormModal): valor de referência pode vir do edital com
+      // mais de 6 casas decimais (ex.: 4,57550140), e o padrão de 6 casas
+      // do numeroParaCampo estava truncando esse valor ao abrir o campo
+      // aqui para edição pelo Admin.
+      precoReferencia: numeroParaCampo(item.precoReferencia, 10),
     }
   })
   return mapa
@@ -158,7 +180,7 @@ export function PropostaComercialCards({
   const [formReferenciaPorItem, setFormReferenciaPorItem] = useState<Record<string, FormReferencia>>(() =>
     montarFormReferenciaInicial(licitacao.itens)
   )
-  const [taxaFrete, setTaxaFrete] = useState<string>(numeroParaCampo(licitacao.percentualFrete))
+  const [taxaFrete, setTaxaFrete] = useState<string>(numeroParaCampo(licitacao.percentualFrete, 2))
   const [erro, setErro] = useState<string | null>(null)
 
   // Depois de salvar, a página recarrega a licitação (atualizadoEm muda) —
@@ -167,12 +189,12 @@ export function PropostaComercialCards({
   useEffect(() => {
     setFormPorItem(montarFormPropostaInicial(licitacao.itens))
     setFormReferenciaPorItem(montarFormReferenciaInicial(licitacao.itens))
-    setTaxaFrete(numeroParaCampo(licitacao.percentualFrete))
+    setTaxaFrete(numeroParaCampo(licitacao.percentualFrete, 2))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [licitacao.atualizadoEm])
 
-  const taxaFreteNumero = campoParaNumero(taxaFrete) ?? 0
-  const taxaFretePreenchida = campoParaNumero(taxaFrete) != null
+  const taxaFreteNumero = campoParaNumero(taxaFrete, 2) ?? 0
+  const taxaFretePreenchida = campoParaNumero(taxaFrete, 2) != null
 
   // Aplica o rascunho local (proposta +, se o Admin puder editar, a
   // referência) por cima do item persistido — é o que alimenta os cálculos
@@ -184,7 +206,7 @@ export function PropostaComercialCards({
       ...item,
       unidadeMedida: formReferencia?.unidadeMedida ?? item.unidadeMedida,
       quantidade: formReferencia ? Number(formReferencia.quantidade) || item.quantidade : item.quantidade,
-      precoReferencia: formReferencia ? campoParaNumero(formReferencia.precoReferencia) ?? item.precoReferencia : item.precoReferencia,
+      precoReferencia: formReferencia ? campoParaNumero(formReferencia.precoReferencia, 10) ?? item.precoReferencia : item.precoReferencia,
       propostaCliente: {
         ...item.propostaCliente,
         marca: formProposta?.marca ?? item.propostaCliente?.marca ?? '',
@@ -198,7 +220,6 @@ export function PropostaComercialCards({
 
   const totalItens = itensAoVivo.length
   const preenchidos = itensAoVivo.filter((item) => item.propostaCliente?.precoMinimo != null).length
-  const progresso = totalItens > 0 ? Math.round((preenchidos / totalItens) * 100) : 0
 
   // TOTAL GERAL — mesma regra da tabela antiga: soma só os itens
   // participáveis (exclui os bloqueados por ME/EPP quando o Cliente é
@@ -297,44 +318,57 @@ export function PropostaComercialCards({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-7 border-t border-ink-soft/10 pt-3">
-          <CampoResumo label="Critério de julgamento" valor={licitacao.formaDisputa || '—'} />
-          <CampoResumo label="Modo de disputa" valor={licitacao.modoDisputa || '—'} />
-        </div>
-
-        <div className="flex flex-wrap items-end justify-between gap-4 border-t border-ink-soft/10 pt-3">
-          <div className="max-w-xs">
-            <label className="mb-1 block font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-              Frete (%)
-            </label>
-            {podeEditarPropostaComercial ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  value={taxaFrete}
-                  onChange={(e) => setTaxaFrete(e.target.value)}
-                  className="w-24 rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
-                />
-                <span className="font-body text-[11px] text-ink-soft">aplicado a todos os itens da proposta</span>
-              </div>
-            ) : (
-              <p className="font-body text-sm font-semibold text-ink">
-                {taxaFretePreenchida ? `${taxaFrete}%` : '— não informado'}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-grow items-center gap-3">
-            <div className="h-2 flex-grow overflow-hidden rounded-full bg-paper-2">
-              <div className="h-full rounded-full bg-forest transition-all" style={{ width: `${progresso}%` }} />
+        <div className="border-t border-ink-soft/10 pt-3">
+          <label className="mb-1 block font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+            Frete (%)
+          </label>
+          {podeEditarPropostaComercial ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={taxaFrete}
+                onChange={(e) => setTaxaFrete(e.target.value)}
+                className="w-24 rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
+              />
+              <span className="font-body text-[11px] text-ink-soft">aplicado a todos os itens da proposta</span>
             </div>
-            <span className="whitespace-nowrap font-body text-sm font-semibold text-forest-deep">
-              {preenchidos} de {totalItens} itens
-            </span>
-          </div>
+          ) : (
+            <p className="font-body text-sm font-semibold text-ink">
+              {taxaFretePreenchida ? `${taxaFrete}%` : '— não informado'}
+            </p>
+          )}
         </div>
+
+        {/* TOTAL GERAL — antes ficava num cartão separado, embaixo da lista
+            de grupos; movido para o cabeçalho para ficar visível sem
+            precisar rolar a tela. Só aparece quando pelo menos 1 item
+            participável já foi preenchido, igual à tabela antiga. */}
+        {resumoGeral.itensPreenchidos > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border-2 border-forest bg-forest-mist/20 p-4">
+            <div>
+              <div className="font-display text-sm font-bold text-forest-deep">TOTAL GERAL DA LICITAÇÃO</div>
+              <div className="font-body text-xs text-ink-soft">
+                {resumoGeral.itensPreenchidos} de {resumoGeral.totalParticipaveis} itens participáveis preenchidos
+                {resumoGeral.totalParticipaveis < totalItens && (
+                  <> · {totalItens - resumoGeral.totalParticipaveis} exclusivo(s) ME/EPP não {totalItens - resumoGeral.totalParticipaveis === 1 ? 'entra' : 'entram'} nesta conta</>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-6">
+              <CampoResumo label="Valor de referência" valor={formatarMoeda(resumoGeral.valorTotalReferencia)} />
+              <CampoResumo label="Valor da proposta" valor={formatarMoeda(resumoGeral.valorTotalProposta)} />
+              <CampoResumo
+                label="Diferença"
+                valor={resumoGeral.percentualTotal != null ? `${(resumoGeral.percentualTotal * 100).toFixed(1)}%` : '—'}
+              />
+              <span className={`whitespace-nowrap rounded-full px-3 py-1.5 font-body text-xs font-semibold ${resumoGeral.statusGeral.classe}`}>
+                {resumoGeral.statusGeral.label}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {ocultarNaoParticiparPorPadrao && (
@@ -363,6 +397,16 @@ export function PropostaComercialCards({
         const valorRefGrupo = grupo
           ? totalReferenciaGrupo(itensAoVivo, grupo.id)
           : itensAoVivoDoGrupo.reduce((soma, item) => soma + totalReferenciaItem(item), 0)
+        // Espelha a mesma conta do TOTAL GERAL (cabeçalho da página), só que
+        // restrita aos itens deste grupo — dá pra ver o resultado de cada
+        // grupo sem precisar abrir todos e somar item por item.
+        const valorPropostaGrupo = itensAoVivoDoGrupo.reduce((soma, item) => {
+          const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
+          return soma + (analise.valorTotal ?? 0)
+        }, 0)
+        const percentualGrupo = valorRefGrupo > 0 ? (valorPropostaGrupo - valorRefGrupo) / valorRefGrupo : null
+        const statusGrupo = classificarStatusProposta(percentualGrupo)
+        const nomeGrupo = grupo ? (grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`) : 'Itens individuais'
 
         const itensVisiveis = ocultarNaoParticipar
           ? itensAoVivoDoGrupo.filter((item) => {
@@ -380,15 +424,15 @@ export function PropostaComercialCards({
             >
               <div className="flex items-center gap-3">
                 <IconeGrupo />
-                <div>
-                  <div className="font-display text-base font-bold text-ink">{grupo ? grupo.nome : 'Itens'}</div>
-                  <div className="font-body text-xs text-ink-soft">
-                    {itens.length} {itens.length === 1 ? 'item' : 'itens'}
-                  </div>
+                <div className="font-display text-base font-bold text-ink">
+                  {nomeGrupo}
+                  <span className="ml-1.5 font-body text-xs font-normal text-ink-soft">
+                    | {itens.length} {itens.length === 1 ? 'item' : 'itens'}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-5">
+              <div className="flex flex-wrap items-center gap-5">
                 <span
                   className={`whitespace-nowrap rounded-full px-3 py-1 font-body text-xs font-semibold ${
                     preenchidosGrupo === itens.length
@@ -399,9 +443,18 @@ export function PropostaComercialCards({
                   {preenchidosGrupo} de {itens.length} preenchidos
                 </span>
                 <div className="text-right">
-                  <div className="font-body text-[10px] uppercase tracking-wide text-ink-soft">Valor ref. do grupo</div>
+                  <div className="font-body text-[10px] uppercase tracking-wide text-ink-soft">Valor de referência</div>
                   <div className="font-body text-sm font-bold text-ink">{formatarMoeda(valorRefGrupo)}</div>
                 </div>
+                <div className="text-right">
+                  <div className="font-body text-[10px] uppercase tracking-wide text-ink-soft">
+                    Valor {grupo ? 'do grupo' : 'proposto'}
+                  </div>
+                  <div className="font-body text-sm font-bold text-ink">{formatarMoeda(valorPropostaGrupo)}</div>
+                </div>
+                <span className={`whitespace-nowrap rounded-full px-3 py-1 font-body text-xs font-semibold ${statusGrupo.classe}`}>
+                  {statusGrupo.label}
+                </span>
                 <IconeChevron aberto={aberto} />
               </div>
             </button>
@@ -545,35 +598,6 @@ export function PropostaComercialCards({
         )
       })}
 
-      {/* TOTAL GERAL — só aparece quando pelo menos 1 item participável já
-          foi preenchido, igual à tabela antiga. */}
-      {resumoGeral.itensPreenchidos > 0 && (
-        <div className="rounded-2xl border-2 border-forest bg-forest-mist/20 p-5 shadow-soft">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="font-display text-base font-bold text-forest-deep">TOTAL GERAL DA LICITAÇÃO</div>
-              <div className="font-body text-xs text-ink-soft">
-                {resumoGeral.itensPreenchidos} de {resumoGeral.totalParticipaveis} itens participáveis preenchidos
-                {resumoGeral.totalParticipaveis < totalItens && (
-                  <> · {totalItens - resumoGeral.totalParticipaveis} exclusivo(s) ME/EPP não {totalItens - resumoGeral.totalParticipaveis === 1 ? 'entra' : 'entram'} nesta conta</>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-6">
-              <CampoResumo label="Valor de referência" valor={formatarMoeda(resumoGeral.valorTotalReferencia)} />
-              <CampoResumo label="Valor da proposta" valor={formatarMoeda(resumoGeral.valorTotalProposta)} />
-              <CampoResumo
-                label="Diferença"
-                valor={resumoGeral.percentualTotal != null ? `${(resumoGeral.percentualTotal * 100).toFixed(1)}%` : '—'}
-              />
-              <span className={`whitespace-nowrap rounded-full px-3 py-1.5 font-body text-xs font-semibold ${resumoGeral.statusGeral.classe}`}>
-                {resumoGeral.statusGeral.label}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Rodapé — salvar */}
       {podeEditarPropostaComercial && (
         <div className="flex flex-col items-end gap-2 pt-2">
@@ -664,5 +688,3 @@ function IconeChevron({ aberto }: { aberto: boolean }) {
     </svg>
   )
 }
-
- 

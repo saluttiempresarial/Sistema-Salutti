@@ -158,9 +158,9 @@ export function classificarStatusProposta(percentualDiferenca: number | null): S
   }
   if (percentualDiferenca < 0) {
     if (percentualDiferenca <= -0.4) {
-      return { chave: 'forte', label: '🚀 Forte', classe: 'bg-forest text-white' };
+      return { chave: 'forte', label: '🚀 Super competitivo', classe: 'bg-forest text-white' };
     }
-    return { chave: 'positiva', label: '⚖️ Positiva', classe: 'bg-forest-mist text-forest-deep' };
+    return { chave: 'positiva', label: '⚖️ Competitivo', classe: 'bg-yellow-400 text-ink' };
   }
-  return { chave: 'nao_participar', label: '❌ Não participar', classe: 'bg-red-50 text-red-700' };
+  return { chave: 'nao_participar', label: '📈 Acima da referência', classe: 'bg-red-600 text-white' };
 }

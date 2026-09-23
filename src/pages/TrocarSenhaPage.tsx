@@ -25,6 +25,78 @@ import { ROLE_HOME_ROUTE } from '@/types/auth'
 
 const TAMANHO_MINIMO_SENHA = 6
 
+// Ícone de "olho" (mostrar) / "olho cortado" (ocultar) para alternar a
+// visibilidade da senha digitada — SVG inline para não depender de nenhuma
+// biblioteca de ícones externa que o projeto talvez não tenha instalada.
+function IconeOlho({ visivel }: { visivel: boolean }) {
+  if (visivel) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    )
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c6.5 0 10 7 10 7a17.9 17.9 0 0 1-2.29 3.36M6.61 6.61A17.9 17.9 0 0 0 2 11.99s3.5 7 10 7a10.9 10.9 0 0 0 5.39-1.41M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+      <path d="M2 2l20 20" />
+    </svg>
+  )
+}
+
+// Campo de senha com botão de "olho" para alternar entre texto oculto e
+// visível — reutilizado nos dois campos da tela (Nova senha / Confirmar
+// nova senha) para não duplicar o input + botão duas vezes.
+function CampoSenha({
+  id,
+  label,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (valor: string) => void
+  disabled: boolean
+  placeholder: string
+}) {
+  const [visivel, setVisivel] = useState(false)
+
+  return (
+    <div>
+      <label htmlFor={id} className="font-body text-sm font-medium text-ink">
+        {label}
+      </label>
+      <div className="relative mt-1.5">
+        <input
+          id={id}
+          type={visivel ? 'text' : 'password'}
+          autoComplete="new-password"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className="w-full rounded-lg border border-ink-soft/20 px-3 py-2.5 pr-10 font-body text-sm text-ink outline-none transition-colors focus:border-forest disabled:cursor-not-allowed disabled:bg-paper-2/60"
+          placeholder={placeholder}
+        />
+        <button
+          type="button"
+          onClick={() => setVisivel((atual) => !atual)}
+          disabled={disabled}
+          aria-label={visivel ? 'Ocultar senha' : 'Mostrar senha'}
+          aria-pressed={visivel}
+          tabIndex={-1}
+          className="absolute inset-y-0 right-0 flex items-center px-3 text-ink-soft/60 hover:text-ink-soft disabled:cursor-not-allowed"
+        >
+          <IconeOlho visivel={visivel} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function TrocarSenhaPage() {
   const { user, refreshUser } = useAuth()
   const navigate = useNavigate()
@@ -77,37 +149,23 @@ export function TrocarSenhaPage() {
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <div>
-            <label htmlFor="nova-senha" className="font-body text-sm font-medium text-ink">
-              Nova senha
-            </label>
-            <input
-              id="nova-senha"
-              type="password"
-              autoComplete="new-password"
-              value={novaSenha}
-              onChange={(e) => setNovaSenha(e.target.value)}
-              disabled={salvando}
-              className="mt-1.5 w-full rounded-lg border border-ink-soft/20 px-3 py-2.5 font-body text-sm text-ink outline-none transition-colors focus:border-forest disabled:cursor-not-allowed disabled:bg-paper-2/60"
-              placeholder={`Mínimo ${TAMANHO_MINIMO_SENHA} caracteres`}
-            />
-          </div>
+          <CampoSenha
+            id="nova-senha"
+            label="Nova senha"
+            value={novaSenha}
+            onChange={setNovaSenha}
+            disabled={salvando}
+            placeholder={`Mínimo ${TAMANHO_MINIMO_SENHA} caracteres`}
+          />
 
-          <div>
-            <label htmlFor="confirmar-senha" className="font-body text-sm font-medium text-ink">
-              Confirmar nova senha
-            </label>
-            <input
-              id="confirmar-senha"
-              type="password"
-              autoComplete="new-password"
-              value={confirmarSenha}
-              onChange={(e) => setConfirmarSenha(e.target.value)}
-              disabled={salvando}
-              className="mt-1.5 w-full rounded-lg border border-ink-soft/20 px-3 py-2.5 font-body text-sm text-ink outline-none transition-colors focus:border-forest disabled:cursor-not-allowed disabled:bg-paper-2/60"
-              placeholder="Repita a nova senha"
-            />
-          </div>
+          <CampoSenha
+            id="confirmar-senha"
+            label="Confirmar nova senha"
+            value={confirmarSenha}
+            onChange={setConfirmarSenha}
+            disabled={salvando}
+            placeholder="Repita a nova senha"
+          />
 
           {erro && (
             <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">

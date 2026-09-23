@@ -183,12 +183,49 @@ interface LicitacaoFormModalProps {
   carregando?: boolean;
 }
 
+// Converte um número para o texto exibido no campo, no padrão brasileiro
+// (vírgula decimal), com até `casas` casas decimais — sem casas de sobra
+// quando o valor é "redondo" (ex.: 4575501 -> "4575501", não "4575501,000000").
+function numeroParaCampoDecimal(valor: number | null | undefined, casas: number): string {
+  if (valor == null) return '';
+  const texto = valor
+    .toFixed(casas)
+    .replace(/0+$/, '')
+    .replace(/,$|\.$/, '')
+    .replace('.', ',');
+  return texto === '' || texto === '-' ? '0' : texto;
+}
+
+// Converte o texto digitado de volta para número — aceita tanto vírgula
+// decimal com ponto de milhar ("4.575.501,4321") quanto ponto decimal solto
+// ("4575501.4321"), sempre preservando até `casas` casas decimais (o valor
+// digitado é a fonte da verdade; o corte só acontece aqui, na conversão,
+// nunca truncando o que a pessoa está digitando na tela). É essa conversão
+// que substitui o <input type="number"> nativo, que não entende separador
+// de milhar nem vírgula decimal e descartava esses caracteres em silêncio.
+function campoParaNumeroDecimal(texto: string, casas: number): number | undefined {
+  const limpo = texto.trim();
+  if (!limpo) return undefined;
+  const semSeparadorMilhar = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo;
+  const numero = parseFloat(semSeparadorMilhar);
+  if (isNaN(numero)) return undefined;
+  const fator = Math.pow(10, casas);
+  return Math.round(numero * fator) / fator;
+}
+
 export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao, carregando: carregandoDados }: LicitacaoFormModalProps) {
   const [abaAtiva, setAbaAtiva] = useState('gerais');
   const [form, setForm] = useState<LicitacaoFormData>(criarFormularioVazio());
   const [salvando, setSalvando] = useState(false);
   const [clientes, setClientes] = useState<Array<{ value: string; label: string; porte: PorteEmpresa }>>([]);
   const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
+  // Texto exibido no campo "Valor total da licitação" — separado do número
+  // em `form.valorTotalLicitacao` porque um <input type="number"> nativo
+  // não aceita o padrão brasileiro (ponto de milhar + vírgula decimal): a
+  // pessoa digitava "4.575.501,40" e o navegador silenciosamente descartava
+  // os separadores extras, salvando um valor completamente errado (ex.:
+  // 4,58) sem nenhum aviso. Ver numeroParaCampoDecimal/campoParaNumeroDecimal.
+  const [valorTotalTexto, setValorTotalTexto] = useState('');
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   useEffect(() => {
@@ -198,6 +235,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (licitacaoEmEdicao) {
       // Editando uma licitação existente — rascunho local não se aplica.
       setForm({ ...licitacaoEmEdicao });
+      setValorTotalTexto(numeroParaCampoDecimal(licitacaoEmEdicao.valorTotalLicitacao, 10));
       setRascunhoRestaurado(false);
       return;
     }
@@ -206,9 +244,11 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     const rascunho = lerRascunhoSalvo();
     if (rascunho) {
       setForm(rascunho);
+      setValorTotalTexto(numeroParaCampoDecimal(rascunho.valorTotalLicitacao, 10));
       setRascunhoRestaurado(true);
     } else {
       setForm(criarFormularioVazio());
+      setValorTotalTexto('');
       setRascunhoRestaurado(false);
     }
   }, [isOpen, licitacaoEmEdicao]);
@@ -228,6 +268,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   function descartarRascunho() {
     limparRascunho();
     setForm(criarFormularioVazio());
+    setValorTotalTexto('');
     setRascunhoRestaurado(false);
   }
 
@@ -554,12 +595,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               />
               <TextField
                 label="Valor total da licitação (R$)"
-                type="number"
-                value={form.valorTotalLicitacao ?? ''}
-                onChange={(e) =>
-                  atualizarCampo('valorTotalLicitacao', e.target.value === '' ? undefined : Number(e.target.value))
-                }
-                placeholder="Deixe em branco = orçamento sigiloso"
+                type="text"
+                value={valorTotalTexto}
+                onChange={(e) => {
+                  setValorTotalTexto(e.target.value);
+                  atualizarCampo('valorTotalLicitacao', campoParaNumeroDecimal(e.target.value, 10));
+                }}
+                placeholder="Ex.: 4575501,4321 — deixe em branco para orçamento sigiloso"
               />
               <TextField
                 label="Link do edital"
@@ -949,6 +991,14 @@ function ItemLicitacaoRow({
    *  mesmo assim, é uma informação real do edital. */
   clienteEhDemais?: boolean;
 }) {
+  // Mesmo problema do "Valor total da licitação" (ver numeroParaCampoDecimal
+  // no topo do arquivo): um <input type="number"> nativo não entende
+  // separador de milhar nem vírgula decimal. Preço unitário de referência
+  // pode vir do edital com muitas casas decimais (ex.: 4,57550140) — usamos
+  // o mesmo limite de 10 casas do "Valor total da licitação" em vez de 6,
+  // que estava truncando/arredondando valores digitados com mais precisão.
+  const [precoTexto, setPrecoTexto] = useState(() => numeroParaCampoDecimal(item.precoReferencia, 10));
+
   return (
     <div className="relative rounded-lg bg-paper-2/60 p-3">
       <button
@@ -986,9 +1036,12 @@ function ItemLicitacaoRow({
         <div className="w-44 shrink-0">
           <TextField
             label="Valor Unit. Referência"
-            type="number"
-            value={item.precoReferencia}
-            onChange={(e) => onChange(item.id, 'precoReferencia', Number(e.target.value))}
+            type="text"
+            value={precoTexto}
+            onChange={(e) => {
+              setPrecoTexto(e.target.value);
+              onChange(item.id, 'precoReferencia', campoParaNumeroDecimal(e.target.value, 10) ?? 0);
+            }}
           />
         </div>
         <div className="w-48 shrink-0">

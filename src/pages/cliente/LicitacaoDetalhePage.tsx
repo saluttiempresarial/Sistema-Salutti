@@ -27,6 +27,14 @@ import {
   ItemLicitacao,
   ModalidadeLicitacao,
   MODALIDADE_LICITACAO_LABEL,
+  EstruturaLicitacao,
+  ESTRUTURA_LICITACAO_LABEL,
+  TipoContratacaoLicitacao,
+  TIPO_CONTRATACAO_LICITACAO_LABEL,
+  ProcedimentoLicitacao,
+  PROCEDIMENTO_LICITACAO_LABEL,
+  ParticipacaoLicitacao,
+  PARTICIPACAO_LICITACAO_LABEL,
   FormaPagamento,
   FORMA_PAGAMENTO_LABEL,
   DECISAO_CLIENTE_LABEL,
@@ -157,6 +165,7 @@ export function LicitacaoDetalhePage() {
           <div className="mt-5 min-h-[280px] space-y-5">
             {abaAtiva === 'gerais' && (
               <div className="grid grid-cols-2 gap-4">
+                <Campo label="Número do pregão" value={licitacao.numeroPregao} />
                 <Campo
                   label="Data e horário da sessão"
                   value={formatarDataHora(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao)}
@@ -164,6 +173,7 @@ export function LicitacaoDetalhePage() {
                 <Campo label="Portal" value={licitacao.portal} />
                 <Campo label="Órgão" value={licitacao.orgao} />
                 <Campo label="Estado / Município" value={`${licitacao.municipio}/${licitacao.estado}`} />
+                <Campo label="Distância da matriz" value={licitacao.distanciaMatriz} />
                 <div className="col-span-2">
                   <Campo label="Objeto" value={licitacao.objeto} />
                 </div>
@@ -172,9 +182,40 @@ export function LicitacaoDetalhePage() {
                   value={MODALIDADE_LICITACAO_LABEL[licitacao.modalidade as ModalidadeLicitacao] ?? licitacao.modalidade}
                 />
                 <Campo
+                  label="Estrutura"
+                  value={ESTRUTURA_LICITACAO_LABEL[licitacao.estrutura as EstruturaLicitacao] ?? licitacao.estrutura}
+                />
+                <Campo
+                  label="Tipo de contratação"
+                  value={
+                    TIPO_CONTRATACAO_LICITACAO_LABEL[licitacao.tipoContratacao as TipoContratacaoLicitacao] ??
+                    licitacao.tipoContratacao
+                  }
+                />
+                <Campo
+                  label="Procedimento"
+                  value={PROCEDIMENTO_LICITACAO_LABEL[licitacao.procedimento as ProcedimentoLicitacao] ?? licitacao.procedimento}
+                />
+                <Campo label="Critério de julgamento" value={licitacao.formaDisputa} />
+                <Campo label="Modo de disputa" value={licitacao.modoDisputa} />
+                <Campo
+                  label="Participação"
+                  value={PARTICIPACAO_LICITACAO_LABEL[licitacao.participacao as ParticipacaoLicitacao] ?? licitacao.participacao}
+                />
+                <Campo label="CAPAG" value={licitacao.capag} />
+                <div className="col-span-2">
+                  <Campo label="Restrições ME/EPP" value={licitacao.restricoesMeEpp} />
+                </div>
+                <Campo
                   label="Valor total"
                   value={licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}
                 />
+                {licitacao.nomesArquivosEdital && licitacao.nomesArquivosEdital.length > 0 && (
+                  <div className="col-span-2">
+                    <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Documentos do edital</p>
+                    <p className="mt-0.5 font-body text-sm text-ink">{licitacao.nomesArquivosEdital.join(', ')}</p>
+                  </div>
+                )}
                 {licitacao.linkEdital && (
                   <div className="col-span-2">
                     <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Link do edital</p>
