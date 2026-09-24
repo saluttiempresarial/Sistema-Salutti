@@ -12,9 +12,12 @@
 // — mesmo fluxo que o modal antigo fazia, só que em tela cheia.
 //
 // Usa PropostaComercialCards (visualização em cartões por Grupo → Item,
-// no lugar da tabela densa estilo planilha — PropostaComercialTable
-// continua existindo e sendo usada em outras telas, mas aqui o Cliente já
-// vê o novo formato).
+// no lugar da tabela densa estilo planilha — PropostaComercialTable NÃO
+// está mais em uso em nenhuma tela do sistema; comentário anterior aqui
+// dizia o contrário e estava desatualizado. Mantida no repositório só como
+// referência histórica; se for reativada em algum momento, confira antes se
+// as correções de cálculo feitas em PropostaComercialCards/licitacaoCalculos
+// (24/09) também foram replicadas lá).
 //
 // Duas checagens que antes só existiam na tela anterior (LicitacaoDetalhePage)
 // foram reforçadas aqui também, porque é nesta tela que o Cliente de fato

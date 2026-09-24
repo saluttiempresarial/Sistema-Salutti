@@ -38,7 +38,6 @@ import {
   calcularAnaliseItem,
   classificarStatusProposta,
   totalReferenciaItem,
-  totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
 import { formatarMoeda } from '@/utils/prazoUtils'
 
@@ -144,6 +143,15 @@ function montarFormReferenciaInicial(itens: ItemLicitacao[]): Record<string, For
   return mapa
 }
 
+// O campo "Número do pregão" costuma já vir digitado com o prefixo "Nº"
+// (ex.: "Nº 95/2026 - 13/2026", copiado direto do edital) — remove esse
+// prefixo antes de exibir no cabeçalho, que já adiciona o seu próprio "Nº ",
+// para não duplicar ("Nº Nº 95/2026..."). Cobre variações comuns de como a
+// pessoa pode ter digitado (Nº, N°, N.º, No, com ou sem espaço).
+function removerPrefixoNumero(numeroPregao: string): string {
+  return numeroPregao.replace(/^\s*n[ºo°.]*\s*/i, '').trim()
+}
+
 // Agrupa os itens por grupo/lote. Licitações com estrutura "Item" (sem
 // grupo) caem todas num único bloco "Itens", pra não forçar navegação em 2
 // níveis quando não existe divisão em grupos.
@@ -221,23 +229,58 @@ export function PropostaComercialCards({
   const totalItens = itensAoVivo.length
   const preenchidos = itensAoVivo.filter((item) => item.propostaCliente?.precoMinimo != null).length
 
-  // TOTAL GERAL — mesma regra da tabela antiga: soma só os itens
-  // participáveis (exclui os bloqueados por ME/EPP quando o Cliente é
-  // "demais"), pra 100% continuar alcançável numa licitação mista.
+  // TOTAL GERAL — a pedido do Márcio (24/09): antes somava o valor de
+  // referência de TODOS os itens participáveis, mesmo de grupos que o
+  // cliente nunca tocou — isso inflava o valor de referência do total (ex.:
+  // um grupo inteiro sem nenhum preço lançado ainda entrava na conta) e
+  // distorcia o % de diferença. Agora só entram no TOTAL GERAL os grupos
+  // (ou os itens individuais "sem grupo") em que o cliente já preencheu
+  // pelo menos 1 item — ex.: se ele só participa dos Grupos 1 e 4, o valor
+  // de referência do total é só desses dois grupos, não da licitação
+  // inteira. Um grupo com preenchimento parcial (17 de 18, por ex.) já
+  // conta como "escolhido" e entra inteiro, igual ao card do próprio grupo.
   const resumoGeral = useMemo(() => {
-    const participaveis = itensAoVivo.filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais'))
+    const idGrupoDoItem = (item: ItemLicitacao) => item.grupoId ?? '__sem_grupo__'
+
+    const participaveisTodos = itensAoVivo.filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais'))
+    const bloqueadosMeEpp = itensAoVivo.length - participaveisTodos.length
+
+    const gruposEscolhidos = new Set(
+      participaveisTodos.filter((item) => item.propostaCliente?.precoMinimo != null).map(idGrupoDoItem)
+    )
+    const gruposParticipaveisTodos = new Set(participaveisTodos.map(idGrupoDoItem))
+    const gruposAindaNaoEscolhidos = gruposParticipaveisTodos.size - gruposEscolhidos.size
+
+    const participaveis = participaveisTodos.filter((item) => gruposEscolhidos.has(idGrupoDoItem(item)))
+
+    // Dentro dos grupos escolhidos, a referência conta só os itens já
+    // preenchidos — não o grupo inteiro. Um grupo com 17 de 18 preenchidos
+    // não pode somar a referência dos 18 (o item que falta ainda não tem
+    // preço pra comparar), senão o "Valor de referência" fica maior que a
+    // quantidade de itens preenchidos sugere, e a % de diferença falseia.
     let valorTotalReferencia = 0
     let valorTotalProposta = 0
     let itensPreenchidos = 0
     participaveis.forEach((item) => {
-      valorTotalReferencia += totalReferenciaItem(item)
       const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
+      if (item.propostaCliente?.precoMinimo != null) {
+        valorTotalReferencia += totalReferenciaItem(item)
+        itensPreenchidos += 1
+      }
       if (analise.valorTotal != null) valorTotalProposta += analise.valorTotal
-      if (item.propostaCliente?.precoMinimo != null) itensPreenchidos += 1
     })
     const percentualTotal = valorTotalReferencia > 0 ? (valorTotalProposta - valorTotalReferencia) / valorTotalReferencia : null
     const statusGeral = classificarStatusProposta(percentualTotal)
-    return { valorTotalReferencia, valorTotalProposta, percentualTotal, statusGeral, itensPreenchidos, totalParticipaveis: participaveis.length }
+    return {
+      valorTotalReferencia,
+      valorTotalProposta,
+      percentualTotal,
+      statusGeral,
+      itensPreenchidos,
+      totalParticipaveis: participaveis.length,
+      bloqueadosMeEpp,
+      gruposAindaNaoEscolhidos,
+    }
   }, [itensAoVivo, porteCliente, taxaFreteNumero, taxaFretePreenchida])
 
   function atualizarCampoProposta(itemId: string, campo: keyof FormProposta, valor: string) {
@@ -306,16 +349,17 @@ export function PropostaComercialCards({
               SRP
             </span>
           )}
-          <span className="font-body text-[11px] text-ink-soft">Lei 14.133/2021</span>
         </div>
 
         <div>
           <h1 className="font-display text-xl text-ink">
-            Nº {licitacao.numeroPregao} — {licitacao.orgao}
+            Nº {removerPrefixoNumero(licitacao.numeroPregao)} — {licitacao.orgao}
           </h1>
-          <p className="mt-1 font-body text-sm text-ink-soft">
-            {licitacao.municipio}/{licitacao.estado} — {licitacao.objeto}
-          </p>
+          {/* Município/UF removidos daqui (24/09) — o órgão já costuma
+              trazer a cidade/UF no próprio nome (ex.: "Prefeitura Municipal
+              de Nova Campina/SP"), então repetir abaixo era redundante.
+              O objeto continua aparecendo quando estiver preenchido. */}
+          {licitacao.objeto && <p className="mt-1 font-body text-sm text-ink-soft">{licitacao.objeto}</p>}
         </div>
 
         <div className="border-t border-ink-soft/10 pt-3">
@@ -349,12 +393,6 @@ export function PropostaComercialCards({
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border-2 border-forest bg-forest-mist/20 p-4">
             <div>
               <div className="font-display text-sm font-bold text-forest-deep">TOTAL GERAL DA LICITAÇÃO</div>
-              <div className="font-body text-xs text-ink-soft">
-                {resumoGeral.itensPreenchidos} de {resumoGeral.totalParticipaveis} itens participáveis preenchidos
-                {resumoGeral.totalParticipaveis < totalItens && (
-                  <> · {totalItens - resumoGeral.totalParticipaveis} exclusivo(s) ME/EPP não {totalItens - resumoGeral.totalParticipaveis === 1 ? 'entra' : 'entram'} nesta conta</>
-                )}
-              </div>
             </div>
             <div className="flex flex-wrap items-center gap-6">
               <CampoResumo label="Valor de referência" valor={formatarMoeda(resumoGeral.valorTotalReferencia)} />
@@ -394,16 +432,26 @@ export function PropostaComercialCards({
         const aberto = grupoAberto === idBloco
         const itensAoVivoDoGrupo = itens.map(itemAoVivo)
         const preenchidosGrupo = itensAoVivoDoGrupo.filter((item) => item.propostaCliente?.precoMinimo != null).length
-        const valorRefGrupo = grupo
-          ? totalReferenciaGrupo(itensAoVivo, grupo.id)
-          : itensAoVivoDoGrupo.reduce((soma, item) => soma + totalReferenciaItem(item), 0)
         // Espelha a mesma conta do TOTAL GERAL (cabeçalho da página), só que
         // restrita aos itens deste grupo — dá pra ver o resultado de cada
-        // grupo sem precisar abrir todos e somar item por item.
+        // grupo sem precisar abrir todos e somar item por item. A referência
+        // conta só os itens JÁ PREENCHIDOS (não o grupo inteiro) — um grupo
+        // com 0 preenchidos não pode comparar "R$ 0 propostos" contra a
+        // referência do grupo inteiro, senão dá -100% e cai errado em
+        // "Super competitivo" mesmo sem nenhum preço lançado.
+        const valorRefGrupo = itensAoVivoDoGrupo.reduce(
+          (soma, item) => soma + (item.propostaCliente?.precoMinimo != null ? totalReferenciaItem(item) : 0),
+          0
+        )
         const valorPropostaGrupo = itensAoVivoDoGrupo.reduce((soma, item) => {
           const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
           return soma + (analise.valorTotal ?? 0)
         }, 0)
+        // Guarda por valorRefGrupo > 0, não por preenchidosGrupo > 0: se o
+        // item preenchido tiver precoReferencia = 0 (referência ainda não
+        // cadastrada pelo Admin), preenchidosGrupo > 0 mas valorRefGrupo
+        // fica 0 — daria divisão por zero (Infinity) e classificaria
+        // errado como "acima da referência" em vez de "sem preço/indefinido".
         const percentualGrupo = valorRefGrupo > 0 ? (valorPropostaGrupo - valorRefGrupo) / valorRefGrupo : null
         const statusGrupo = classificarStatusProposta(percentualGrupo)
         const nomeGrupo = grupo ? (grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`) : 'Itens individuais'

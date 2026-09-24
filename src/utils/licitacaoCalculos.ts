@@ -122,15 +122,23 @@ export interface AnaliseItemProposta {
 }
 
 /** Calcula preço com frete, valor total e % de diferença vs. referência
- *  para um item — null em cada campo enquanto o preço mínimo ou a taxa de
- *  frete ainda não tiverem sido preenchidos. */
+ *  para um item — null em cada campo enquanto o preço mínimo ainda não
+ *  tiver sido preenchido.
+ *
+ *  `taxaFretePreenchida` é mantido no parâmetro por compatibilidade com
+ *  quem já chama esta função, mas NÃO bloqueia mais o cálculo: muitas
+ *  licitações (ex.: só itens, sem grupo, como a do café) não cobram frete
+ *  e o campo "Frete (%)" fica em branco de propósito — travar o cálculo
+ *  do item inteiro nesse caso fazia o valor digitado pelo cliente nunca
+ *  ser contabilizado no total, mesmo já preenchido. Frete em branco agora
+ *  é tratado como 0% (quem chama já passa `taxaFretePercentual ?? 0`). */
 export function calcularAnaliseItem(
   item: ItemLicitacao,
   taxaFretePercentual: number,
-  taxaFretePreenchida: boolean
+  _taxaFretePreenchida: boolean
 ): AnaliseItemProposta {
   const precoMinimo = item.propostaCliente?.precoMinimo;
-  if (!taxaFretePreenchida || precoMinimo == null) {
+  if (precoMinimo == null) {
     return { precoComFrete: null, valorTotal: null, percentualDiferenca: null };
   }
   const precoComFrete = precoMinimo * (1 + taxaFretePercentual / 100);

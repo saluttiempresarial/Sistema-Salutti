@@ -226,6 +226,11 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // os separadores extras, salvando um valor completamente errado (ex.:
   // 4,58) sem nenhum aviso. Ver numeroParaCampoDecimal/campoParaNumeroDecimal.
   const [valorTotalTexto, setValorTotalTexto] = useState('');
+  // Mesmo problema do "Valor total da licitação" acima, agora no campo
+  // "Percentual de frete (%)" — estava com <input type="number"> puro, que
+  // não aceita vírgula decimal (o navegador simplesmente ignora o
+  // caractere), impedindo digitar algo como "5,5".
+  const [percentualFreteTexto, setPercentualFreteTexto] = useState('');
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   useEffect(() => {
@@ -236,6 +241,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       // Editando uma licitação existente — rascunho local não se aplica.
       setForm({ ...licitacaoEmEdicao });
       setValorTotalTexto(numeroParaCampoDecimal(licitacaoEmEdicao.valorTotalLicitacao, 10));
+      setPercentualFreteTexto(numeroParaCampoDecimal(licitacaoEmEdicao.percentualFrete, 4));
       setRascunhoRestaurado(false);
       return;
     }
@@ -245,10 +251,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (rascunho) {
       setForm(rascunho);
       setValorTotalTexto(numeroParaCampoDecimal(rascunho.valorTotalLicitacao, 10));
+      setPercentualFreteTexto(numeroParaCampoDecimal(rascunho.percentualFrete, 4));
       setRascunhoRestaurado(true);
     } else {
       setForm(criarFormularioVazio());
       setValorTotalTexto('');
+      setPercentualFreteTexto('');
       setRascunhoRestaurado(false);
     }
   }, [isOpen, licitacaoEmEdicao]);
@@ -852,11 +860,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               {form.cobrarFrete && (
                 <TextField
                   label="Percentual de frete (%)"
-                  type="number"
-                  value={form.percentualFrete ?? ''}
-                  onChange={(e) =>
-                    atualizarCampo('percentualFrete', e.target.value === '' ? undefined : Number(e.target.value))
-                  }
+                  type="text"
+                  value={percentualFreteTexto}
+                  onChange={(e) => {
+                    setPercentualFreteTexto(e.target.value);
+                    atualizarCampo('percentualFrete', campoParaNumeroDecimal(e.target.value, 4));
+                  }}
+                  placeholder="Ex.: 5,5"
                   className="mt-3 max-w-xs"
                 />
               )}

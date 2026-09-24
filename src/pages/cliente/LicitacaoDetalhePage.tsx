@@ -172,7 +172,10 @@ export function LicitacaoDetalhePage() {
                 />
                 <Campo label="Portal" value={licitacao.portal} />
                 <Campo label="Órgão" value={licitacao.orgao} />
-                <Campo label="Estado / Município" value={`${licitacao.municipio}/${licitacao.estado}`} />
+                {/* "Estado / Município" removido daqui (24/09) — o nome do
+                    órgão já costuma trazer a cidade/UF (ex.: "Prefeitura
+                    Municipal de Nova Campina/SP"), então repetir num campo
+                    à parte só duplicava a mesma informação. */}
                 <Campo label="Distância da matriz" value={licitacao.distanciaMatriz} />
                 <div className="col-span-2">
                   <Campo label="Objeto" value={licitacao.objeto} />
@@ -254,48 +257,58 @@ export function LicitacaoDetalhePage() {
               </div>
             )}
 
+            {/* Reestruturado a pedido do Márcio (24/09, ajustado no mesmo dia):
+                "Intervalo de lances" costuma vir como um texto longo (a
+                cláusula toda, copiada do edital) — ao lado de um campo curto
+                como "Validade da proposta" sobrava muito espaço vazio e
+                ficava desalinhado. Agora ele fica sozinho numa linha cheia, e
+                os campos curtos (validade, local/prazo de entrega,
+                pagamento) ficam agrupados em linhas de 3 colunas. */}
             {abaAtiva === 'comerciais' && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <Campo label="Intervalo de lances" value={licitacao.condicoesComerciais.intervaloLances} />
-                <Campo
-                  label="Forma de pagamento"
-                  value={
-                    FORMA_PAGAMENTO_LABEL[licitacao.condicoesComerciais.formaPagamento as FormaPagamento] ??
-                    licitacao.condicoesComerciais.formaPagamento
-                  }
-                />
-                <Campo label="Recebimento em qual banco" value={licitacao.condicoesComerciais.recebimentoBanco} />
-                <Campo
-                  label="Prazo de pagamento"
-                  value={
-                    licitacao.condicoesComerciais.prazoPagamentoDias
-                      ? `${licitacao.condicoesComerciais.prazoPagamentoDias} dias`
-                      : undefined
-                  }
-                />
-                <Campo
-                  label="Prazo de entrega"
-                  value={
-                    licitacao.condicoesComerciais.prazoEntregaDias
-                      ? `${licitacao.condicoesComerciais.prazoEntregaDias} dias`
-                      : undefined
-                  }
-                />
-                <Campo
-                  label="Validade da proposta"
-                  value={
-                    licitacao.condicoesComerciais.validadePropostaDias
-                      ? `${licitacao.condicoesComerciais.validadePropostaDias} dias`
-                      : undefined
-                  }
-                />
-                <div className="col-span-2">
+
+                <div className="grid grid-cols-3 gap-4">
                   <Campo label="Local de entrega" value={licitacao.condicoesComerciais.localEntrega} />
+                  <Campo
+                    label="Prazo de entrega"
+                    value={
+                      licitacao.condicoesComerciais.prazoEntregaDias
+                        ? `${licitacao.condicoesComerciais.prazoEntregaDias} dias`
+                        : undefined
+                    }
+                  />
+                  <Campo
+                    label="Validade da proposta"
+                    value={
+                      licitacao.condicoesComerciais.validadePropostaDias
+                        ? `${licitacao.condicoesComerciais.validadePropostaDias} dias`
+                        : undefined
+                    }
+                  />
                 </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <Campo
+                    label="Forma de pagamento"
+                    value={
+                      FORMA_PAGAMENTO_LABEL[licitacao.condicoesComerciais.formaPagamento as FormaPagamento] ??
+                      licitacao.condicoesComerciais.formaPagamento
+                    }
+                  />
+                  <Campo label="Recebimento em qual banco" value={licitacao.condicoesComerciais.recebimentoBanco} />
+                  <Campo
+                    label="Prazo de pagamento"
+                    value={
+                      licitacao.condicoesComerciais.prazoPagamentoDias
+                        ? `${licitacao.condicoesComerciais.prazoPagamentoDias} dias`
+                        : undefined
+                    }
+                  />
+                </div>
+
                 {licitacao.condicoesComerciais.possuiGarantias && (
-                  <div className="col-span-2">
-                    <Campo label="Garantias" value={licitacao.condicoesComerciais.garantiasDetalhe || 'Sim'} />
-                  </div>
+                  <Campo label="Garantias" value={licitacao.condicoesComerciais.garantiasDetalhe || 'Sim'} />
                 )}
               </div>
             )}
