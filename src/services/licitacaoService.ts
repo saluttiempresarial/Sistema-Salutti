@@ -70,7 +70,9 @@ interface LicitacaoRow {
   valor_total_licitacao: number | null
   status: StatusLicitacao
   habilitacao: Licitacao['habilitacao']
+  declaracoes: Licitacao['declaracoes']
   condicoes_comerciais: Licitacao['condicoesComerciais']
+  outras_exigencias: Licitacao['outrasExigencias']
   pontos_atencao: string | null
   decisao_cliente: Licitacao['decisaoCliente']
   motivo_recusa_cliente: string | null
@@ -182,7 +184,9 @@ function paraLicitacao(
     clienteId: row.cliente_id,
     status: row.status,
     habilitacao: row.habilitacao,
+    declaracoes: row.declaracoes ?? [],
     condicoesComerciais: row.condicoes_comerciais,
+    outrasExigencias: row.outras_exigencias ?? [],
     pontosAtencao: row.pontos_atencao ?? '',
     grupos: grupos.map(paraGrupo),
     itens: itens.map(paraItem),
@@ -232,7 +236,9 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     valor_total_licitacao: dados.valorTotalLicitacao ?? null,
     status: dados.status,
     habilitacao: dados.habilitacao,
+    declaracoes: dados.declaracoes,
     condicoes_comerciais: dados.condicoesComerciais,
+    outras_exigencias: dados.outrasExigencias,
     pontos_atencao: dados.pontosAtencao,
     decisao_cliente: dados.decisaoCliente,
     motivo_recusa_cliente: dados.motivoRecusaCliente || null,

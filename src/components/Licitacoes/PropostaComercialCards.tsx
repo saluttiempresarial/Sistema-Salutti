@@ -38,6 +38,7 @@ import {
   calcularAnaliseItem,
   classificarStatusProposta,
   totalReferenciaItem,
+  totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
 import { formatarMoeda } from '@/utils/prazoUtils'
 
@@ -297,8 +298,40 @@ export function PropostaComercialCards({
     }))
   }
 
+  // Regra do Márcio (25/09): o cliente não pode enviar proposta de só
+  // parte de um grupo — ou preenche TODOS os itens participáveis do grupo
+  // (excluindo os bloqueados por ME/EPP, que ele nem consegue preencher),
+  // ou deixa o grupo inteiro sem preço (não participa dele). Um grupo pela
+  // metade não tem como ser corretamente comparado contra a referência —
+  // por isso o cálculo de competitividade do grupo (acima) também só roda
+  // quando ele está 100% preenchido.
+  function gruposComPreenchimentoParcial(): string[] {
+    const nomes: string[] = []
+    blocos.forEach(({ grupo, itens }) => {
+      const itensVivos = itens.map(itemAoVivo)
+      const participaveis = itensVivos.filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais'))
+      if (participaveis.length === 0) return
+      const preenchidos = participaveis.filter((item) => item.propostaCliente?.precoMinimo != null).length
+      if (preenchidos > 0 && preenchidos < participaveis.length) {
+        nomes.push(grupo ? (grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`) : 'Itens individuais')
+      }
+    })
+    return nomes
+  }
+
   async function handleSalvar() {
     setErro(null)
+
+    const incompletos = gruposComPreenchimentoParcial()
+    if (incompletos.length > 0) {
+      setErro(
+        `${incompletos.length === 1 ? 'Este grupo está' : 'Estes grupos estão'} com preenchimento parcial: ${incompletos.join(
+          ', '
+        )}. Preencha todos os itens do grupo pra participar dele, ou apague os preços já lançados pra não participar.`
+      )
+      return
+    }
+
     try {
       const propostaPorItem = itensAoVivo.map((item) => ({
         id: item.id,
@@ -392,7 +425,7 @@ export function PropostaComercialCards({
         {resumoGeral.itensPreenchidos > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border-2 border-forest bg-forest-mist/20 p-4">
             <div>
-              <div className="font-display text-sm font-bold text-forest-deep">TOTAL GERAL DA LICITAÇÃO</div>
+              <div className="font-display text-sm font-bold text-forest-deep">ANÁLISE DA PARTICIPAÇÃO</div>
             </div>
             <div className="flex flex-wrap items-center gap-6">
               <CampoResumo label="Valor de referência" valor={formatarMoeda(resumoGeral.valorTotalReferencia)} />
@@ -432,27 +465,32 @@ export function PropostaComercialCards({
         const aberto = grupoAberto === idBloco
         const itensAoVivoDoGrupo = itens.map(itemAoVivo)
         const preenchidosGrupo = itensAoVivoDoGrupo.filter((item) => item.propostaCliente?.precoMinimo != null).length
-        // Espelha a mesma conta do TOTAL GERAL (cabeçalho da página), só que
-        // restrita aos itens deste grupo — dá pra ver o resultado de cada
-        // grupo sem precisar abrir todos e somar item por item. A referência
-        // conta só os itens JÁ PREENCHIDOS (não o grupo inteiro) — um grupo
-        // com 0 preenchidos não pode comparar "R$ 0 propostos" contra a
-        // referência do grupo inteiro, senão dá -100% e cai errado em
-        // "Super competitivo" mesmo sem nenhum preço lançado.
-        const valorRefGrupo = itensAoVivoDoGrupo.reduce(
-          (soma, item) => soma + (item.propostaCliente?.precoMinimo != null ? totalReferenciaItem(item) : 0),
-          0
-        )
+        // Itens que o cliente PODE preencher neste grupo (exclui os
+        // bloqueados por ME/EPP quando ele é "demais") — é contra esse
+        // número que checamos se o grupo está 100% preenchido.
+        const itensParticipaveisGrupo = itensAoVivoDoGrupo.filter(
+          (item) => !(item.exclusivoMeEpp && porteCliente === 'demais')
+        ).length
+        const grupoCompleto = itensParticipaveisGrupo > 0 && preenchidosGrupo === itensParticipaveisGrupo
+
+        // Valor de referência = valor FIXO do edital (soma de todos os itens
+        // do grupo), independente do cliente já ter preenchido ou não — a
+        // pedido do Márcio (25/09). "Valor da proposta" (antigo "Valor do
+        // grupo") é que muda conforme ele preenche.
+        const valorRefGrupo = grupo
+          ? totalReferenciaGrupo(itensAoVivo, grupo.id)
+          : itensAoVivoDoGrupo.reduce((soma, item) => soma + totalReferenciaItem(item), 0)
         const valorPropostaGrupo = itensAoVivoDoGrupo.reduce((soma, item) => {
           const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
           return soma + (analise.valorTotal ?? 0)
         }, 0)
-        // Guarda por valorRefGrupo > 0, não por preenchidosGrupo > 0: se o
-        // item preenchido tiver precoReferencia = 0 (referência ainda não
-        // cadastrada pelo Admin), preenchidosGrupo > 0 mas valorRefGrupo
-        // fica 0 — daria divisão por zero (Infinity) e classificaria
-        // errado como "acima da referência" em vez de "sem preço/indefinido".
-        const percentualGrupo = valorRefGrupo > 0 ? (valorPropostaGrupo - valorRefGrupo) / valorRefGrupo : null
+        // A competitividade (%/selo) só é calculada quando o grupo está
+        // 100% preenchido — comparar a referência fixa do grupo inteiro
+        // contra uma proposta ainda parcial (ex.: 1 de 5 itens) dava
+        // resultado sem sentido (ex.: "Super competitivo" só porque os
+        // outros 4 itens ainda somam R$ 0). Isso também casa com a regra
+        // de só poder salvar um grupo inteiro, nunca parcial.
+        const percentualGrupo = grupoCompleto && valorRefGrupo > 0 ? (valorPropostaGrupo - valorRefGrupo) / valorRefGrupo : null
         const statusGrupo = classificarStatusProposta(percentualGrupo)
         const nomeGrupo = grupo ? (grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`) : 'Itens individuais'
 
@@ -495,9 +533,7 @@ export function PropostaComercialCards({
                   <div className="font-body text-sm font-bold text-ink">{formatarMoeda(valorRefGrupo)}</div>
                 </div>
                 <div className="text-right">
-                  <div className="font-body text-[10px] uppercase tracking-wide text-ink-soft">
-                    Valor {grupo ? 'do grupo' : 'proposto'}
-                  </div>
+                  <div className="font-body text-[10px] uppercase tracking-wide text-ink-soft">Valor da proposta</div>
                   <div className="font-body text-sm font-bold text-ink">{formatarMoeda(valorPropostaGrupo)}</div>
                 </div>
                 <span className={`whitespace-nowrap rounded-full px-3 py-1 font-body text-xs font-semibold ${statusGrupo.classe}`}>

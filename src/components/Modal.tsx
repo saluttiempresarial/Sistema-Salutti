@@ -1,3 +1,13 @@
+// src/components/Modal.tsx
+//
+// Componente genérico de modal, usado por várias telas do sistema
+// (ConfirmDialog, formulário de clientes, LicitacaoFormModal, DisputaFormModal
+// etc.) — qualquer mudança aqui afeta todos eles.
+//
+// Tamanho "full" adicionado em 25/09 a pedido do Márcio, especificamente
+// para o LicitacaoFormModal (formulário ganhou 7 abas com o checklist de
+// exigências, e "xl" ficava apertado demais). Os tamanhos existentes
+// (md/lg/xl) não foram alterados — nenhuma outra tela muda de aparência.
 import type { ReactNode } from 'react'
 import { useEffect } from 'react'
 
@@ -7,7 +17,7 @@ interface ModalProps {
   title: string
   subtitle?: string
   children: ReactNode
-  size?: 'md' | 'lg' | 'xl'
+  size?: 'md' | 'lg' | 'xl' | 'full'
   footer?: ReactNode
 }
 
@@ -15,6 +25,10 @@ const SIZE_CLASSES: Record<NonNullable<ModalProps['size']>, string> = {
   md: 'max-w-md',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  // Praticamente a tela toda, com uma margem pequena (mesma folga aplicada
+  // pelo px-4/py-8 do overlay) — não é 100vw/100vh "cru" porque aí a
+  // sombra/cantos arredondados do modal encostariam nas bordas da janela.
+  full: 'max-w-[95vw] h-[92vh]',
 }
 
 /** Overlay/modal genérico usado por ConfirmDialog e pelo formulário de clientes.
@@ -60,7 +74,12 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md', f
           </button>
         </div>
 
-        <div className="overflow-y-auto px-6 py-5">{children}</div>
+        {/* flex-1 + min-h-0: essencial para o tamanho "full" — é o que faz
+            esta área ocupar o espaço vertical restante do modal (que agora
+            tem altura fixa, h-[92vh]) e rolar dentro dela, em vez de a
+            altura do modal só seguir o tamanho do conteúdo. Não muda nada
+            nos tamanhos md/lg/xl, que não têm altura fixa. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
 
         {footer && (
           <div className="flex items-center justify-end gap-3 border-t border-ink-soft/10 px-6 py-4">

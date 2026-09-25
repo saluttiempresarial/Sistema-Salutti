@@ -1,14 +1,18 @@
 // src/pages/admin/licitacoes/LicitacaoFormModal.tsx
 //
-// Formulário de criação/edição de Licitação — reconstruído a partir da
-// Especificação Funcional v2.1, seção 4.2, em 5 abas:
+// Formulário de criação/edição de Licitação — originalmente construído a
+// partir da Especificação Funcional v2.1, seção 4.2, com 5 abas. Reordenado
+// e ampliado para 7 em 25/09, a partir do documento
+// "Estrutura_Tela_Exigencias_Edital_SALUTTI_Final.docx":
 //   1. Informações Gerais
-//   2. Habilitação
-//   3. Condições Comerciais
-//   4. Pontos de Atenção
-//   5. Itens
+//   2. Habilitação      (agora um checklist — ver tipos em licitacao.ts)
+//   3. Declarações       (nova)
+//   4. Condições Comerciais
+//   5. Outras Exigências (nova — mapeada da seção "Aceitação do Produto" do documento)
+//   6. Itens
+//   7. Ponto de Atenção
 //
-// O campo "Cliente vinculado" e "Status" não fazem parte de nenhuma das 5
+// O campo "Cliente vinculado" e "Status" não fazem parte de nenhuma das 7
 // abas descritas na spec, mas são necessários para o fluxo de atribuição de
 // licitações a clientes (seção 2.1/6.1) — foram colocados na Aba 1.
 //
@@ -52,19 +56,46 @@ import {
   ItemLicitacao,
   GrupoItens,
   DECISAO_CLIENTE_LABEL,
+  ItemChecklistExigencia,
+  StatusExigencia,
+  criarChecklistVazio,
+  criarHabilitacaoVazia,
+  HABILITACAO_JURIDICA_ITENS,
+  HABILITACAO_FISCAL_ITENS,
+  HABILITACAO_ECONOMICO_FINANCEIRA_ITENS,
+  HABILITACAO_TECNICA_ITENS,
+  DECLARACOES_ITENS,
+  OUTRAS_EXIGENCIAS_ITENS,
 } from '../../../types/licitacao';
 import { clienteService } from '../../../services/clienteService';
 import { PorteEmpresa } from '../../../types/cliente';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 
-const TABS = [
-  { id: 'gerais', label: 'Informações Gerais' },
-  { id: 'habilitacao', label: 'Habilitação' },
-  { id: 'comerciais', label: 'Cond. Comerciais' },
-  { id: 'atencao', label: 'Pontos de Atenção' },
-  { id: 'itens', label: 'Itens' },
-];
+// Monta a lista de abas com a contagem de itens de checklist ainda sem
+// marcação (Exigido/Não exigido) ao lado do nome — para o Analista ver de
+// longe onde falta preencher, sem precisar entrar em cada aba. O item
+// "Outras" de cada seção não entra nessa contagem (ver itensPendentes).
+function construirTabs(pendentesHabilitacao: number, pendentesDeclaracoes: number, pendentesOutras: number) {
+  const comContagem = (label: string, pendentes: number) => (pendentes > 0 ? `${label} (${pendentes})` : label);
+  return [
+    { id: 'gerais', label: 'Informações Gerais' },
+    { id: 'habilitacao', label: comContagem('Habilitação', pendentesHabilitacao) },
+    { id: 'declaracoes', label: comContagem('Declarações', pendentesDeclaracoes) },
+    { id: 'comerciais', label: 'Cond. Comerciais' },
+    { id: 'outras', label: comContagem('Outras Exigências', pendentesOutras) },
+    { id: 'itens', label: 'Itens' },
+    { id: 'atencao', label: 'Ponto de Atenção' },
+  ];
+}
+
+// Um item conta como "pendente" quando ainda não foi marcado Exigido/Não
+// exigido — exceto o item "Outras" de cada seção, que é sempre opcional (o
+// Analista só usa se o edital tiver alguma exigência fora da lista fixa) e
+// nunca bloqueia o salvamento.
+function itensPendentes(itens: ItemChecklistExigencia[]): ItemChecklistExigencia[] {
+  return itens.filter((item) => item.status == null && item.label !== 'Outras');
+}
 
 function gerarIdLocal(prefixo: string): string {
   return `${prefixo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -141,14 +172,8 @@ function criarFormularioVazio(): LicitacaoFormData {
     clienteId: '',
     status: 'pendente',
 
-    habilitacao: {
-      exigeAtestado: '',
-      qualificacaoTecnica: '',
-      qualificacaoEconomicoFinanceira: '',
-      regularidadeFiscal: '',
-      exigeAmostras: '',
-      outrosRequisitos: '',
-    },
+    habilitacao: criarHabilitacaoVazia(),
+    declaracoes: criarChecklistVazio(DECLARACOES_ITENS),
 
     condicoesComerciais: {
       intervaloLances: '',
@@ -157,6 +182,8 @@ function criarFormularioVazio(): LicitacaoFormData {
       possuiGarantias: false,
       localEntrega: '',
     },
+
+    outrasExigencias: criarChecklistVazio(OUTRAS_EXIGENCIAS_ITENS),
 
     pontosAtencao: '',
 
@@ -169,6 +196,45 @@ function criarFormularioVazio(): LicitacaoFormData {
 
     observacoes: '',
   };
+}
+
+// Garante que uma licitação carregada do banco (edição) ou de um rascunho
+// antigo salvo no navegador tenha o formato novo de checklist. Licitações
+// cadastradas antes de 25/09 não têm esses campos (ou têm o formato antigo,
+// de texto livre) — decisão tomada com o Márcio: elas reabrem com o
+// checklist em branco, em vez de quebrar a tela ou tentar migrar o texto
+// livre automaticamente.
+//
+// Um array VAZIO conta como "ainda não preenchido", não como "checklist
+// legitimamente sem itens" — os itens de cada seção são fixos (vêm de
+// HABILITACAO_JURIDICA_ITENS etc.), então o app nunca produz um checklist
+// com 0 itens por conta própria. Um array vazio normalmente significa que a
+// coluna do banco ainda não existe (migração 018 não rodada) ou veio
+// nula — nos dois casos, a solução é semear com os itens fixos da seção,
+// não deixar a tabela em branco.
+function estaPreenchido(valor: unknown): valor is ItemChecklistExigencia[] {
+  return Array.isArray(valor) && valor.length > 0;
+}
+
+function normalizarHabilitacao(valor: unknown): Habilitacao {
+  const h = (valor ?? {}) as Partial<Habilitacao>;
+  return {
+    juridica: estaPreenchido(h.juridica) ? h.juridica : criarChecklistVazio(HABILITACAO_JURIDICA_ITENS),
+    fiscalSocialTrabalhista: estaPreenchido(h.fiscalSocialTrabalhista)
+      ? h.fiscalSocialTrabalhista
+      : criarChecklistVazio(HABILITACAO_FISCAL_ITENS),
+    economicoFinanceira: estaPreenchido(h.economicoFinanceira)
+      ? h.economicoFinanceira
+      : criarChecklistVazio(HABILITACAO_ECONOMICO_FINANCEIRA_ITENS),
+    tecnica: estaPreenchido(h.tecnica) ? h.tecnica : criarChecklistVazio(HABILITACAO_TECNICA_ITENS),
+  };
+}
+
+function normalizarChecklistCampo(
+  valor: unknown,
+  definicao: ReadonlyArray<{ id: string; label: string }>
+): ItemChecklistExigencia[] {
+  return estaPreenchido(valor) ? valor : criarChecklistVazio(definicao);
 }
 
 interface LicitacaoFormModalProps {
@@ -226,22 +292,26 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // os separadores extras, salvando um valor completamente errado (ex.:
   // 4,58) sem nenhum aviso. Ver numeroParaCampoDecimal/campoParaNumeroDecimal.
   const [valorTotalTexto, setValorTotalTexto] = useState('');
-  // Mesmo problema do "Valor total da licitação" acima, agora no campo
-  // "Percentual de frete (%)" — estava com <input type="number"> puro, que
-  // não aceita vírgula decimal (o navegador simplesmente ignora o
-  // caractere), impedindo digitar algo como "5,5".
-  const [percentualFreteTexto, setPercentualFreteTexto] = useState('');
+  // Mensagem exibida quando o Analista tenta salvar sem marcar algum item
+  // do checklist (Habilitação/Declarações/Outras Exigências) — ver
+  // handleSalvar.
+  const [erroChecklist, setErroChecklist] = useState<string | null>(null);
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   useEffect(() => {
     if (!isOpen) return;
     setAbaAtiva('gerais');
+    setErroChecklist(null);
 
     if (licitacaoEmEdicao) {
       // Editando uma licitação existente — rascunho local não se aplica.
-      setForm({ ...licitacaoEmEdicao });
+      setForm({
+        ...licitacaoEmEdicao,
+        habilitacao: normalizarHabilitacao(licitacaoEmEdicao.habilitacao),
+        declaracoes: normalizarChecklistCampo(licitacaoEmEdicao.declaracoes, DECLARACOES_ITENS),
+        outrasExigencias: normalizarChecklistCampo(licitacaoEmEdicao.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
+      });
       setValorTotalTexto(numeroParaCampoDecimal(licitacaoEmEdicao.valorTotalLicitacao, 10));
-      setPercentualFreteTexto(numeroParaCampoDecimal(licitacaoEmEdicao.percentualFrete, 4));
       setRascunhoRestaurado(false);
       return;
     }
@@ -249,14 +319,17 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     // Nova licitação: se existir um rascunho salvo no navegador, restaura.
     const rascunho = lerRascunhoSalvo();
     if (rascunho) {
-      setForm(rascunho);
+      setForm({
+        ...rascunho,
+        habilitacao: normalizarHabilitacao(rascunho.habilitacao),
+        declaracoes: normalizarChecklistCampo(rascunho.declaracoes, DECLARACOES_ITENS),
+        outrasExigencias: normalizarChecklistCampo(rascunho.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
+      });
       setValorTotalTexto(numeroParaCampoDecimal(rascunho.valorTotalLicitacao, 10));
-      setPercentualFreteTexto(numeroParaCampoDecimal(rascunho.percentualFrete, 4));
       setRascunhoRestaurado(true);
     } else {
       setForm(criarFormularioVazio());
       setValorTotalTexto('');
-      setPercentualFreteTexto('');
       setRascunhoRestaurado(false);
     }
   }, [isOpen, licitacaoEmEdicao]);
@@ -298,8 +371,36 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     setForm((atual) => ({ ...atual, [campo]: valor }));
   }
 
-  function atualizarHabilitacao<K extends keyof Habilitacao>(campo: K, valor: Habilitacao[K]) {
-    setForm((atual) => ({ ...atual, habilitacao: { ...atual.habilitacao, [campo]: valor } }));
+  // Atualiza um item de uma das 4 subseções de Habilitação (juridica,
+  // fiscalSocialTrabalhista, economicoFinanceira, tecnica) pelo seu id.
+  function atualizarItemHabilitacao(
+    subsecao: keyof Habilitacao,
+    id: string,
+    patch: Partial<Pick<ItemChecklistExigencia, 'status' | 'detalhamento'>>
+  ) {
+    setForm((atual) => ({
+      ...atual,
+      habilitacao: {
+        ...atual.habilitacao,
+        [subsecao]: atual.habilitacao[subsecao].map((item) =>
+          item.id === id ? { ...item, ...patch } : item
+        ),
+      },
+    }));
+  }
+
+  // Mesma lógica acima, para os checklists de Declarações e Outras
+  // Exigências — que ficam direto na raiz do formulário, não dentro de
+  // Habilitação.
+  function atualizarItemChecklist(
+    campo: 'declaracoes' | 'outrasExigencias',
+    id: string,
+    patch: Partial<Pick<ItemChecklistExigencia, 'status' | 'detalhamento'>>
+  ) {
+    setForm((atual) => ({
+      ...atual,
+      [campo]: atual[campo].map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    }));
   }
 
   function atualizarCondicoes<K extends keyof CondicoesComerciais>(campo: K, valor: CondicoesComerciais[K]) {
@@ -364,6 +465,26 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   }
 
   async function handleSalvar() {
+    // Bloqueia o salvamento se sobrar algum item do checklist sem marcação
+    // (Exigido/Não exigido) — exceto o item "Outras" de cada seção, que é
+    // opcional. Leva o Analista direto pra primeira aba com pendência.
+    const pendencias = [
+      { aba: 'habilitacao', label: 'Habilitação', quantidade: pendentesHabilitacao },
+      { aba: 'declaracoes', label: 'Declarações', quantidade: pendentesDeclaracoes },
+      { aba: 'outras', label: 'Outras Exigências', quantidade: pendentesOutras },
+    ].filter((p) => p.quantidade > 0);
+
+    if (pendencias.length > 0) {
+      setAbaAtiva(pendencias[0].aba);
+      setErroChecklist(
+        `Marque "Exigido" ou "Não exigido" em todos os itens antes de salvar (o item "Outras" de cada seção é opcional). Faltam: ${pendencias
+          .map((p) => `${p.label} (${p.quantidade})`)
+          .join(', ')}.`
+      );
+      return;
+    }
+    setErroChecklist(null);
+
     setSalvando(true);
     try {
       await onSave(form);
@@ -373,6 +494,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       setSalvando(false);
     }
   }
+
+  const pendentesHabilitacao =
+    itensPendentes(form.habilitacao.juridica).length +
+    itensPendentes(form.habilitacao.fiscalSocialTrabalhista).length +
+    itensPendentes(form.habilitacao.economicoFinanceira).length +
+    itensPendentes(form.habilitacao.tecnica).length;
+  const pendentesDeclaracoes = itensPendentes(form.declaracoes).length;
+  const pendentesOutras = itensPendentes(form.outrasExigencias).length;
+  const tabs = construirTabs(pendentesHabilitacao, pendentesDeclaracoes, pendentesOutras);
 
   const dataParaPrazo = form.dataEfetivaLicitacao || form.dataLicitacao;
   const prazoInterno = dataParaPrazo ? calcularPrazoInterno(dataParaPrazo) : null;
@@ -386,7 +516,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       open={isOpen}
       onClose={onClose}
       title={licitacaoEmEdicao ? `Editar licitação — ${licitacaoEmEdicao.numeroPregao}` : 'Nova licitação'}
-      size="xl"
+      size="full"
       footer={
         carregandoDados ? undefined : (
           <>
@@ -406,7 +536,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         </div>
       ) : (
         <>
-          <Tabs tabs={TABS} activeTab={abaAtiva} onChange={setAbaAtiva} />
+          <Tabs tabs={tabs} activeTab={abaAtiva} onChange={setAbaAtiva} />
+
+          {erroChecklist && (
+            <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
+              {erroChecklist}
+            </div>
+          )}
 
           {rascunhoRestaurado && (
             <div className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-brass-pale px-3 py-2">
@@ -711,70 +847,55 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
           </div>
         )}
 
-        {/* Aba 2 — Habilitação (Critérios de Habilitação) */}
+        {/* Aba 2 — Habilitação (checklist, 4 subseções) */}
         {abaAtiva === 'habilitacao' && (
-          <div className="space-y-5">
-            <TextAreaField
-              label="Qualificação técnica"
-              value={form.habilitacao.qualificacaoTecnica}
-              onChange={(e) => atualizarHabilitacao('qualificacaoTecnica', e.target.value)}
-              rows={3}
+          <div className="space-y-6">
+            <ChecklistSection
+              titulo="Habilitação jurídica"
+              itens={form.habilitacao.juridica}
+              onChangeStatus={(id, status) => atualizarItemHabilitacao('juridica', id, { status })}
+              onChangeDetalhamento={(id, detalhamento) => atualizarItemHabilitacao('juridica', id, { detalhamento })}
             />
 
-            <TextAreaField
-              label="Qualificação econômico-financeira"
-              value={form.habilitacao.qualificacaoEconomicoFinanceira}
-              onChange={(e) => atualizarHabilitacao('qualificacaoEconomicoFinanceira', e.target.value)}
-              rows={3}
+            <ChecklistSection
+              titulo="Regularidade fiscal, social e trabalhista"
+              itens={form.habilitacao.fiscalSocialTrabalhista}
+              onChangeStatus={(id, status) => atualizarItemHabilitacao('fiscalSocialTrabalhista', id, { status })}
+              onChangeDetalhamento={(id, detalhamento) =>
+                atualizarItemHabilitacao('fiscalSocialTrabalhista', id, { detalhamento })
+              }
             />
 
-            <TextAreaField
-              label="Regularidade fiscal e trabalhista"
-              value={form.habilitacao.regularidadeFiscal}
-              onChange={(e) => atualizarHabilitacao('regularidadeFiscal', e.target.value)}
-              rows={3}
+            <ChecklistSection
+              titulo="Qualificação econômico-financeira"
+              itens={form.habilitacao.economicoFinanceira}
+              onChangeStatus={(id, status) => atualizarItemHabilitacao('economicoFinanceira', id, { status })}
+              onChangeDetalhamento={(id, detalhamento) =>
+                atualizarItemHabilitacao('economicoFinanceira', id, { detalhamento })
+              }
             />
 
-            <TextAreaField
-              label="Exigência de atestado de fornecimento?"
-              value={form.habilitacao.exigeAtestado}
-              onChange={(e) => atualizarHabilitacao('exigeAtestado', e.target.value)}
-              rows={2}
-              placeholder='Ex: Sim, para ambos os itens. O(s) atestado(s) devem comprovar fornecimento similar ao objeto...'
-            />
-
-            <TextAreaField
-              label="Exigência de amostras?"
-              value={form.habilitacao.exigeAmostras}
-              onChange={(e) => atualizarHabilitacao('exigeAmostras', e.target.value)}
-              rows={2}
-              placeholder="Ex: Sim. O licitante classificado em primeiro lugar deverá apresentar a amostra"
-            />
-            {form.habilitacao.exigeAmostras.trim() && (
-              <TextField
-                label="Prazo para entrega da amostra (dias)"
-                type="number"
-                value={form.habilitacao.prazoEntregaAmostraDias ?? ''}
-                onChange={(e) =>
-                  atualizarHabilitacao(
-                    'prazoEntregaAmostraDias',
-                    e.target.value === '' ? undefined : Number(e.target.value)
-                  )
-                }
-                className="max-w-xs"
-              />
-            )}
-
-            <TextAreaField
-              label="Outros requisitos"
-              value={form.habilitacao.outrosRequisitos}
-              onChange={(e) => atualizarHabilitacao('outrosRequisitos', e.target.value)}
-              rows={3}
+            <ChecklistSection
+              titulo="Qualificação técnica"
+              itens={form.habilitacao.tecnica}
+              onChangeStatus={(id, status) => atualizarItemHabilitacao('tecnica', id, { status })}
+              onChangeDetalhamento={(id, detalhamento) => atualizarItemHabilitacao('tecnica', id, { detalhamento })}
             />
           </div>
         )}
 
-        {/* Aba 3 — Condições Comerciais */}
+        {/* Aba 3 — Declarações (checklist) */}
+        {abaAtiva === 'declaracoes' && (
+          <div className="space-y-6">
+            <ChecklistSection
+              itens={form.declaracoes}
+              onChangeStatus={(id, status) => atualizarItemChecklist('declaracoes', id, { status })}
+              onChangeDetalhamento={(id, detalhamento) => atualizarItemChecklist('declaracoes', id, { detalhamento })}
+            />
+          </div>
+        )}
+
+        {/* Aba 4 — Condições Comerciais */}
         {abaAtiva === 'comerciais' && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
@@ -851,47 +972,23 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               />
             )}
 
-            <div className="border-t border-ink-soft/10 pt-5">
-              <CheckboxField
-                label="Cobrar frete?"
-                checked={form.cobrarFrete}
-                onChange={(e) => atualizarCampo('cobrarFrete', e.target.checked)}
-              />
-              {form.cobrarFrete && (
-                <TextField
-                  label="Percentual de frete (%)"
-                  type="text"
-                  value={percentualFreteTexto}
-                  onChange={(e) => {
-                    setPercentualFreteTexto(e.target.value);
-                    atualizarCampo('percentualFrete', campoParaNumeroDecimal(e.target.value, 4));
-                  }}
-                  placeholder="Ex.: 5,5"
-                  className="mt-3 max-w-xs"
-                />
-              )}
-            </div>
           </div>
         )}
 
-        {/* Aba 4 — Pontos de Atenção */}
-        {abaAtiva === 'atencao' && (
-          <div className="space-y-2">
-            <p className="font-body text-sm text-ink-soft">
-              Riscos, restrições, observações e estratégia. Futuramente será preenchido automaticamente pela IA a
-              partir da leitura do edital.
-            </p>
-            <TextAreaField
-              label="Pontos de atenção"
-              value={form.pontosAtencao}
-              onChange={(e) => atualizarCampo('pontosAtencao', e.target.value)}
-              rows={8}
-              placeholder="Descreva riscos, restrições e estratégia para esta licitação"
+        {/* Aba 5 — Outras Exigências (checklist — mapeada da seção "Aceitação do Produto" do documento) */}
+        {abaAtiva === 'outras' && (
+          <div className="space-y-6">
+            <ChecklistSection
+              itens={form.outrasExigencias}
+              onChangeStatus={(id, status) => atualizarItemChecklist('outrasExigencias', id, { status })}
+              onChangeDetalhamento={(id, detalhamento) =>
+                atualizarItemChecklist('outrasExigencias', id, { detalhamento })
+              }
             />
           </div>
         )}
 
-        {/* Aba 5 — Itens */}
+        {/* Aba 6 — Itens */}
         {abaAtiva === 'itens' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -976,10 +1073,100 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
             </div>
           </div>
         )}
+
+        {/* Aba 7 — Ponto de Atenção */}
+        {abaAtiva === 'atencao' && (
+          <div className="space-y-2">
+            <p className="font-body text-sm text-ink-soft">
+              Riscos, restrições, observações e estratégia. Futuramente será preenchido automaticamente pela IA a
+              partir da leitura do edital.
+            </p>
+            <TextAreaField
+              label="Pontos de atenção"
+              value={form.pontosAtencao}
+              onChange={(e) => atualizarCampo('pontosAtencao', e.target.value)}
+              rows={8}
+              placeholder="Descreva riscos, restrições e estratégia para esta licitação"
+            />
+          </div>
+        )}
           </div>
         </>
       )}
     </Modal>
+  );
+}
+
+// Tabela de checklist de exigências — usada nas abas Habilitação (uma por
+// subseção), Declarações e Outras Exigências. Cada linha tem 3 colunas: o
+// nome fixo da exigência (não editável), um seletor Exigido/Não exigido
+// (o "status" — o Analista marca o que o edital pede) e um campo de texto
+// livre curto para anotar a variação específica ("Opções / Detalhamento").
+// Não replica as sub-opções do documento original (ex.: "☐ Estadual ☐
+// Municipal") como checkboxes separados — um único campo de texto cobre
+// isso, a pedido do Márcio.
+function ChecklistSection({
+  titulo,
+  itens,
+  onChangeStatus,
+  onChangeDetalhamento,
+}: {
+  titulo?: string;
+  itens: ItemChecklistExigencia[];
+  onChangeStatus: (id: string, status: StatusExigencia) => void;
+  onChangeDetalhamento: (id: string, detalhamento: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {titulo && <p className="font-body text-sm font-semibold text-ink">{titulo}</p>}
+      <div className="overflow-hidden rounded-xl border border-ink-soft/15">
+        <div className="grid grid-cols-12 gap-2 border-b border-ink-soft/10 bg-paper-2/60 px-3 py-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft">
+          <div className="col-span-4">Exigência</div>
+          <div className="col-span-3">Status</div>
+          <div className="col-span-5">Opções / Detalhamento</div>
+        </div>
+        {itens.map((item) => (
+          <div
+            key={item.id}
+            className="grid grid-cols-12 items-center gap-2 border-b border-ink-soft/10 px-3 py-2.5 last:border-b-0"
+          >
+            <div className="col-span-4 pr-2 font-body text-sm text-ink">{item.label}</div>
+            <div className="col-span-3 flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => onChangeStatus(item.id, 'exigido')}
+                className={`flex-1 rounded-md border px-2 py-1.5 font-body text-xs font-semibold transition-colors ${
+                  item.status === 'exigido'
+                    ? 'border-forest bg-forest text-white'
+                    : 'border-ink-soft/25 text-ink-soft hover:border-forest/50'
+                }`}
+              >
+                Exigido
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeStatus(item.id, 'nao_exigido')}
+                className={`flex-1 rounded-md border px-2 py-1.5 font-body text-xs font-semibold transition-colors ${
+                  item.status === 'nao_exigido'
+                    ? 'border-ink-soft bg-ink-soft text-white'
+                    : 'border-ink-soft/25 text-ink-soft hover:border-ink-soft/50'
+                }`}
+              >
+                Não exigido
+              </button>
+            </div>
+            <div className="col-span-5">
+              <input
+                value={item.detalhamento}
+                onChange={(e) => onChangeDetalhamento(item.id, e.target.value)}
+                placeholder="Ex.: Estadual, prazo, órgão emissor..."
+                className="w-full rounded-md border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink focus:border-forest focus:outline-none"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

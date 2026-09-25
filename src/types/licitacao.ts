@@ -131,16 +131,139 @@ export interface HistoricoAcao {
 }
 
 // ---------------------------------------------------------------------------
-// Aba 2 — Habilitação (Critérios de Habilitação)
+// Aba 2 — Habilitação / Aba 3 — Declarações / Aba 5 — Outras Exigências
+//
+// Reestruturado em 25/09 a partir do documento
+// "Estrutura_Tela_Exigencias_Edital_SALUTTI_Final.docx": os campos de texto
+// livre por assunto (Qualificação técnica, Regularidade fiscal etc.) saem
+// de vez — cada linha do edital vira um item de checklist com 3 colunas:
+// Exigência (nome fixo do requisito), Status (Exigido / Não exigido — o
+// Analista marca o que o edital pede) e Opções/Detalhamento (texto livre
+// curto, para anotar a variação específica: "Estadual", "Mínimo LG 1,0",
+// prazo, órgão emissor etc. — sem recriar sub-checkboxes pra cada opção
+// possível do documento, que ficaria pesado demais pra manter).
+//
+// SUBSTITUI TOTALMENTE o modelo antigo — decisão tomada com o Márcio
+// (25/09): licitações já cadastradas antes dessa mudança voltam a abrir
+// com o checklist em branco; o texto livre antigo continua salvo no banco,
+// só não aparece mais nesta tela.
 // ---------------------------------------------------------------------------
+
+export type StatusExigencia = 'exigido' | 'nao_exigido';
+
+export const STATUS_EXIGENCIA_LABEL: Record<StatusExigencia, string> = {
+  exigido: 'Exigido',
+  nao_exigido: 'Não exigido',
+};
+
+// Uma linha do checklist. `status` fica undefined até o Analista marcar —
+// não force nem "exigido" nem "não exigido" como padrão, pra não passar a
+// falsa impressão de que já foi conferido no edital.
+export interface ItemChecklistExigencia {
+  id: string; // chave estável do item dentro da seção (ex.: "contrato_social")
+  label: string; // nome da exigência, sempre o mesmo texto do documento
+  status?: StatusExigencia;
+  detalhamento: string; // "Opções / Detalhamento" — texto livre
+}
+
+/** Cria a lista inicial (em branco) de uma seção do checklist a partir dos
+ *  pares id/label fixos definidos abaixo — usado tanto pelo formulário
+ *  (nova licitação) quanto para completar seções que uma licitação antiga
+ *  ainda não tenha (edição de licitação salva antes de algum item novo ser
+ *  adicionado ao checklist). */
+export function criarChecklistVazio(
+  definicao: ReadonlyArray<{ id: string; label: string }>
+): ItemChecklistExigencia[] {
+  return definicao.map(({ id, label }) => ({ id, label, status: undefined, detalhamento: '' }));
+}
+
+export const HABILITACAO_JURIDICA_ITENS = [
+  { id: 'contrato_social', label: 'Contrato social / ato constitutivo' },
+  { id: 'doc_identificacao_socios', label: 'Documento de identificação dos sócios/administradores' },
+  { id: 'procuracao_credenciamento', label: 'Procuração / credenciamento do representante' },
+  { id: 'autorizacao_funcionamento', label: 'Autorização para funcionamento' },
+  { id: 'outras_juridica', label: 'Outras' },
+] as const;
+
+export const HABILITACAO_FISCAL_ITENS = [
+  { id: 'cartao_cnpj', label: 'Cartão CNPJ' },
+  { id: 'inscricao_estadual_municipal', label: 'Inscrição estadual / municipal' },
+  { id: 'cnd_federal', label: 'CND Federal (RFB/PGFN)' },
+  { id: 'cnd_estadual', label: 'CND Estadual' },
+  { id: 'cnd_municipal', label: 'CND Municipal' },
+  { id: 'fgts_crf', label: 'FGTS (CRF)' },
+  { id: 'cndt', label: 'CNDT (Certidão Trabalhista)' },
+  { id: 'outras_fiscal', label: 'Outras' },
+] as const;
+
+export const HABILITACAO_ECONOMICO_FINANCEIRA_ITENS = [
+  { id: 'balanco_patrimonial', label: 'Balanço patrimonial e demonstrações contábeis' },
+  { id: 'indices_economico_financeiros', label: 'Índices econômico-financeiros' },
+  { id: 'declaracao_contador', label: 'Declaração do contador atestando os índices' },
+  { id: 'certidao_falencia', label: 'Certidão de falência / recuperação judicial' },
+  { id: 'capital_social_minimo', label: 'Capital social mínimo' },
+  { id: 'patrimonio_liquido_minimo', label: 'Patrimônio líquido mínimo' },
+  { id: 'outras_economico_financeira', label: 'Outras' },
+] as const;
+
+export const HABILITACAO_TECNICA_ITENS = [
+  { id: 'atestado_capacidade_tecnica', label: 'Atestado de capacidade técnica' },
+  { id: 'responsavel_tecnico', label: 'Responsável técnico (CAT/ART)' },
+  { id: 'registro_conselho_profissional', label: 'Registro em conselho profissional' },
+  { id: 'vistoria_visita_tecnica', label: 'Vistoria / visita técnica' },
+  { id: 'indicacao_equipe_instalacoes', label: 'Indicação de equipe, instalações e equipamentos' },
+  { id: 'outras_tecnica', label: 'Outras' },
+] as const;
+
 export interface Habilitacao {
-  qualificacaoTecnica: string; // preenchido pelo analista (ou futuramente pela IA)
-  qualificacaoEconomicoFinanceira: string;
-  regularidadeFiscal: string; // rótulo exibido: "Regularidade Fiscal e Trabalhista"
-  exigeAtestado: string; // rótulo exibido: "Exigência de Atestado de Fornecimento?" — texto descritivo, ex: "Sim, para ambos os itens..."
-  exigeAmostras: string; // rótulo exibido: "Exigência de Amostras?" — texto descritivo, ex: "Sim. O licitante classificado em primeiro lugar deverá apresentar a amostra"
-  prazoEntregaAmostraDias?: number; // só relevante quando exigeAmostras estiver preenchido
-  outrosRequisitos: string;
+  juridica: ItemChecklistExigencia[];
+  fiscalSocialTrabalhista: ItemChecklistExigencia[];
+  economicoFinanceira: ItemChecklistExigencia[];
+  tecnica: ItemChecklistExigencia[];
+}
+
+export const DECLARACOES_ITENS = [
+  { id: 'cumprimento_requisitos_habilitacao', label: 'Cumprimento dos requisitos de habilitação' },
+  { id: 'reserva_cargos_pcd', label: 'Reserva de cargos para PcD e reabilitados' },
+  { id: 'nao_emprego_menor', label: 'Não emprego de menor' },
+  { id: 'enquadramento_me_epp', label: 'Enquadramento como ME/EPP' },
+  { id: 'proposta_compativel_custos_trabalhistas', label: 'Proposta compatível com custos trabalhistas' },
+  { id: 'inexistencia_fato_impeditivo', label: 'Inexistência de fato impeditivo' },
+  { id: 'elaboracao_independente_proposta', label: 'Elaboração independente de proposta' },
+  { id: 'outras_declaracoes', label: 'Outras' },
+] as const;
+
+// "Outras Exigências" — mapeado da seção "Aceitação do Produto" do
+// documento SALUTTI; renomeado a pedido do Márcio (25/09) pra cobrir
+// exigências que não são estritamente sobre o produto (ex.: licença de
+// funcionamento específica de algum órgão) sem precisar criar mais uma aba.
+export const OUTRAS_EXIGENCIAS_ITENS = [
+  { id: 'amostra', label: 'Amostra' },
+  { id: 'catalogo_folder_tecnico', label: 'Catálogo / folder técnico' },
+  { id: 'ficha_tecnica_produto', label: 'Ficha técnica do produto' },
+  { id: 'fispq_fds', label: 'FISPQ / FDS' },
+  { id: 'laudo_tecnico_ensaio', label: 'Laudo técnico / de ensaio' },
+  { id: 'certificacao', label: 'Certificação' },
+  { id: 'registro_anvisa', label: 'Registro ANVISA' },
+  { id: 'registros_especificos', label: 'Registros específicos' },
+  { id: 'licenca_autorizacao_especifica', label: 'Licença / autorização específica' },
+  { id: 'indicacao_marca_modelo', label: 'Indicação de marca / modelo' },
+  { id: 'garantia_assistencia_tecnica', label: 'Garantia do produto / assistência técnica' },
+  { id: 'instalacao', label: 'Instalação' },
+  { id: 'outras_exigencias', label: 'Outras' },
+] as const;
+
+/** Habilitação em branco — todas as 4 subseções com seus itens fixos,
+ *  nenhum status marcado ainda. Usada tanto pelo formulário quanto (via
+ *  `completarChecklist`, no service) pra preencher itens novos do checklist
+ *  em licitações salvas antes deles existirem. */
+export function criarHabilitacaoVazia(): Habilitacao {
+  return {
+    juridica: criarChecklistVazio(HABILITACAO_JURIDICA_ITENS),
+    fiscalSocialTrabalhista: criarChecklistVazio(HABILITACAO_FISCAL_ITENS),
+    economicoFinanceira: criarChecklistVazio(HABILITACAO_ECONOMICO_FINANCEIRA_ITENS),
+    tecnica: criarChecklistVazio(HABILITACAO_TECNICA_ITENS),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -235,13 +358,20 @@ export interface Licitacao {
   // Aba 2 — Habilitação
   habilitacao: Habilitacao;
 
-  // Aba 3 — Condições Comerciais
+  // Aba 3 — Declarações
+  declaracoes: ItemChecklistExigencia[];
+
+  // Aba 4 — Condições Comerciais
   condicoesComerciais: CondicoesComerciais;
 
-  // Aba 4 — Pontos de Atenção
+  // Aba 5 — Outras Exigências (mapeada da seção "Aceitação do Produto" do
+  // documento SALUTTI)
+  outrasExigencias: ItemChecklistExigencia[];
+
+  // Aba 6 — Pontos de Atenção
   pontosAtencao: string;
 
-  // Aba 5 — Itens
+  // Aba 7 — Itens
   grupos: GrupoItens[];
   itens: ItemLicitacao[];
   // Contagem de itens cadastrados — usada na listagem (LicitacoesPage) para

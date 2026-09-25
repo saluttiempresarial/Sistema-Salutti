@@ -38,9 +38,31 @@ import {
   DECISAO_CLIENTE_LABEL,
   STATUS_PROPOSTA_LABEL,
   FORMA_PAGAMENTO_LABEL,
+  ItemChecklistExigencia,
+  STATUS_EXIGENCIA_LABEL,
 } from '@/types/licitacao'
 import { formatarDataHora } from '@/utils/prazoUtils'
 import { calcularAnaliseItem, classificarStatusProposta, totalReferenciaItem } from '@/utils/licitacaoCalculos'
+
+// Converte uma seção do checklist de exigências (Habilitação, Declarações
+// ou Outras Exigências) nas linhas Campo/Valor do relatório exportado.
+// Só entram os itens que o Analista já marcou (status preenchido) — um item
+// ainda sem marcação não tem informação útil para o relatório. O nome da
+// seção (ex.: "Habilitação jurídica") prefixa o rótulo de cada linha, para
+// diferenciar itens de mesmo nome ("Outras") entre as diferentes seções.
+function linhasChecklist(
+  secao: string,
+  itens: ItemChecklistExigencia[]
+): { Campo: string; Valor: string }[] {
+  return itens
+    .filter((item) => item.status != null)
+    .map((item) => ({
+      Campo: `${secao} — ${item.label}`,
+      Valor: item.detalhamento
+        ? `${STATUS_EXIGENCIA_LABEL[item.status as keyof typeof STATUS_EXIGENCIA_LABEL]} (${item.detalhamento})`
+        : STATUS_EXIGENCIA_LABEL[item.status as keyof typeof STATUS_EXIGENCIA_LABEL],
+    }))
+}
 
 export function PropostaComercialPage() {
   const { id } = useParams<{ id: string }>()
@@ -150,19 +172,12 @@ export function PropostaComercialPage() {
         { Campo: 'Status', Valor: STATUS_LICITACAO_LABEL[licitacao.status] },
         { Campo: 'Cliente', Valor: nomeCliente },
 
-        { Campo: 'Qualificação técnica', Valor: licitacao.habilitacao.qualificacaoTecnica || '—' },
-        {
-          Campo: 'Qualificação econômico-financeira',
-          Valor: licitacao.habilitacao.qualificacaoEconomicoFinanceira || '—',
-        },
-        { Campo: 'Regularidade fiscal e trabalhista', Valor: licitacao.habilitacao.regularidadeFiscal || '—' },
-        { Campo: 'Exigência de atestado de fornecimento', Valor: licitacao.habilitacao.exigeAtestado || '—' },
-        { Campo: 'Exigência de amostras', Valor: licitacao.habilitacao.exigeAmostras || '—' },
-        {
-          Campo: 'Prazo de entrega da amostra (dias)',
-          Valor: licitacao.habilitacao.prazoEntregaAmostraDias ?? '—',
-        },
-        { Campo: 'Outros requisitos de habilitação', Valor: licitacao.habilitacao.outrosRequisitos || '—' },
+        ...linhasChecklist('Habilitação jurídica', licitacao.habilitacao.juridica),
+        ...linhasChecklist('Regularidade fiscal, social e trabalhista', licitacao.habilitacao.fiscalSocialTrabalhista),
+        ...linhasChecklist('Qualificação econômico-financeira', licitacao.habilitacao.economicoFinanceira),
+        ...linhasChecklist('Qualificação técnica', licitacao.habilitacao.tecnica),
+        ...linhasChecklist('Declarações', licitacao.declaracoes),
+        ...linhasChecklist('Outras exigências', licitacao.outrasExigencias),
 
         { Campo: 'Intervalo entre lances', Valor: licitacao.condicoesComerciais.intervaloLances || '—' },
         {

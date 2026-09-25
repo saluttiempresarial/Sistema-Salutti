@@ -4,9 +4,15 @@
 // Cliente ao clicar numa linha da tabela do Dashboard (substitui o antigo
 // modal de leitura — agora é uma página própria, com rota /cliente/licitacoes/:id).
 // Mesmo conteúdo que o Administrador vê no LicitacaoFormModal (Informações
-// Gerais, Habilitação, Condições Comerciais, Itens) em modo leitura — sem a
-// aba "Pontos de Atenção" (notas internas da Salutti) — mais os botões de
-// decisão (Quero Participar / Não vou participar) no rodapé.
+// Gerais, Habilitação, Declarações, Condições Comerciais, Outras Exigências,
+// Itens) em modo leitura — sem a aba "Ponto de Atenção" (notas internas da
+// Salutti) — mais os botões de decisão (Quero Participar / Não vou
+// participar) no rodapé.
+//
+// Habilitação/Declarações/Outras Exigências viraram um checklist em 25/09
+// (ver ItemChecklistExigencia em types/licitacao) — cada aba mostra só os
+// itens que o Analista já marcou (Exigido/Não exigido), com o detalhamento
+// ao lado. Ver ChecklistLeitura, abaixo.
 //
 // "Quero Participar" navega para /cliente/licitacoes/:id/proposta — página
 // própria com a tabela de Proposta Comercial (deixou de ser um modal por
@@ -38,6 +44,9 @@ import {
   FormaPagamento,
   FORMA_PAGAMENTO_LABEL,
   DECISAO_CLIENTE_LABEL,
+  ItemChecklistExigencia,
+  StatusExigencia,
+  STATUS_EXIGENCIA_LABEL,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda } from '@/utils/prazoUtils'
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
@@ -46,7 +55,9 @@ import { PorteEmpresa } from '@/types/cliente'
 const TABS = [
   { id: 'gerais', label: 'Informações Gerais' },
   { id: 'habilitacao', label: 'Habilitação' },
+  { id: 'declaracoes', label: 'Declarações' },
   { id: 'comerciais', label: 'Cond. Comerciais' },
+  { id: 'outras', label: 'Outras Exigências' },
   { id: 'itens', label: 'Itens' },
 ]
 
@@ -56,6 +67,44 @@ function Campo({ label, value }: { label: string; value?: string | null }) {
     <div>
       <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">{label}</p>
       <p className="mt-0.5 font-body text-sm text-ink">{value}</p>
+    </div>
+  )
+}
+
+// Versão somente-leitura de uma seção de checklist (Habilitação —
+// Jurídica/Fiscal/Econômico-Financeira/Técnica —, Declarações ou Outras
+// Exigências). Mostra só os itens que o Analista já marcou (Exigido/Não
+// exigido); um item ainda sem marcação não aparece — evita listar dezenas
+// de linhas "não definido" para o Cliente.
+function ChecklistLeitura({ titulo, itens }: { titulo?: string; itens: ItemChecklistExigencia[] }) {
+  const itensMarcados = itens.filter((item) => item.status != null)
+  return (
+    <div className="space-y-2">
+      {titulo && <p className="font-body text-sm font-semibold text-ink">{titulo}</p>}
+      {itensMarcados.length === 0 ? (
+        <p className="font-body text-sm italic text-ink-soft">Nenhuma exigência registrada ainda.</p>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-ink-soft/15">
+          {itensMarcados.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-ink-soft/10 px-3 py-2.5 last:border-b-0"
+            >
+              <p className="font-body text-sm text-ink">{item.label}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`whitespace-nowrap rounded-md px-2 py-0.5 font-body text-xs font-semibold ${
+                    item.status === 'exigido' ? 'bg-forest-mist text-forest-deep' : 'bg-paper-2 text-ink-soft'
+                  }`}
+                >
+                  {STATUS_EXIGENCIA_LABEL[item.status as StatusExigencia]}
+                </span>
+                {item.detalhamento && <span className="font-body text-xs text-ink-soft">{item.detalhamento}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -83,6 +132,24 @@ function ItemLeitura({ item }: { item: ItemLicitacao }) {
       )}
     </div>
   )
+}
+
+// Licitações cadastradas antes de 25/09 não têm os campos de checklist (ou
+// têm o formato antigo, de texto livre) — em vez de quebrar a tela, essas
+// abas simplesmente aparecem vazias ("Nenhuma exigência registrada ainda."),
+// mesma decisão aplicada no formulário do Analista (LicitacaoFormModal).
+function normalizarChecklist(valor: unknown): ItemChecklistExigencia[] {
+  return Array.isArray(valor) ? (valor as ItemChecklistExigencia[]) : []
+}
+
+function normalizarHabilitacaoLeitura(valor: unknown) {
+  const h = (valor ?? {}) as Record<string, unknown>
+  return {
+    juridica: normalizarChecklist(h.juridica),
+    fiscalSocialTrabalhista: normalizarChecklist(h.fiscalSocialTrabalhista),
+    economicoFinanceira: normalizarChecklist(h.economicoFinanceira),
+    tecnica: normalizarChecklist(h.tecnica),
+  }
 }
 
 export function LicitacaoDetalhePage() {
@@ -119,7 +186,16 @@ export function LicitacaoDetalhePage() {
     setCarregando(true)
     licitacaoService.buscarPorId(id).then((resultado) => {
       if (!ativo) return
-      setLicitacao(resultado)
+      setLicitacao(
+        resultado
+          ? {
+              ...resultado,
+              habilitacao: normalizarHabilitacaoLeitura(resultado.habilitacao),
+              declaracoes: normalizarChecklist(resultado.declaracoes),
+              outrasExigencias: normalizarChecklist(resultado.outrasExigencias),
+            }
+          : resultado
+      )
       setCarregando(false)
     })
     return () => {
@@ -236,24 +312,23 @@ export function LicitacaoDetalhePage() {
             )}
 
             {abaAtiva === 'habilitacao' && (
-              <div className="space-y-4">
-                <Campo label="Qualificação técnica" value={licitacao.habilitacao.qualificacaoTecnica} />
-                <Campo
-                  label="Qualificação econômico-financeira"
-                  value={licitacao.habilitacao.qualificacaoEconomicoFinanceira}
+              <div className="space-y-5">
+                <ChecklistLeitura titulo="Habilitação jurídica" itens={licitacao.habilitacao.juridica} />
+                <ChecklistLeitura
+                  titulo="Regularidade fiscal, social e trabalhista"
+                  itens={licitacao.habilitacao.fiscalSocialTrabalhista}
                 />
-                <Campo label="Regularidade fiscal e trabalhista" value={licitacao.habilitacao.regularidadeFiscal} />
-                <Campo label="Exigência de atestado" value={licitacao.habilitacao.exigeAtestado} />
-                <Campo label="Exigência de amostras" value={licitacao.habilitacao.exigeAmostras} />
-                <Campo label="Outros requisitos" value={licitacao.habilitacao.outrosRequisitos} />
-                {!licitacao.habilitacao.qualificacaoTecnica &&
-                  !licitacao.habilitacao.qualificacaoEconomicoFinanceira &&
-                  !licitacao.habilitacao.regularidadeFiscal &&
-                  !licitacao.habilitacao.exigeAtestado &&
-                  !licitacao.habilitacao.exigeAmostras &&
-                  !licitacao.habilitacao.outrosRequisitos && (
-                    <p className="font-body text-sm italic text-ink-soft">Nenhuma exigência registrada ainda.</p>
-                  )}
+                <ChecklistLeitura
+                  titulo="Qualificação econômico-financeira"
+                  itens={licitacao.habilitacao.economicoFinanceira}
+                />
+                <ChecklistLeitura titulo="Qualificação técnica" itens={licitacao.habilitacao.tecnica} />
+              </div>
+            )}
+
+            {abaAtiva === 'declaracoes' && (
+              <div className="space-y-5">
+                <ChecklistLeitura itens={licitacao.declaracoes} />
               </div>
             )}
 
@@ -310,6 +385,12 @@ export function LicitacaoDetalhePage() {
                 {licitacao.condicoesComerciais.possuiGarantias && (
                   <Campo label="Garantias" value={licitacao.condicoesComerciais.garantiasDetalhe || 'Sim'} />
                 )}
+              </div>
+            )}
+
+            {abaAtiva === 'outras' && (
+              <div className="space-y-5">
+                <ChecklistLeitura itens={licitacao.outrasExigencias} />
               </div>
             )}
 
