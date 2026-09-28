@@ -179,7 +179,23 @@ export function PropostaComercialPage() {
         ...linhasChecklist('Declarações', licitacao.declaracoes),
         ...linhasChecklist('Outras exigências', licitacao.outrasExigencias),
 
-        { Campo: 'Intervalo entre lances', Valor: licitacao.condicoesComerciais.intervaloLances || '—' },
+        {
+          Campo: 'Intervalo entre lances',
+          Valor:
+            licitacao.condicoesComerciais.tipoIntervaloLances === 'valor'
+              ? licitacao.condicoesComerciais.valorIntervaloLances != null
+                ? `R$ ${licitacao.condicoesComerciais.valorIntervaloLances}`
+                : '—'
+              : licitacao.condicoesComerciais.tipoIntervaloLances === 'percentual'
+              ? licitacao.condicoesComerciais.percentualIntervaloLances != null
+                ? `${licitacao.condicoesComerciais.percentualIntervaloLances}%`
+                : '—'
+              : '—',
+        },
+        {
+          Campo: 'Detalhamento do intervalo de lances',
+          Valor: licitacao.condicoesComerciais.intervaloLancesDetalhe || '—',
+        },
         {
           Campo: 'Forma de pagamento',
           Valor: FORMA_PAGAMENTO_LABEL[licitacao.condicoesComerciais.formaPagamento] ?? licitacao.condicoesComerciais.formaPagamento,

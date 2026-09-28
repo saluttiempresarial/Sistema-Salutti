@@ -7,20 +7,46 @@
 
 import { ItemLicitacao, Licitacao } from '@/types/licitacao';
 
-// Quantidade de dias de antecedência, antes da data da sessão, em que o
-// Cliente ainda pode editar a Proposta Comercial já enviada (decidido
-// com o Márcio). Depois desse prazo, a edição fica bloqueada.
-export const DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE = 3;
+// Quantidade de DIAS ÚTEIS de antecedência (pula sábado e domingo), antes
+// da data da sessão, em que o Cliente ainda pode editar a Proposta
+// Comercial já enviada — e o horário-limite dentro desse dia (decidido com
+// o Márcio, 28/09; antes eram 3 dias corridos, sem horário fixo). Depois
+// desse prazo, a edição fica bloqueada.
+export const DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE = 4;
+export const HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE = { hora: 18, minuto: 30 };
+
+/** Subtrai `dias` dias ÚTEIS de `data` (pula sábado e domingo — feriados
+ *  não entram nessa conta, só fins de semana). */
+function subtrairDiasUteis(data: Date, dias: number): Date {
+  const resultado = new Date(data);
+  let restantes = dias;
+  while (restantes > 0) {
+    resultado.setDate(resultado.getDate() - 1);
+    const diaSemana = resultado.getDay(); // 0 = domingo, 6 = sábado
+    if (diaSemana !== 0 && diaSemana !== 6) {
+      restantes--;
+    }
+  }
+  return resultado;
+}
+
+/** Data/hora-limite para o Cliente editar a Proposta Comercial: `dias`
+ *  dias úteis antes da sessão, sempre às 18h30 daquele dia útil. */
+function calcularLimiteEdicao(dataSessao: Date): Date {
+  const limite = subtrairDiasUteis(dataSessao, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE);
+  limite.setHours(HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE.hora, HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE.minuto, 0, 0);
+  return limite;
+}
 
 /**
  * true quando o Cliente ainda pode editar a Proposta Comercial que já
  * enviou — considera a data efetiva da sessão (se a licitação foi
- * remarcada) ou a data original, subtraindo os dias de antecedência.
+ * remarcada) ou a data original, subtraindo os dias úteis de antecedência
+ * e travando às 18h30 do dia-limite.
  */
 export function podeEditarPropostaCliente(licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>): boolean {
   const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
-  const limiteEdicao = new Date(dataSessao);
-  limiteEdicao.setDate(limiteEdicao.getDate() - DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE);
+  const limiteEdicao = calcularLimiteEdicao(dataSessao);
   return new Date() <= limiteEdicao;
 }
 
@@ -34,8 +60,7 @@ export function prazoPropostaClienteInfo(
   licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>
 ): { texto: string; urgencia: 'vencido' | 'atencao' | 'ok' } {
   const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
-  const limiteEdicao = new Date(dataSessao);
-  limiteEdicao.setDate(limiteEdicao.getDate() - DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE);
+  const limiteEdicao = calcularLimiteEdicao(dataSessao);
 
   const diffMs = limiteEdicao.getTime() - new Date().getTime();
   const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));

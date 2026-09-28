@@ -25,10 +25,10 @@ const SIZE_CLASSES: Record<NonNullable<ModalProps['size']>, string> = {
   md: 'max-w-md',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
-  // Praticamente a tela toda, com uma margem pequena (mesma folga aplicada
-  // pelo px-4/py-8 do overlay) — não é 100vw/100vh "cru" porque aí a
-  // sombra/cantos arredondados do modal encostariam nas bordas da janela.
-  full: 'max-w-[95vw] h-[92vh]',
+  // Tela toda, de ponta a ponta (ajustado 28/09, a pedido do Márcio:
+  // 99vw/97vh ainda deixava uma margem cinza visível ao redor). Sem
+  // cantos arredondados aqui, porque não sobra espaço pra eles aparecerem.
+  full: 'max-w-[100vw] h-[100vh]',
 }
 
 /** Overlay/modal genérico usado por ConfirmDialog e pelo formulário de clientes.
@@ -47,11 +47,15 @@ export function Modal({ open, onClose, title, subtitle, children, size = 'md', f
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/50 px-4 py-8"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-charcoal/50 ${
+        size === 'full' ? 'p-0' : 'px-4 py-8'
+      }`}
       onClick={onClose}
     >
       <div
-        className={`flex max-h-full w-full flex-col rounded-2xl bg-white shadow-card ${SIZE_CLASSES[size]}`}
+        className={`flex max-h-full w-full flex-col bg-white shadow-card ${
+          size === 'full' ? '' : 'rounded-2xl'
+        } ${SIZE_CLASSES[size]}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

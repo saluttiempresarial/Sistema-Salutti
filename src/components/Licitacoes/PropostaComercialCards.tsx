@@ -202,7 +202,11 @@ export function PropostaComercialCards({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [licitacao.atualizadoEm])
 
-  const taxaFreteNumero = campoParaNumero(taxaFrete, 2) ?? 0
+  // Frete não pode ser negativo (regra do Márcio, 28/09) — o campo já
+  // bloqueia digitar "-" no onChange abaixo, e este Math.max(0, ...) é
+  // uma segunda trava, caso o valor negativo chegue aqui por outro
+  // caminho (ex.: colar texto).
+  const taxaFreteNumero = Math.max(0, campoParaNumero(taxaFrete, 2) ?? 0)
   const taxaFretePreenchida = campoParaNumero(taxaFrete, 2) != null
 
   // Aplica o rascunho local (proposta +, se o Admin puder editar, a
@@ -230,44 +234,55 @@ export function PropostaComercialCards({
   const totalItens = itensAoVivo.length
   const preenchidos = itensAoVivo.filter((item) => item.propostaCliente?.precoMinimo != null).length
 
-  // TOTAL GERAL — a pedido do Márcio (24/09): antes somava o valor de
-  // referência de TODOS os itens participáveis, mesmo de grupos que o
-  // cliente nunca tocou — isso inflava o valor de referência do total (ex.:
-  // um grupo inteiro sem nenhum preço lançado ainda entrava na conta) e
-  // distorcia o % de diferença. Agora só entram no TOTAL GERAL os grupos
-  // (ou os itens individuais "sem grupo") em que o cliente já preencheu
-  // pelo menos 1 item — ex.: se ele só participa dos Grupos 1 e 4, o valor
-  // de referência do total é só desses dois grupos, não da licitação
-  // inteira. Um grupo com preenchimento parcial (17 de 18, por ex.) já
-  // conta como "escolhido" e entra inteiro, igual ao card do próprio grupo.
+  // ANÁLISE DA PARTICIPAÇÃO (antigo "Total geral da licitação") — a pedido
+  // do Márcio (25/09): Valor de referência E Valor da proposta começam os
+  // dois ZERADOS, e só passam a contar o grupo quando ele está 100%
+  // preenchido só para poder ENVIAR a proposta (isso continua em
+  // gruposComPreenchimentoParcial, sem mudança nenhuma). O VALOR mostrado
+  // aqui é outra coisa: soma item a item, em tempo real, assim que o
+  // cliente preenche cada item de um grupo em que decidiu participar —
+  // não espera o grupo fechar 100% (regra do Márcio, 28/09). O valor só
+  // some (volta a R$ 0) se o cliente apagar TODOS os itens do grupo, ou
+  // seja, desistir de participar dele — apagar 1 item de 18 não zera
+  // o total, só tira aquele item da conta.
   const resumoGeral = useMemo(() => {
     const idGrupoDoItem = (item: ItemLicitacao) => item.grupoId ?? '__sem_grupo__'
 
     const participaveisTodos = itensAoVivo.filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais'))
     const bloqueadosMeEpp = itensAoVivo.length - participaveisTodos.length
 
-    const gruposEscolhidos = new Set(
-      participaveisTodos.filter((item) => item.propostaCliente?.precoMinimo != null).map(idGrupoDoItem)
+    const itensPorGrupo = new Map<string, ItemLicitacao[]>()
+    participaveisTodos.forEach((item) => {
+      const id = idGrupoDoItem(item)
+      itensPorGrupo.set(id, [...(itensPorGrupo.get(id) ?? []), item])
+    })
+    // "Grupo iniciado" = tem pelo menos 1 item preenchido (o cliente
+    // decidiu participar dele). Não precisa estar 100% completo para
+    // entrar na conta do valor — só precisa ter começado.
+    const gruposIniciados = new Set(
+      Array.from(itensPorGrupo.entries())
+        .filter(([, itensDoGrupo]) => itensDoGrupo.some((item) => item.propostaCliente?.precoMinimo != null))
+        .map(([id]) => id)
     )
-    const gruposParticipaveisTodos = new Set(participaveisTodos.map(idGrupoDoItem))
-    const gruposAindaNaoEscolhidos = gruposParticipaveisTodos.size - gruposEscolhidos.size
+    const gruposAindaNaoEscolhidos = itensPorGrupo.size - gruposIniciados.size
 
-    const participaveis = participaveisTodos.filter((item) => gruposEscolhidos.has(idGrupoDoItem(item)))
+    // Referência: soma o valor CHEIO do grupo inteiro (todos os itens,
+    // preenchidos ou não) assim que o grupo é iniciado — mesma regra já
+    // usada no card de cada grupo (valorRefGrupo, abaixo). Proposta: soma
+    // só os itens que já têm preço, porque os demais ainda não têm valor
+    // ofertado (28/09, a pedido do Márcio — antes a referência só contava
+    // os itens já preenchidos, e isso ficava divergente do valor mostrado
+    // no card do próprio grupo).
+    const itensDosGruposIniciados = participaveisTodos.filter((item) => gruposIniciados.has(idGrupoDoItem(item)))
+    const itensPreenchidosNosGruposIniciados = itensDosGruposIniciados.filter(
+      (item) => item.propostaCliente?.precoMinimo != null
+    )
 
-    // Dentro dos grupos escolhidos, a referência conta só os itens já
-    // preenchidos — não o grupo inteiro. Um grupo com 17 de 18 preenchidos
-    // não pode somar a referência dos 18 (o item que falta ainda não tem
-    // preço pra comparar), senão o "Valor de referência" fica maior que a
-    // quantidade de itens preenchidos sugere, e a % de diferença falseia.
     let valorTotalReferencia = 0
     let valorTotalProposta = 0
-    let itensPreenchidos = 0
-    participaveis.forEach((item) => {
+    itensDosGruposIniciados.forEach((item) => {
+      valorTotalReferencia += totalReferenciaItem(item)
       const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
-      if (item.propostaCliente?.precoMinimo != null) {
-        valorTotalReferencia += totalReferenciaItem(item)
-        itensPreenchidos += 1
-      }
       if (analise.valorTotal != null) valorTotalProposta += analise.valorTotal
     })
     const percentualTotal = valorTotalReferencia > 0 ? (valorTotalProposta - valorTotalReferencia) / valorTotalReferencia : null
@@ -277,8 +292,8 @@ export function PropostaComercialCards({
       valorTotalProposta,
       percentualTotal,
       statusGeral,
-      itensPreenchidos,
-      totalParticipaveis: participaveis.length,
+      itensPreenchidos: itensPreenchidosNosGruposIniciados.length,
+      totalParticipaveis: itensDosGruposIniciados.length,
       bloqueadosMeEpp,
       gruposAindaNaoEscolhidos,
     }
@@ -406,7 +421,7 @@ export function PropostaComercialCards({
                 inputMode="decimal"
                 placeholder="0,00"
                 value={taxaFrete}
-                onChange={(e) => setTaxaFrete(e.target.value)}
+                onChange={(e) => setTaxaFrete(e.target.value.replace(/-/g, ''))}
                 className="w-24 rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
               />
               <span className="font-body text-[11px] text-ink-soft">aplicado a todos os itens da proposta</span>
@@ -418,28 +433,30 @@ export function PropostaComercialCards({
           )}
         </div>
 
-        {/* TOTAL GERAL — antes ficava num cartão separado, embaixo da lista
-            de grupos; movido para o cabeçalho para ficar visível sem
-            precisar rolar a tela. Só aparece quando pelo menos 1 item
-            participável já foi preenchido, igual à tabela antiga. */}
-        {resumoGeral.itensPreenchidos > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border-2 border-forest bg-forest-mist/20 p-4">
-            <div>
-              <div className="font-display text-sm font-bold text-forest-deep">ANÁLISE DA PARTICIPAÇÃO</div>
-            </div>
-            <div className="flex flex-wrap items-center gap-6">
-              <CampoResumo label="Valor de referência" valor={formatarMoeda(resumoGeral.valorTotalReferencia)} />
-              <CampoResumo label="Valor da proposta" valor={formatarMoeda(resumoGeral.valorTotalProposta)} />
-              <CampoResumo
-                label="Diferença"
-                valor={resumoGeral.percentualTotal != null ? `${(resumoGeral.percentualTotal * 100).toFixed(1)}%` : '—'}
-              />
+        {/* ANÁLISE DA PARTICIPAÇÃO — antes ficava num cartão separado,
+            embaixo da lista de grupos; movido para o cabeçalho para ficar
+            visível sem precisar rolar a tela. Ao contrário do card antigo,
+            agora sempre aparece (mesmo zerado) — Valor de referência e
+            Valor da proposta começam os dois em R$ 0,00 e só passam a
+            contar um grupo quando ele está 100% preenchido (25/09). */}
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border-2 border-forest bg-forest-mist/20 p-4">
+          <div>
+            <div className="font-display text-sm font-bold text-forest-deep">ANÁLISE DA PARTICIPAÇÃO</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-6">
+            <CampoResumo label="Valor de referência" valor={formatarMoeda(resumoGeral.valorTotalReferencia)} />
+            <CampoResumo label="Valor da proposta" valor={formatarMoeda(resumoGeral.valorTotalProposta)} />
+            <CampoResumo
+              label="Diferença"
+              valor={resumoGeral.percentualTotal != null ? `${(resumoGeral.percentualTotal * 100).toFixed(1)}%` : '—'}
+            />
+            {resumoGeral.itensPreenchidos > 0 && (
               <span className={`whitespace-nowrap rounded-full px-3 py-1.5 font-body text-xs font-semibold ${resumoGeral.statusGeral.classe}`}>
                 {resumoGeral.statusGeral.label}
               </span>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {ocultarNaoParticiparPorPadrao && (

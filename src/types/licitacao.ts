@@ -269,8 +269,19 @@ export function criarHabilitacaoVazia(): Habilitacao {
 // ---------------------------------------------------------------------------
 // Aba 3 — Condições Comerciais
 // ---------------------------------------------------------------------------
+// Intervalo de lances (25/09): deixou de ser um campo de texto livre único
+// — agora o Analista marca se o edital define o intervalo por Valor (R$)
+// ou por Percentual (%), preenche o número correspondente, e opcionalmente
+// anota o texto da regra por extenso em intervaloLancesDetalhe (ex.: "O
+// intervalo mínimo entre cada lance será o valor/percentual marcado em
+// campo próprio na plataforma BBMNET...").
+export type TipoIntervaloLances = 'valor' | 'percentual';
+
 export interface CondicoesComerciais {
-  intervaloLances: string;
+  tipoIntervaloLances?: TipoIntervaloLances;
+  valorIntervaloLances?: number; // em R$ — só quando tipoIntervaloLances === 'valor'
+  percentualIntervaloLances?: number; // em % — só quando tipoIntervaloLances === 'percentual'
+  intervaloLancesDetalhe?: string; // texto livre complementar, opcional
   formaPagamento: FormaPagamento;
   recebimentoBanco: string; // "Banco do Brasil" ou "Outros" — seletor fixo
   prazoPagamentoDias?: number;

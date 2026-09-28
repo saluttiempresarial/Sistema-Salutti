@@ -49,7 +49,7 @@ import {
   STATUS_EXIGENCIA_LABEL,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda } from '@/utils/prazoUtils'
-import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
+import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
 
 const TABS = [
@@ -341,7 +341,24 @@ export function LicitacaoDetalhePage() {
                 pagamento) ficam agrupados em linhas de 3 colunas. */}
             {abaAtiva === 'comerciais' && (
               <div className="space-y-4">
-                <Campo label="Intervalo de lances" value={licitacao.condicoesComerciais.intervaloLances} />
+                <Campo
+                  label="Intervalo de lances"
+                  value={
+                    licitacao.condicoesComerciais.tipoIntervaloLances === 'valor'
+                      ? licitacao.condicoesComerciais.valorIntervaloLances != null
+                        ? formatarMoeda(licitacao.condicoesComerciais.valorIntervaloLances)
+                        : undefined
+                      : licitacao.condicoesComerciais.tipoIntervaloLances === 'percentual'
+                      ? licitacao.condicoesComerciais.percentualIntervaloLances != null
+                        ? `${licitacao.condicoesComerciais.percentualIntervaloLances}%`
+                        : undefined
+                      : undefined
+                  }
+                />
+                <Campo
+                  label="Detalhamento do intervalo de lances"
+                  value={licitacao.condicoesComerciais.intervaloLancesDetalhe}
+                />
 
                 <div className="grid grid-cols-3 gap-4">
                   <Campo label="Local de entrega" value={licitacao.condicoesComerciais.localEntrega} />
@@ -465,8 +482,8 @@ export function LicitacaoDetalhePage() {
             ) : licitacao.decisaoCliente === 'pendente' ? (
               !podeEditarPropostaCliente(licitacao) ? (
                 <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
-                  🔒 O prazo para participar desta licitação já encerrou (até {DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE}{' '}
-                  dias antes da sessão).
+                  🔒 O prazo para participar desta licitação já encerrou (até {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE}{' '}
+                  dias úteis antes da sessão, às 18h30).
                 </p>
               ) : licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens) && porteCliente === 'demais' ? (
                 <div className="flex flex-wrap items-center gap-3">
@@ -502,8 +519,8 @@ export function LicitacaoDetalhePage() {
                     </Button>
                   ) : (
                     <p className="rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft">
-                      O prazo para editar a proposta já encerrou (até {DIAS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias
-                      antes da sessão da licitação).
+                      O prazo para editar a proposta já encerrou (até {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias
+                      úteis antes da sessão da licitação, às 18h30).
                     </p>
                   )
                 )}

@@ -3,6 +3,12 @@
 // Tela de Disputas (/admin/disputas). Lista o resultado de cada disputa já
 // registrada, com destaque visual para ganhos/perdas e link direto para a
 // ata no SIGA Pregão, quando informado.
+//
+// REESTRUTURADO em 28/09: o resultado deixou de ser um valor único pra
+// disputa inteira (Nossa oferta/Valor vencedor/Vencedor) e virou uma
+// tabela por item/grupo dentro do DisputaFormModal — essas colunas somem
+// daqui e entram "Itens com resultado" (quantos itens/grupos já têm
+// Posição/Valor Fechado preenchido) como resumo rápido na listagem.
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
@@ -13,12 +19,13 @@ import { disputaService } from '../../../services/disputaService';
 import { licitacaoService } from '../../../services/licitacaoService';
 import { Disputa, DisputaFormData, ResultadoDisputa, RESULTADO_DISPUTA_LABEL } from '../../../types/disputa';
 import { Licitacao } from '../../../types/licitacao';
-import { formatarMoeda, formatarDataHora } from '../../../utils/prazoUtils';
+import { formatarDataHora } from '../../../utils/prazoUtils';
 
 const RESULTADO_TONE: Record<ResultadoDisputa, StatusTone> = {
   em_andamento: 'neutral',
   ganho: 'success',
   perdido: 'danger',
+  homologado: 'success',
 };
 
 export function DisputasPage() {
@@ -148,9 +155,7 @@ export function DisputasPage() {
             <tr>
               <th className="px-4 py-3">Licitação</th>
               <th className="px-4 py-3">Sessão realizada</th>
-              <th className="px-4 py-3">Nossa oferta</th>
-              <th className="px-4 py-3">Valor vencedor</th>
-              <th className="px-4 py-3">Vencedor</th>
+              <th className="px-4 py-3">Itens com resultado</th>
               <th className="px-4 py-3">Resultado</th>
               <th className="px-4 py-3 text-right">Ações</th>
             </tr>
@@ -158,14 +163,14 @@ export function DisputasPage() {
           <tbody className="divide-y divide-charcoal-3/10">
             {carregando && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
+                <td colSpan={5} className="px-4 py-8 text-center text-ink-soft">
                   Carregando disputas...
                 </td>
               </tr>
             )}
             {!carregando && disputasFiltradas.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
+                <td colSpan={5} className="px-4 py-8 text-center text-ink-soft">
                   Nenhuma disputa registrada ainda.
                 </td>
               </tr>
@@ -183,12 +188,10 @@ export function DisputasPage() {
                       {disputa.dataSessaoRealizada ? formatarDataHora(disputa.dataSessaoRealizada) : '—'}
                     </td>
                     <td className="px-4 py-3 text-ink-soft">
-                      {disputa.valorNossaOfertaFinal ? formatarMoeda(disputa.valorNossaOfertaFinal) : '—'}
+                      {disputa.itens.length > 0
+                        ? `${disputa.itens.length} ${disputa.itens.length === 1 ? 'registrado' : 'registrados'}`
+                        : '—'}
                     </td>
-                    <td className="px-4 py-3 text-ink-soft">
-                      {disputa.valorVencedor ? formatarMoeda(disputa.valorVencedor) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-ink-soft">{disputa.nomeVencedor || '—'}</td>
                     <td className="px-4 py-3">
                       <StatusPill
                         label={RESULTADO_DISPUTA_LABEL[disputa.resultado]}
@@ -236,3 +239,4 @@ export function DisputasPage() {
     </div>
   );
 }
+ 

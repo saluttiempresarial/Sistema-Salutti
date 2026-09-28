@@ -8,6 +8,9 @@ import { ROLE_LABEL } from '@/types/auth'
  * Cabeçalho do sistema (app React separado do site institucional estático).
  * O botão "Entrar" leva para a tela de login; quando há sessão ativa,
  * mostra o nome/perfil do usuário e um botão de sair.
+ *
+ * Espaçamento vertical reduzido (py-4 → py-2.5) em 28/09, a pedido do
+ * Márcio: o cabeçalho estava ocupando espaço demais no topo das telas.
  */
 export function Header() {
   const { user, isAuthenticated, logout } = useAuth()
@@ -20,7 +23,7 @@ export function Header() {
 
   return (
     <header className="border-b border-ink-soft/10 bg-paper">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-2.5">
         <Link to={isAuthenticated && user ? `/${user.role}` : '/'}>
           <Logo />
         </Link>

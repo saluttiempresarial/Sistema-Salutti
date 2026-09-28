@@ -176,7 +176,6 @@ function criarFormularioVazio(): LicitacaoFormData {
     declaracoes: criarChecklistVazio(DECLARACOES_ITENS),
 
     condicoesComerciais: {
-      intervaloLances: '',
       formaPagamento: 'credito_conta',
       recebimentoBanco: '',
       possuiGarantias: false,
@@ -292,6 +291,16 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // os separadores extras, salvando um valor completamente errado (ex.:
   // 4,58) sem nenhum aviso. Ver numeroParaCampoDecimal/campoParaNumeroDecimal.
   const [valorTotalTexto, setValorTotalTexto] = useState('');
+  // Texto dos campos "Valor (R$)" / "Percentual (%)" do Intervalo de
+  // lances — mesmo motivo do valorTotalTexto acima (BR-mask em vez de
+  // <input type="number"> nativo). Só um dos dois é mostrado por vez,
+  // conforme tipoIntervaloLances.
+  const [valorIntervaloLancesTexto, setValorIntervaloLancesTexto] = useState('');
+  const [percentualIntervaloLancesTexto, setPercentualIntervaloLancesTexto] = useState('');
+  // Campos "clicar para escrever": só viram caixa de digitação quando o
+  // analista/admin clica no valor; ao sair do campo, voltam a ser texto.
+  const [editandoValorIntervaloLances, setEditandoValorIntervaloLances] = useState(false);
+  const [editandoPercentualIntervaloLances, setEditandoPercentualIntervaloLances] = useState(false);
   // Mensagem exibida quando o Analista tenta salvar sem marcar algum item
   // do checklist (Habilitação/Declarações/Outras Exigências) — ver
   // handleSalvar.
@@ -312,6 +321,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         outrasExigencias: normalizarChecklistCampo(licitacaoEmEdicao.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
       });
       setValorTotalTexto(numeroParaCampoDecimal(licitacaoEmEdicao.valorTotalLicitacao, 10));
+      setValorIntervaloLancesTexto(
+        numeroParaCampoDecimal(licitacaoEmEdicao.condicoesComerciais.valorIntervaloLances, 4)
+      );
+      setPercentualIntervaloLancesTexto(
+        numeroParaCampoDecimal(licitacaoEmEdicao.condicoesComerciais.percentualIntervaloLances, 4)
+      );
       setRascunhoRestaurado(false);
       return;
     }
@@ -326,10 +341,16 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         outrasExigencias: normalizarChecklistCampo(rascunho.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
       });
       setValorTotalTexto(numeroParaCampoDecimal(rascunho.valorTotalLicitacao, 10));
+      setValorIntervaloLancesTexto(numeroParaCampoDecimal(rascunho.condicoesComerciais.valorIntervaloLances, 4));
+      setPercentualIntervaloLancesTexto(
+        numeroParaCampoDecimal(rascunho.condicoesComerciais.percentualIntervaloLances, 4)
+      );
       setRascunhoRestaurado(true);
     } else {
       setForm(criarFormularioVazio());
       setValorTotalTexto('');
+      setValorIntervaloLancesTexto('');
+      setPercentualIntervaloLancesTexto('');
       setRascunhoRestaurado(false);
     }
   }, [isOpen, licitacaoEmEdicao]);
@@ -898,13 +919,106 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         {/* Aba 4 — Condições Comerciais */}
         {abaAtiva === 'comerciais' && (
           <div className="space-y-5">
+            <div className="rounded-xl border border-ink-soft/15 p-4">
+              <p className="mb-3 font-mono text-xs uppercase tracking-wide text-ink-soft">Intervalo de lances</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => atualizarCondicoes('tipoIntervaloLances', 'valor')}
+                    className={`rounded-md border px-3 py-2 font-body text-xs font-semibold transition-colors ${
+                      form.condicoesComerciais.tipoIntervaloLances === 'valor'
+                        ? 'border-forest bg-forest text-white'
+                        : 'border-ink-soft/25 text-ink-soft hover:border-forest/50'
+                    }`}
+                  >
+                    Valor (R$)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => atualizarCondicoes('tipoIntervaloLances', 'percentual')}
+                    className={`rounded-md border px-3 py-2 font-body text-xs font-semibold transition-colors ${
+                      form.condicoesComerciais.tipoIntervaloLances === 'percentual'
+                        ? 'border-forest bg-forest text-white'
+                        : 'border-ink-soft/25 text-ink-soft hover:border-forest/50'
+                    }`}
+                  >
+                    Percentual (%)
+                  </button>
+                </div>
+
+                {form.condicoesComerciais.tipoIntervaloLances === 'valor' && (
+                  <div className="w-40">
+                    {editandoValorIntervaloLances ? (
+                      <TextField
+                        label="Valor (R$)"
+                        type="text"
+                        autoFocus
+                        value={valorIntervaloLancesTexto}
+                        onChange={(e) => {
+                          setValorIntervaloLancesTexto(e.target.value);
+                          atualizarCondicoes('valorIntervaloLances', campoParaNumeroDecimal(e.target.value, 4));
+                        }}
+                        onBlur={() => setEditandoValorIntervaloLances(false)}
+                        placeholder="Ex.: 500,00"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditandoValorIntervaloLances(true)}
+                        className="w-full rounded-md border border-transparent px-1 py-2 text-left font-body text-sm text-ink hover:border-ink-soft/25"
+                      >
+                        <span className="block font-body text-xs font-semibold text-ink-soft">Valor (R$)</span>
+                        {valorIntervaloLancesTexto || <span className="text-ink-soft">clique para preencher</span>}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {form.condicoesComerciais.tipoIntervaloLances === 'percentual' && (
+                  <div className="w-40">
+                    {editandoPercentualIntervaloLances ? (
+                      <TextField
+                        label="Percentual (%)"
+                        type="text"
+                        autoFocus
+                        value={percentualIntervaloLancesTexto}
+                        onChange={(e) => {
+                          setPercentualIntervaloLancesTexto(e.target.value);
+                          atualizarCondicoes('percentualIntervaloLances', campoParaNumeroDecimal(e.target.value, 4));
+                        }}
+                        onBlur={() => setEditandoPercentualIntervaloLances(false)}
+                        placeholder="Ex.: 5,5"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditandoPercentualIntervaloLances(true)}
+                        className="w-full rounded-md border border-transparent px-1 py-2 text-left font-body text-sm text-ink hover:border-ink-soft/25"
+                      >
+                        <span className="block font-body text-xs font-semibold text-ink-soft">Percentual (%)</span>
+                        {percentualIntervaloLancesTexto || <span className="text-ink-soft">clique para preencher</span>}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3">
+                <label className="mb-1 block font-body text-xs font-semibold text-ink-soft">
+                  Detalhamento (opcional)
+                </label>
+                <textarea
+                  value={form.condicoesComerciais.intervaloLancesDetalhe ?? ''}
+                  onChange={(e) => atualizarCondicoes('intervaloLancesDetalhe', e.target.value)}
+                  rows={1}
+                  className="w-full resize-y rounded-md border border-ink-soft/25 px-3 py-1.5 font-body text-sm text-ink focus:border-forest focus:outline-none"
+                  style={{ minHeight: '2.25rem', height: '2.25rem' }}
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
-              <TextField
-                label="Intervalo de lances"
-                value={form.condicoesComerciais.intervaloLances}
-                onChange={(e) => atualizarCondicoes('intervaloLances', e.target.value)}
-                placeholder="Ex: R$ 500,00 entre lances"
-              />
               <SelectField
                 label="Forma de pagamento"
                 value={form.condicoesComerciais.formaPagamento}
@@ -1159,7 +1273,6 @@ function ChecklistSection({
               <input
                 value={item.detalhamento}
                 onChange={(e) => onChangeDetalhamento(item.id, e.target.value)}
-                placeholder="Ex.: Estadual, prazo, órgão emissor..."
                 className="w-full rounded-md border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink focus:border-forest focus:outline-none"
               />
             </div>

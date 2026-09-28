@@ -558,6 +558,19 @@ export const licitacaoService = {
     })
   },
 
+  // Chamado pelo Portal do Cliente — botão "Desistir da licitação" na tela
+  // de Proposta Comercial. Apaga tudo que o Cliente preencheu (proposta por
+  // item) e volta a decisão para "pendente", como se ele nunca tivesse
+  // clicado em "Quero Participar". Ação irreversível — a confirmação
+  // ("Tem certeza?") acontece na tela, antes de chamar isto aqui.
+  async desistirLicitacao(id: string, nomeCliente: string): Promise<void> {
+    const { error } = await supabase.rpc('desistir_licitacao_cliente', {
+      p_licitacao_id: id,
+      p_usuario: nomeCliente,
+    })
+    if (error) throw new Error(error.message)
+  },
+
   // Chamado pela página de Proposta Comercial (Admin) quando o Admin edita
   // os campos de referência (Descrição, Unidade, Quantidade, Valor Unit.
   // Referência) diretamente ali, sem passar pela aba "Itens" do formulário

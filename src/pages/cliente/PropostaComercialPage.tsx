@@ -28,10 +28,16 @@
 //   2. Prazo de edição (podeEditarPropostaCliente) — sem isso, um Cliente
 //      que já estivesse com esta tela aberta continuava conseguindo salvar
 //      mesmo depois do prazo de 3 dias antes da sessão vencer.
+//
+// "Desistir da licitação" (25/09): apaga toda a proposta preenchida até
+// aqui e volta a decisão do cliente para "pendente" — como se o Cliente
+// nunca tivesse clicado em "Quero Participar". Ação irreversível, por isso
+// pede confirmação antes (ver desistirLicitacao em licitacaoService).
 
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { DashboardShell } from '@/components/DashboardShell'
+import { Button } from '@/components/Button'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
@@ -53,6 +59,12 @@ export function PropostaComercialPage() {
   const [salvando, setSalvando] = useState(false)
   const [porteCliente, setPorteCliente] = useState<PorteEmpresa | null>(null)
   const [erroPrazo, setErroPrazo] = useState<string | null>(null)
+  // mostrarConfirmacaoDesistencia: exibe o aviso "Tem certeza?" antes de
+  // executar. desistindo: true enquanto a chamada ao banco está em curso
+  // (desabilita os botões pra evitar clique duplo).
+  const [mostrarConfirmacaoDesistencia, setMostrarConfirmacaoDesistencia] = useState(false)
+  const [desistindo, setDesistindo] = useState(false)
+  const [erroDesistencia, setErroDesistencia] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -106,17 +118,62 @@ export function PropostaComercialPage() {
     }
   }
 
+  async function handleDesistir() {
+    if (!user || !id) return
+    setDesistindo(true)
+    try {
+      await licitacaoService.desistirLicitacao(id, user.name)
+      navigate('/cliente')
+    } catch {
+      setErroDesistencia('Não foi possível registrar a desistência. Tente novamente.')
+      setDesistindo(false)
+    }
+  }
+
   return (
     <DashboardShell
       title={licitacao ? `Sua proposta — ${licitacao.numeroPregao}` : 'Sua proposta'}
       subtitle={licitacao?.objeto}
     >
-      <Link
-        to={id ? `/cliente/licitacoes/${id}` : '/cliente'}
-        className="mb-4 inline-flex items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
-      >
-        ← Voltar
-      </Link>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Link
+          to={id ? `/cliente/licitacoes/${id}` : '/cliente'}
+          className="inline-flex items-center gap-1.5 font-body text-sm font-semibold text-forest hover:underline"
+        >
+          ← Voltar
+        </Link>
+        {licitacao && !mostrarConfirmacaoDesistencia && (
+          <button
+            type="button"
+            onClick={() => setMostrarConfirmacaoDesistencia(true)}
+            className="font-body text-xs font-semibold text-red-600 hover:underline"
+          >
+            Desistir da licitação
+          </button>
+        )}
+      </div>
+
+      {mostrarConfirmacaoDesistencia && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5">
+          <p className="font-body text-xs text-red-700">
+            Tem certeza? Isso vai apagar toda a proposta preenchida para esta licitação e não pode ser desfeito.
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="ghost" onClick={() => setMostrarConfirmacaoDesistencia(false)} disabled={desistindo}>
+              Cancelar
+            </Button>
+            <Button onClick={handleDesistir} disabled={desistindo}>
+              {desistindo ? 'Apagando...' : 'Sim, desistir'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {erroDesistencia && (
+        <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
+          {erroDesistencia}
+        </p>
+      )}
 
       {carregando || !licitacao ? (
         <div className="mt-6 flex min-h-[240px] items-center justify-center">

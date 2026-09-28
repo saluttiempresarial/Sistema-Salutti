@@ -3,7 +3,8 @@
 // Regra de negócio do Capítulo 6 do PRD: prazo interno = N dias úteis
 // antes da licitação, a uma hora fixa. N e a hora são configuráveis pelo
 // Administrador (ver Configurações do sistema / configuracaoService.ts) —
-// o padrão de fábrica é 3 dias úteis, 18h. Centralizado aqui para não
+// o padrão de fábrica é 4 dias úteis, 18h30 (ajustado 28/09, a pedido do
+// Márcio — antes eram 3 dias úteis, 18h). Centralizado aqui para não
 // duplicar a lógica em cada tela que precisar exibir ou validar o prazo.
 //
 // CACHE EM MEMÓRIA: com a regra vindo do Supabase (configuracaoService),
@@ -14,13 +15,19 @@
 // módulo. Chame carregarRegraPrazoCache() uma vez no carregamento do app
 // (ex.: em App.tsx, dentro de um useEffect no componente raiz) para
 // popular o cache com o valor real assim que possível. Antes disso (ou se
-// a busca falhar), os cálculos usam o padrão de fábrica (3 dias úteis,
-// 18h) como fallback — nunca ficam sem funcionar.
+// a busca falhar), os cálculos usam o padrão de fábrica (4 dias úteis,
+// 18h30) como fallback — nunca ficam sem funcionar.
+//
+// IMPORTANTE: se já existir uma regra salva no Supabase (tabela de
+// configurações, editada pela tela de Configurações), ela tem prioridade
+// sobre o padrão de fábrica abaixo — mudar só o REGRA_PADRAO aqui não
+// muda o valor em produção se já houver uma regra customizada salva no
+// banco. Nesse caso, atualize também pela tela de Configurações.
 
 import { configuracaoService } from '../services/configuracaoService';
 import type { RegraPrazoInterno } from '../types/configuracoes';
 
-const REGRA_PADRAO: RegraPrazoInterno = { diasUteisAntes: 3, horario: '18:00' };
+const REGRA_PADRAO: RegraPrazoInterno = { diasUteisAntes: 4, horario: '18:30' };
 
 let regraCache: RegraPrazoInterno = REGRA_PADRAO;
 
@@ -58,8 +65,8 @@ export function subtrairDiasUteis(data: Date, dias: number): Date {
 
 /**
  * Calcula o prazo interno da Salutti para uma licitação: N dias úteis antes
- * da data/hora da sessão, fixado na hora configurada (padrão: 3 dias úteis
- * antes, 18h — ajustável em Configurações). Usa o cache em memória — ver
+ * da data/hora da sessão, fixado na hora configurada (padrão: 4 dias úteis
+ * antes, 18h30 — ajustável em Configurações). Usa o cache em memória — ver
  * nota no topo do arquivo.
  */
 export function calcularPrazoInterno(dataAberturaSessaoISO: string): Date {
