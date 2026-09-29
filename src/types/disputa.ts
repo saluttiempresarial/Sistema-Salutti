@@ -19,6 +19,13 @@
 // Em ambos os casos, % Acima do Mínimo = (Valor Fechado ÷ Preço Mínimo já
 // com frete) − 1 — mesma fórmula da planilha (coluna Z/T), só que aplicada
 // ao total no caso do grupo.
+//
+// AJUSTADO em 29/09, a pedido do Márcio: Posição, Valor Fechado e Total são
+// os três preenchidos manualmente por admin/analista (Total deixou de ser
+// calculado automaticamente como Valor Fechado × quantidade — na prática o
+// valor total mostrado no portal pode diferir um pouco da multiplicação
+// simples, por arredondamento). Só o % Acima do Mínimo continua automático,
+// calculado a partir do Valor Fechado, como já era.
 
 export type ResultadoDisputa = 'em_andamento' | 'ganho' | 'perdido' | 'homologado';
 
@@ -39,6 +46,7 @@ export interface DisputaResultadoLinha {
   grupoId?: string;
   posicao?: number; // classificação obtida na disputa (ex.: 1, 2, 22...)
   valorFechado?: number; // unitário (item avulso) ou total (grupo)
+  totalFechado?: number; // preenchido manualmente — não é mais Valor Fechado × quantidade
 }
 
 export type DisputaResultadoLinhaFormData = Omit<DisputaResultadoLinha, 'id' | 'disputaId'>;

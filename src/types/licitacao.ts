@@ -399,6 +399,13 @@ export interface Licitacao {
   cobrarFrete: boolean;
   percentualFrete?: number; // só relevante quando cobrarFrete = true
   statusProposta: StatusProposta;
+  // Liberação manual do prazo de edição do Cliente (29/09, a pedido do
+  // Márcio) — só o Admin pode ligar/desligar (ver
+  // liberar_prazo_proposta_cliente, migração 023). Quando true, o Cliente
+  // pode editar a Proposta Comercial mesmo depois do prazo automático (4
+  // dias úteis antes da sessão, 18h30) ter vencido — sem novo prazo fixo,
+  // até o Admin travar de novo.
+  prazoPropostaLiberado: boolean;
 
   observacoes: string;
   historico: HistoricoAcao[];

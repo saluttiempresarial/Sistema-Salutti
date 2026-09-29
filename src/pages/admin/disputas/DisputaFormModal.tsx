@@ -32,7 +32,6 @@ import {
 import { Licitacao, ItemLicitacao } from '../../../types/licitacao';
 import { licitacaoService } from '../../../services/licitacaoService';
 import { calcularAnaliseItem } from '../../../utils/licitacaoCalculos';
-import { formatarMoeda } from '../../../utils/prazoUtils';
 
 // Mesmo padrão de formatação BR (vírgula decimal) já usado no resto do
 // sistema — substitui o <input type="number"> nativo, que corrompe
@@ -109,7 +108,13 @@ function construirLinhas(licitacao: Licitacao): LinhaResultado[] {
 interface ValoresLinha {
   posicaoTexto: string;
   valorFechadoTexto: string;
+  totalTexto: string;
 }
+
+// Especificação de item cheia demais pra mostrar de cara na tabela (ver
+// nota sobre "ver mais/ver menos" mais abaixo). Limite aproximado — não
+// mede linhas renderizadas de fato, só o tamanho do texto.
+const LIMITE_DESCRICAO_CURTA = 150;
 
 function criarFormularioVazio(licitacaoId: string): DisputaFormData {
   return {
@@ -145,6 +150,10 @@ export function DisputaFormModal({
   const [licitacao, setLicitacao] = useState<Licitacao | null>(null);
   const [valoresPorLinha, setValoresPorLinha] = useState<Record<string, ValoresLinha>>({});
   const [gruposExpandidos, setGruposExpandidos] = useState<Set<string>>(new Set());
+  // Especificações longas (linha.rotulo do item avulso ou item.descricao
+  // dentro de um grupo) começam truncadas em 2 linhas — cada uma pode ser
+  // expandida individualmente com "ver mais". Chave = itemId.
+  const [descricoesExpandidas, setDescricoesExpandidas] = useState<Set<string>>(new Set());
 
   // Busca a licitação completa (com itens/grupos) assim que o modal abre —
   // a lista de DisputasPage não traz os itens, só buscarPorId traz.
@@ -171,11 +180,12 @@ export function DisputaFormModal({
           resultado: disputaEmEdicao.resultado,
           observacoes: disputaEmEdicao.observacoes,
           linkAtaSigaPregao: disputaEmEdicao.linkAtaSigaPregao,
-          itens: disputaEmEdicao.itens.map(({ itemId, grupoId, posicao, valorFechado }) => ({
+          itens: disputaEmEdicao.itens.map(({ itemId, grupoId, posicao, valorFechado, totalFechado }) => ({
             itemId,
             grupoId,
             posicao,
             valorFechado,
+            totalFechado,
           })),
         }
       : criarFormularioVazio(licitacaoId);
@@ -188,6 +198,7 @@ export function DisputaFormModal({
       valores[chave] = {
         posicaoTexto: linha.posicao != null ? String(linha.posicao) : '',
         valorFechadoTexto: numeroParaCampoDecimal(linha.valorFechado, 2),
+        totalTexto: numeroParaCampoDecimal(linha.totalFechado, 2),
       };
     });
     setValoresPorLinha(valores);
@@ -202,7 +213,10 @@ export function DisputaFormModal({
   function atualizarValorLinha(chave: string, campo: keyof ValoresLinha, valor: string) {
     setValoresPorLinha((atual) => ({
       ...atual,
-      [chave]: { ...(atual[chave] ?? { posicaoTexto: '', valorFechadoTexto: '' }), [campo]: valor },
+      [chave]: {
+        ...(atual[chave] ?? { posicaoTexto: '', valorFechadoTexto: '', totalTexto: '' }),
+        [campo]: valor,
+      },
     }));
   }
 
@@ -215,23 +229,34 @@ export function DisputaFormModal({
     });
   }
 
+  function alternarDescricaoExpandida(itemId: string) {
+    setDescricoesExpandidas((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(itemId)) novo.delete(itemId);
+      else novo.add(itemId);
+      return novo;
+    });
+  }
+
   async function handleSalvar() {
     const itens: DisputaResultadoLinhaFormData[] = linhasResultado
       .map((linha) => {
         const valores = valoresPorLinha[linha.chave];
         const posicao = valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
         const valorFechado = valores ? campoParaNumeroDecimal(valores.valorFechadoTexto, 2) : undefined;
+        const totalFechado = valores ? campoParaNumeroDecimal(valores.totalTexto, 2) : undefined;
         return {
           itemId: linha.itemId,
           grupoId: linha.grupoId,
           posicao,
           valorFechado,
+          totalFechado,
         };
       })
       // Só grava linha que tenha algo preenchido — não polui o banco com
       // linhas vazias pra item/grupo que o analista ainda não chegou a
       // registrar.
-      .filter((linha) => linha.posicao != null || linha.valorFechado != null);
+      .filter((linha) => linha.posicao != null || linha.valorFechado != null || linha.totalFechado != null);
 
     setSalvando(true);
     try {
@@ -301,7 +326,10 @@ export function DisputaFormModal({
           </div>
         </div>
 
-        {/* Tabela de resultado — por item avulso ou por grupo inteiro. */}
+        {/* Resultado por item/grupo — 1 card por item avulso ou grupo
+            inteiro. Posição, Valor Fechado e Total são preenchidos por
+            admin/analista; só % Acima do Mínimo é calculado
+            automaticamente (ver nota no topo de types/disputa.ts). */}
         <div>
           <h3 className="mb-2 font-display text-sm font-semibold text-ink">Resultado por item/grupo</h3>
           {carregandoLicitacao && <p className="font-body text-xs text-ink-soft">Carregando itens da licitação...</p>}
@@ -309,127 +337,193 @@ export function DisputaFormModal({
             <p className="font-body text-xs text-ink-soft">Esta licitação ainda não tem itens cadastrados.</p>
           )}
           {!carregandoLicitacao && linhasResultado.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-ink-soft/15">
-              <table className="w-full font-body text-xs">
-                <thead className="bg-paper-2 text-left uppercase tracking-wide text-ink-soft">
-                  <tr>
-                    <th className="px-3 py-2">Item / Grupo</th>
-                    <th className="px-3 py-2">Valor mínimo (c/ frete)</th>
-                    <th className="px-3 py-2 w-24">Posição</th>
-                    <th className="px-3 py-2 w-32">Valor fechado</th>
-                    <th className="px-3 py-2 w-32">Total</th>
-                    <th className="px-3 py-2 w-28">% acima do mínimo</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-ink-soft/10">
-                  {linhasResultado.map((linha) => {
-                    const valores = valoresPorLinha[linha.chave] ?? { posicaoTexto: '', valorFechadoTexto: '' };
-                    const valorFechadoNumero = campoParaNumeroDecimal(valores.valorFechadoTexto, 2);
-                    const totalLinha = linha.itemId
-                      ? (valorFechadoNumero ?? 0) * (linha.itensDetalhe[0]?.quantidade ?? 0)
-                      : valorFechadoNumero;
-                    const percentual =
-                      valorFechadoNumero != null && linha.precoMinimoComFreteBase > 0
-                        ? valorFechadoNumero / linha.precoMinimoComFreteBase - 1
-                        : null;
-                    const expandido = gruposExpandidos.has(linha.chave);
+            <div className="space-y-3">
+              {linhasResultado.map((linha) => {
+                const valores = valoresPorLinha[linha.chave] ?? {
+                  posicaoTexto: '',
+                  valorFechadoTexto: '',
+                  totalTexto: '',
+                };
+                const valorFechadoNumero = campoParaNumeroDecimal(valores.valorFechadoTexto, 2);
+                const percentual =
+                  valorFechadoNumero != null && linha.precoMinimoComFreteBase > 0
+                    ? valorFechadoNumero / linha.precoMinimoComFreteBase - 1
+                    : null;
+                const expandido = gruposExpandidos.has(linha.chave);
+                const descricaoExpandida = descricoesExpandidas.has(linha.chave);
 
-                    return (
-                      <>
-                        <tr key={linha.chave} className="align-top hover:bg-paper-2/50">
-                          <td className="px-3 py-2">
-                            {linha.grupoId ? (
+                return (
+                  <div
+                    key={linha.chave}
+                    className="rounded-2xl border border-ink-soft/15 bg-white p-5 font-body shadow-soft"
+                  >
+                    <div className="flex items-stretch gap-6">
+                      {/* Item / grupo */}
+                      <div className="w-[340px] shrink-0">
+                        {linha.grupoId ? (
+                          <button
+                            type="button"
+                            onClick={() => alternarGrupoExpandido(linha.chave)}
+                            className="flex items-center gap-1.5 text-left font-display text-sm font-semibold text-ink"
+                          >
+                            <span className="text-ink-soft">{expandido ? '▾' : '▸'}</span>
+                            {linha.rotulo}
+                            <span className="font-body text-xs font-normal text-ink-soft">
+                              ({linha.itensDetalhe.length} itens)
+                            </span>
+                          </button>
+                        ) : (
+                          <>
+                            <p className={`text-sm font-semibold text-ink ${descricaoExpandida ? '' : 'line-clamp-2'}`}>
+                              {linha.rotulo}
+                            </p>
+                            {linha.rotulo.length > LIMITE_DESCRICAO_CURTA && (
                               <button
                                 type="button"
-                                onClick={() => alternarGrupoExpandido(linha.chave)}
-                                className="flex items-center gap-1.5 font-semibold text-ink"
+                                onClick={() => alternarDescricaoExpandida(linha.chave)}
+                                className="mt-0.5 text-xs font-semibold text-forest-deep hover:underline"
                               >
-                                <span className="text-ink-soft">{expandido ? '▾' : '▸'}</span>
-                                {linha.rotulo}
-                                <span className="font-normal text-ink-soft">({linha.itensDetalhe.length} itens)</span>
+                                {descricaoExpandida ? 'ver menos' : 'ver mais'}
                               </button>
-                            ) : (
-                              <div>
-                                <p className="font-semibold text-ink">{linha.rotulo}</p>
-                                <p className="text-ink-soft">
-                                  {linha.itensDetalhe[0]?.propostaCliente?.marca || '—'} ·{' '}
-                                  {linha.itensDetalhe[0]?.propostaCliente?.modelo || '—'} ·{' '}
-                                  Qtd. {linha.itensDetalhe[0]?.quantidade}
-                                </p>
-                              </div>
                             )}
-                          </td>
-                          <td className="px-3 py-2 text-ink-soft">
-                            {linha.precoMinimoComFreteBase > 0 ? formatarMoeda(linha.precoMinimoComFreteBase) : '—'}
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min={1}
-                              value={valores.posicaoTexto}
-                              onChange={(e) => atualizarValorLinha(linha.chave, 'posicaoTexto', e.target.value)}
-                              placeholder="Ex: 1"
-                              className="w-20 rounded-md border border-ink-soft/25 px-2 py-1.5 text-xs focus:border-forest focus:outline-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
+                            <p className="mt-1 text-xs text-ink-soft">
+                              {linha.itensDetalhe[0]?.propostaCliente?.marca || '—'} ·{' '}
+                              {linha.itensDetalhe[0]?.propostaCliente?.modelo || '—'} ·{' '}
+                              Qtd. {linha.itensDetalhe[0]?.quantidade}
+                            </p>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="w-px shrink-0 self-stretch bg-ink-soft/10" />
+
+                      {/* Posição / Mínimo / Valor Fechado / Total / % */}
+                      <div className="flex flex-1 flex-wrap items-center gap-5">
+                        <label className="flex flex-col items-center gap-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                            Posição
+                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={valores.posicaoTexto}
+                            onChange={(e) => atualizarValorLinha(linha.chave, 'posicaoTexto', e.target.value)}
+                            placeholder="—"
+                            className="w-14 rounded-lg border border-ink-soft/20 px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
+                          />
+                        </label>
+
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                            Mínimo (c/ frete)
+                          </span>
+                          <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 px-2.5 py-1.5">
+                            {linha.precoMinimoComFreteBase > 0 ? (
+                              <>
+                                <span className="text-xs text-ink-soft">R$</span>
+                                <span className="text-sm font-semibold text-ink">
+                                  {linha.precoMinimoComFreteBase.toLocaleString('pt-BR', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-sm text-ink-soft">—</span>
+                            )}
+                          </span>
+                        </div>
+
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                            Valor fechado
+                          </span>
+                          <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 px-2.5 py-1.5 focus-within:border-forest">
+                            <span className="text-xs text-ink-soft">R$</span>
                             <input
                               type="text"
                               inputMode="decimal"
                               value={valores.valorFechadoTexto}
                               onChange={(e) => atualizarValorLinha(linha.chave, 'valorFechadoTexto', e.target.value)}
-                              placeholder="Ex.: 1,90"
-                              className="w-28 rounded-md border border-ink-soft/25 px-2 py-1.5 text-xs focus:border-forest focus:outline-none"
+                              placeholder="0,00"
+                              className="w-16 text-sm font-semibold text-ink focus:outline-none"
                             />
-                          </td>
-                          <td className="px-3 py-2 text-ink-soft">
-                            {totalLinha != null ? formatarMoeda(totalLinha) : '—'}
-                          </td>
-                          <td className="px-3 py-2">
-                            {percentual != null ? (
-                              <span className={percentual <= 0 ? 'font-semibold text-forest' : 'font-semibold text-red-600'}>
-                                {(percentual * 100).toFixed(1)}%
+                          </span>
+                        </label>
+
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                            Total
+                          </span>
+                          <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 px-2.5 py-1.5 focus-within:border-forest">
+                            <span className="text-xs text-ink-soft">R$</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={valores.totalTexto}
+                              onChange={(e) => atualizarValorLinha(linha.chave, 'totalTexto', e.target.value)}
+                              placeholder="0,00"
+                              className="w-20 text-sm font-semibold text-ink focus:outline-none"
+                            />
+                          </span>
+                        </label>
+
+                        <div className="ml-auto flex flex-col gap-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                            % acima do mínimo
+                          </span>
+                          <span
+                            className={`rounded-lg border px-2.5 py-1.5 text-sm font-bold ${
+                              percentual == null
+                                ? 'border-ink-soft/20 text-ink-soft'
+                                : percentual <= 0
+                                  ? 'border-forest-mist bg-forest-mist text-forest-deep'
+                                  : 'border-red-100 bg-red-50 text-red-700'
+                            }`}
+                          >
+                            {percentual != null ? `${(percentual * 100).toFixed(1)}%` : '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Itens dentro do grupo, quando expandido — só descrição,
+                        sem campos de resultado próprios (o resultado é do
+                        grupo inteiro). */}
+                    {linha.grupoId && expandido && (
+                      <div className="ml-6 mt-3 space-y-1.5 rounded-lg bg-paper-2/60 p-3">
+                        {linha.itensDetalhe.map((item) => {
+                          const rotuloItem = `${item.numero} — ${item.descricao}`;
+                          const itemExpandido = descricoesExpandidas.has(item.id);
+                          return (
+                            <div key={item.id} className="flex items-start justify-between gap-3 text-xs">
+                              <div className="flex-1">
+                                <p className={itemExpandido ? 'text-ink' : 'line-clamp-2 text-ink'}>{rotuloItem}</p>
+                                {rotuloItem.length > LIMITE_DESCRICAO_CURTA && (
+                                  <button
+                                    type="button"
+                                    onClick={() => alternarDescricaoExpandida(item.id)}
+                                    className="font-semibold text-forest-deep hover:underline"
+                                  >
+                                    {itemExpandido ? 'ver menos' : 'ver mais'}
+                                  </button>
+                                )}
+                              </div>
+                              <span className="shrink-0 whitespace-nowrap text-ink-soft">
+                                {item.propostaCliente?.marca || '—'} · {item.propostaCliente?.modelo || '—'} · Qtd.{' '}
+                                {item.quantidade}
                               </span>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                        </tr>
-                        {linha.grupoId && expandido && (
-                          <tr key={`${linha.chave}-detalhe`}>
-                            <td colSpan={6} className="bg-paper-2/40 px-3 py-2">
-                              <table className="w-full text-xs">
-                                <tbody className="divide-y divide-ink-soft/10">
-                                  {linha.itensDetalhe.map((item) => (
-                                    <tr key={item.id}>
-                                      <td className="py-1 pl-4 text-ink">
-                                        {item.numero} — {item.descricao}
-                                      </td>
-                                      <td className="py-1 text-ink-soft">{item.propostaCliente?.marca || '—'}</td>
-                                      <td className="py-1 text-ink-soft">{item.propostaCliente?.modelo || '—'}</td>
-                                      <td className="py-1 text-ink-soft">Qtd. {item.quantidade}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-
-        <TextField
-          label="Link da ata no portal da licitação"
-          value={form.linkAtaSigaPregao ?? ''}
-          onChange={(e) => atualizarCampo('linkAtaSigaPregao', e.target.value)}
-          placeholder="https://..."
-        />
       </div>
     </Modal>
   );

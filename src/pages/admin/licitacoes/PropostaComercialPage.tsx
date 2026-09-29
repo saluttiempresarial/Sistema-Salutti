@@ -42,7 +42,15 @@ import {
   STATUS_EXIGENCIA_LABEL,
 } from '@/types/licitacao'
 import { formatarDataHora } from '@/utils/prazoUtils'
-import { calcularAnaliseItem, classificarStatusProposta, totalReferenciaItem } from '@/utils/licitacaoCalculos'
+import {
+  calcularAnaliseItem,
+  classificarStatusProposta,
+  totalReferenciaItem,
+  podeEditarPropostaCliente,
+  podeAdminLiberarPrazo,
+  DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE,
+  DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO,
+} from '@/utils/licitacaoCalculos'
 
 // Converte uma seção do checklist de exigências (Habilitação, Declarações
 // ou Outras Exigências) nas linhas Campo/Valor do relatório exportado.
@@ -68,12 +76,14 @@ export function PropostaComercialPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+  const usuarioAtual = user?.name ?? 'Usuário atual'
 
   const [licitacao, setLicitacao] = useState<Licitacao | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [salvoEm, setSalvoEm] = useState<number | null>(null)
   const [exportando, setExportando] = useState(false)
+  const [alterandoPrazo, setAlterandoPrazo] = useState(false)
 
   const carregar = useCallback(async () => {
     if (!id) return
@@ -100,6 +110,21 @@ export function PropostaComercialPage() {
       setSalvoEm(Date.now())
     } finally {
       setSalvando(false)
+    }
+  }
+
+  // Liberar/travar o prazo do Cliente — só o Admin vê este botão (o
+  // próprio banco também bloqueia via RPC restrita a is_admin_ativo(),
+  // ver migração 023, então nem uma chamada direta à API funcionaria
+  // pra Funcionário).
+  async function handleAlternarPrazo(liberar: boolean) {
+    if (!id) return
+    setAlterandoPrazo(true)
+    try {
+      await licitacaoService.liberarPrazoPropostaCliente(id, liberar, usuarioAtual)
+      await carregar()
+    } finally {
+      setAlterandoPrazo(false)
     }
   }
 
@@ -346,6 +371,67 @@ export function PropostaComercialPage() {
               Modo somente leitura — apenas o Administrador pode editar os itens e a proposta comercial.
             </p>
           )}
+
+          {/* Prazo do Cliente — só o Admin vê o controle de liberar/travar
+              (29/09, a pedido do Márcio). A liberação manual tem um teto: até
+              no máximo DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO dias úteis antes da
+              sessão. Depois disso o Cliente fica bloqueado de vez (mesmo que
+              o flag "liberado" ainda esteja ligado no banco) e nem o Admin
+              consegue mais reabrir — só preencher a proposta diretamente. */}
+          {isAdmin && licitacao.decisaoCliente !== 'recusar' && (
+            !podeAdminLiberarPrazo(licitacao) ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">
+                <p className="font-body text-xs text-red-700">
+                  🔒 Prazo encerrado definitivamente (passou de {DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO} dias úteis antes
+                  da sessão, 18h30). O Cliente não pode mais editar e não é mais possível liberar — a proposta só
+                  pode ser preenchida diretamente aqui.
+                </p>
+                {licitacao.prazoPropostaLiberado && (
+                  <button
+                    type="button"
+                    onClick={() => handleAlternarPrazo(false)}
+                    disabled={alterandoPrazo}
+                    className="whitespace-nowrap font-body text-xs font-semibold text-red-700 hover:underline disabled:opacity-60"
+                  >
+                    {alterandoPrazo ? 'Travando...' : 'Travar liberação'}
+                  </button>
+                )}
+              </div>
+            ) : licitacao.prazoPropostaLiberado ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-forest-mist bg-forest-mist/40 px-3 py-2.5">
+                <p className="font-body text-xs text-forest-deep">
+                  🔓 Prazo liberado manualmente — o Cliente pode editar a proposta mesmo com o prazo automático
+                  vencido.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleAlternarPrazo(false)}
+                  disabled={alterandoPrazo}
+                  className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline disabled:opacity-60"
+                >
+                  {alterandoPrazo ? 'Travando...' : 'Travar novamente'}
+                </button>
+              </div>
+            ) : (
+              !podeEditarPropostaCliente(licitacao) && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brass-pale bg-brass-pale/40 px-3 py-2.5">
+                  <p className="font-body text-xs text-brass">
+                    🔒 O prazo do Cliente encerrou (mais de {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias úteis
+                    antes da sessão, 18h30). Ele não consegue mais editar a proposta.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleAlternarPrazo(true)}
+                    disabled={alterandoPrazo}
+                    className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline disabled:opacity-60"
+                  >
+                    {alterandoPrazo ? 'Liberando...' : 'Liberar novamente para o Cliente'}
+                  </button>
+                </div>
+              )
+            )
+          )}
+
           <PropostaComercialCards
             licitacao={licitacao}
             podeEditarItens={isAdmin}

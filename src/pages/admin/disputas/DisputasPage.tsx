@@ -72,7 +72,16 @@ export function DisputasPage() {
   // Licitações que ainda não têm disputa registrada — candidatas a "nova disputa"
   const licitacoesSemDisputa = useMemo(() => {
     const idsComDisputa = new Set(disputas.map((d) => d.licitacaoId));
-    return licitacoes.filter((l) => !idsComDisputa.has(l.id) && l.status !== 'pendente');
+    // Antes checava l.status !== 'pendente' — mas "status" (Pendente/Em
+    // Análise/Enviado/Ganho/Perdido) é um campo separado, editado
+    // manualmente pelo admin/analista, e não muda sozinho quando o
+    // cliente confirma participação. Quem realmente indica "o cliente
+    // topou, essa licitação vai a disputa" é decisaoCliente (setado por
+    // registrar_decisao_cliente quando o cliente clica "Quero
+    // Participar") — corrigido em 29/09 depois de uma licitação com
+    // sessão já realizada não aparecer pra registrar disputa porque
+    // "status" nunca tinha saído de "pendente".
+    return licitacoes.filter((l) => !idsComDisputa.has(l.id) && l.decisaoCliente === 'participar');
   }, [disputas, licitacoes]);
 
   const disputasFiltradas = useMemo(
@@ -108,9 +117,6 @@ export function DisputasPage() {
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl text-ink">Disputas</h1>
-          <p className="font-body text-sm text-ink-soft">
-            Resultado das sessões de disputa realizadas no SIGA Pregão.
-          </p>
         </div>
         {podeEditar && licitacoesSemDisputa.length > 0 && (
           <select
@@ -239,4 +245,3 @@ export function DisputasPage() {
     </div>
   );
 }
- 

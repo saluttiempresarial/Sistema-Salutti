@@ -47,6 +47,7 @@ interface DisputaItemRow {
   grupo_id: string | null
   posicao: number | null
   valor_fechado: number | null
+  total_fechado: number | null
   criado_em: string
   atualizado_em: string
 }
@@ -59,6 +60,7 @@ function paraDisputaResultadoLinha(row: DisputaItemRow): DisputaResultadoLinha {
     grupoId: row.grupo_id ?? undefined,
     posicao: row.posicao ?? undefined,
     valorFechado: row.valor_fechado ?? undefined,
+    totalFechado: row.total_fechado ?? undefined,
   }
 }
 
@@ -96,6 +98,7 @@ function paraColunasItem(linha: DisputaResultadoLinhaFormData, disputaId: string
     grupo_id: linha.grupoId ?? null,
     posicao: linha.posicao ?? null,
     valor_fechado: linha.valorFechado ?? null,
+    total_fechado: linha.totalFechado ?? null,
   }
 }
 

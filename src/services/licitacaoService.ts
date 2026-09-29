@@ -80,6 +80,7 @@ interface LicitacaoRow {
   cobrar_frete: boolean
   percentual_frete: number | null
   status_proposta: Licitacao['statusProposta']
+  prazo_proposta_liberado: boolean
   observacoes: string | null
   criado_em: string
   atualizado_em: string
@@ -197,6 +198,7 @@ function paraLicitacao(
     cobrarFrete: row.cobrar_frete,
     percentualFrete: row.percentual_frete ?? undefined,
     statusProposta: row.status_proposta,
+    prazoPropostaLiberado: row.prazo_proposta_liberado ?? false,
     observacoes: row.observacoes ?? '',
     historico: historico.map((h) => ({
       id: h.id,
@@ -528,6 +530,24 @@ export const licitacaoService = {
 
     const atualizada = await this.buscarPorId(id)
     if (!atualizada) throw new Error('Licitação não encontrada após registrar decisão')
+    return atualizada
+  },
+
+  // Liberar/travar manualmente o prazo do Cliente (29/09, a pedido do
+  // Márcio) — depois que o prazo automático de 4 dias úteis vence, só o
+  // Admin pode reabrir a edição pro Cliente (sem novo prazo fixo). Passa
+  // por RPC restrita a is_admin_ativo() (migração 023) — Funcionário não
+  // consegue chamar isso mesmo tentando direto pela API.
+  async liberarPrazoPropostaCliente(id: string, liberar: boolean, usuario: string): Promise<Licitacao> {
+    const { error } = await supabase.rpc('liberar_prazo_proposta_cliente', {
+      p_licitacao_id: id,
+      p_liberar: liberar,
+      p_usuario: usuario,
+    })
+    if (error) throw new Error(error.message)
+
+    const atualizada = await this.buscarPorId(id)
+    if (!atualizada) throw new Error('Licitação não encontrada após liberar/travar prazo')
     return atualizada
   },
 

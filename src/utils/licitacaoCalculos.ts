@@ -15,6 +15,12 @@ import { ItemLicitacao, Licitacao } from '@/types/licitacao';
 export const DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE = 4;
 export const HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE = { hora: 18, minuto: 30 };
 
+// Limite MÁXIMO absoluto pra liberação manual do Admin (29/09, a pedido do
+// Márcio): mesmo liberando manualmente, o Cliente nunca pode editar a
+// proposta depois desse ponto — só o Admin preenche diretamente a partir
+// daí. Mesmo horário-limite (18h30) do prazo normal, por consistência.
+export const DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO = 2;
+
 /** Subtrai `dias` dias ÚTEIS de `data` (pula sábado e domingo — feriados
  *  não entram nessa conta, só fins de semana). */
 function subtrairDiasUteis(data: Date, dias: number): Date {
@@ -38,16 +44,52 @@ function calcularLimiteEdicao(dataSessao: Date): Date {
   return limite;
 }
 
+/** Data/hora-limite ABSOLUTA para liberação manual (2 dias úteis antes da
+ *  sessão, 18h30) — depois disso, nem o Admin consegue mais liberar pro
+ *  Cliente, só preencher a proposta ele mesmo. */
+function calcularLimiteMaximoLiberacao(dataSessao: Date): Date {
+  const limite = subtrairDiasUteis(dataSessao, DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO);
+  limite.setHours(HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE.hora, HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE.minuto, 0, 0);
+  return limite;
+}
+
 /**
  * true quando o Cliente ainda pode editar a Proposta Comercial que já
  * enviou — considera a data efetiva da sessão (se a licitação foi
  * remarcada) ou a data original, subtraindo os dias úteis de antecedência
  * e travando às 18h30 do dia-limite.
+ *
+ * `prazoPropostaLiberado` (29/09): quando o Admin libera manualmente (ver
+ * liberar_prazo_proposta_cliente, migração 023), o Cliente pode editar
+ * mesmo com o prazo automático já vencido — sem novo prazo fixo, até o
+ * Admin travar de novo. MAS isso tem um teto: passado o limite máximo (2
+ * dias úteis antes da sessão, 18h30), o Cliente fica bloqueado de vez,
+ * mesmo que a liberação manual continue marcada como "ligada" — só o
+ * Admin preenche a partir daí.
  */
-export function podeEditarPropostaCliente(licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>): boolean {
+export function podeEditarPropostaCliente(
+  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao' | 'prazoPropostaLiberado'>
+): boolean {
   const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
+
+  if (new Date() > calcularLimiteMaximoLiberacao(dataSessao)) return false;
+  if (licitacao.prazoPropostaLiberado) return true;
+
   const limiteEdicao = calcularLimiteEdicao(dataSessao);
   return new Date() <= limiteEdicao;
+}
+
+/**
+ * true enquanto o Admin ainda pode liberar (ou já pode ter liberado) o
+ * prazo pro Cliente — depois do limite máximo (2 dias úteis antes da
+ * sessão, 18h30) não faz mais sentido oferecer o botão de liberar, porque
+ * o Cliente ficaria bloqueado de qualquer forma (ver podeEditarPropostaCliente).
+ */
+export function podeAdminLiberarPrazo(
+  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>
+): boolean {
+  const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
+  return new Date() <= calcularLimiteMaximoLiberacao(dataSessao);
 }
 
 /**
@@ -57,11 +99,18 @@ export function podeEditarPropostaCliente(licitacao: Pick<Licitacao, 'dataLicita
  * para o prazo interno (vermelho/amarelo/verde).
  */
 export function prazoPropostaClienteInfo(
-  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>
+  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao' | 'prazoPropostaLiberado'>
 ): { texto: string; urgencia: 'vencido' | 'atencao' | 'ok' } {
   const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
-  const limiteEdicao = calcularLimiteEdicao(dataSessao);
 
+  if (new Date() > calcularLimiteMaximoLiberacao(dataSessao)) {
+    return { texto: 'Prazo encerrado — só a Salutti preenche', urgencia: 'vencido' };
+  }
+  if (licitacao.prazoPropostaLiberado) {
+    return { texto: 'Liberado pelo Admin', urgencia: 'ok' };
+  }
+
+  const limiteEdicao = calcularLimiteEdicao(dataSessao);
   const diffMs = limiteEdicao.getTime() - new Date().getTime();
   const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
