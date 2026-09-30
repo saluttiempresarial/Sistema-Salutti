@@ -40,7 +40,7 @@ import {
   totalReferenciaItem,
   totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
-import { formatarMoeda } from '@/utils/prazoUtils'
+import { formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
 
 // Mesmo contrato que PropostaComercialTable.tsx já usa — mantido aqui com o
 // mesmo nome e formato para a troca de componente (Etapa 5) não exigir
@@ -463,21 +463,33 @@ export function PropostaComercialCards({
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-paper-2/70 px-3 py-2">
           <p className="font-body text-xs text-ink-soft">
             {ocultarNaoParticipar
-              ? 'Itens com status "❌ Não participar" estão ocultos nesta visualização.'
-              : 'Mostrando todos os itens, incluindo os "❌ Não participar".'}
+              ? 'Itens com status "❌ Não participar" e grupos que o Cliente ainda não começou a preencher estão ocultos nesta visualização.'
+              : 'Mostrando todos os grupos e itens, incluindo os "❌ Não participar" e os que o Cliente ainda não preencheu.'}
           </p>
           <button
             type="button"
             onClick={() => setOcultarNaoParticipar((atual) => !atual)}
             className="whitespace-nowrap font-body text-xs font-semibold text-forest hover:underline"
           >
-            {ocultarNaoParticipar ? 'Mostrar tudo' : 'Ocultar "Não participar" de novo'}
+            {ocultarNaoParticipar ? 'Mostrar tudo' : 'Ocultar de novo'}
           </button>
         </div>
       )}
 
-      {/* Grupos */}
-      {blocos.map(({ grupo, itens }) => {
+      {/* Grupos — a pedido do Márcio (30/09): na tela do Admin/Analista
+          (ocultarNaoParticiparPorPadrao=true), um grupo que o Cliente ainda
+          não começou a preencher (nenhum item com preço informado) fica
+          oculto por padrão, junto com os itens "Não participar" acima.
+          Mesmo botão "Mostrar tudo" revela os dois de uma vez. Na tela do
+          Cliente (ocultarNaoParticiparPorPadrao ausente) isso nunca se
+          aplica — ele precisa ver todos os grupos pra poder começar a
+          preencher qualquer um deles. */}
+      {blocos
+        .filter(({ itens }) => {
+          if (!ocultarNaoParticipar) return true
+          return itens.some((item) => item.propostaCliente?.precoMinimo != null)
+        })
+        .map(({ grupo, itens }) => {
         const idBloco = grupo?.id ?? '__sem_grupo__'
         const aberto = grupoAberto === idBloco
         const itensAoVivoDoGrupo = itens.map(itemAoVivo)
@@ -583,7 +595,7 @@ export function PropostaComercialCards({
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="font-body text-xs text-ink-soft">
-                              {itemVivo.unidadeMedida} · Qtd. {itemVivo.quantidade} · Ref. unit. {formatarMoeda(itemVivo.precoReferencia)}
+                              {itemVivo.unidadeMedida} · Qtd. {formatarNumero(itemVivo.quantidade)} · Ref. unit. {formatarMoeda(itemVivo.precoReferencia)}
                             </span>
                             {itemVivo.exclusivoMeEpp && (
                               <span className="rounded-full bg-brass-pale px-2 py-0.5 font-body text-[10px] font-bold uppercase text-brass">
@@ -614,7 +626,7 @@ export function PropostaComercialCards({
                                   Quantidade ofertada
                                 </label>
                                 <div className="rounded-lg bg-paper-2 px-3 py-2 font-body text-sm text-ink-soft">
-                                  {itemVivo.quantidade}
+                                  {formatarNumero(itemVivo.quantidade)}
                                 </div>
                               </div>
 
@@ -698,6 +710,12 @@ export function PropostaComercialCards({
           </div>
         )
       })}
+
+      {ocultarNaoParticipar && blocos.every(({ itens }) => !itens.some((item) => item.propostaCliente?.precoMinimo != null)) && (
+        <p className="rounded-xl border border-ink-soft/15 bg-paper-2/60 px-4 py-6 text-center font-body text-sm text-ink-soft">
+          O Cliente ainda não começou a preencher nenhum grupo desta proposta.
+        </p>
+      )}
 
       {/* Rodapé — salvar */}
       {podeEditarPropostaComercial && (

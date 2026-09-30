@@ -403,9 +403,16 @@ export interface Licitacao {
   // Márcio) — só o Admin pode ligar/desligar (ver
   // liberar_prazo_proposta_cliente, migração 023). Quando true, o Cliente
   // pode editar a Proposta Comercial mesmo depois do prazo automático (4
-  // dias úteis antes da sessão, 18h30) ter vencido — sem novo prazo fixo,
-  // até o Admin travar de novo.
+  // dias úteis antes da sessão, 18h30) ter vencido — até a data/hora
+  // definida em `prazoPropostaLiberadoAte`, escolhida pelo próprio Admin
+  // no momento em que libera (não é mais um número fixo de dias — o Admin
+  // decide até quando o Cliente pode editar).
   prazoPropostaLiberado: boolean;
+  // Data/hora-limite (ISO) escolhida pelo Admin até quando a liberação
+  // manual vale. Só tem sentido quando `prazoPropostaLiberado` é true —
+  // depois desse instante o Cliente volta a ficar bloqueado automaticamente,
+  // mesmo que ninguém tenha "travado" manualmente.
+  prazoPropostaLiberadoAte?: string;
 
   observacoes: string;
   historico: HistoricoAcao[];

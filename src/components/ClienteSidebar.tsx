@@ -1,20 +1,17 @@
-// src/components/AdminSidebar.tsx
+// src/components/ClienteSidebar.tsx
 //
-// Menu lateral fixo do Admin/Funcionário — visível em todas as telas
-// internas (Dashboard, Clientes, Funcionários, Licitações, Disputas,
-// Relatórios, Calendário, Configurações). Os itens exibidos dependem do
-// perfil: Administrador vê tudo; Funcionário só vê os módulos liberados
-// nas permissões dele (mesma lógica já usada em FuncionarioDashboard).
+// Menu lateral fixo do Portal do Cliente — mesmo padrão visual do
+// AdminSidebar.tsx (foto de perfil + itens de navegação), com os 3 itens
+// que o Márcio pediu: Licitações, Calendário, Relatórios.
 //
-// Ícones são SVGs simples desenhados à mão (sem nenhuma biblioteca nova) —
+// Ícones são SVGs simples desenhados à mão, iguais aos do AdminSidebar —
 // evita precisar rodar npm install para esta mudança.
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { usePermissoes } from '@/hooks/usePermissoes'
-import { funcionarioService } from '@/services/funcionarioService'
+import { usuarioClienteService } from '@/services/usuarioClienteService'
 import { ROLE_LABEL } from '@/types/auth'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
 
@@ -22,26 +19,6 @@ interface ItemMenu {
   label: string
   to: string
   icon: ReactElement
-}
-
-function IconPessoa() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <circle cx="12" cy="8" r="3.5" />
-      <path d="M5 20c0-3.5 3.1-6 7-6s7 2.5 7 6" />
-    </svg>
-  )
-}
-
-function IconPessoas() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <circle cx="9" cy="8" r="3" />
-      <path d="M2.5 20c0-3 2.9-5.5 6.5-5.5s6.5 2.5 6.5 5.5" />
-      <circle cx="17" cy="8.5" r="2.3" />
-      <path d="M15.8 14.8c2.6.5 4.7 2.4 4.7 5.2" />
-    </svg>
-  )
 }
 
 function IconDocumento() {
@@ -54,14 +31,12 @@ function IconDocumento() {
   )
 }
 
-function IconMartelo() {
+function IconCalendario() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <path d="M14 4l6 6" />
-      <path d="M9.5 8.5l6 6" />
-      <path d="M3 21l6-6" />
-      <path d="M11.5 6.5l-7 7 2 2 7-7z" />
-      <path d="M4 21h6" />
+      <rect x="3.5" y="5" width="17" height="15" rx="2" />
+      <path d="M3.5 10h17" />
+      <path d="M8 3v4M16 3v4" />
     </svg>
   )
 }
@@ -77,49 +52,15 @@ function IconGrafico() {
   )
 }
 
-function IconCalendario() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <rect x="3.5" y="5" width="17" height="15" rx="2" />
-      <path d="M3.5 10h17" />
-      <path d="M8 3v4M16 3v4" />
-    </svg>
-  )
-}
+const ITENS: ItemMenu[] = [
+  { label: 'Licitações', to: '/cliente', icon: <IconDocumento /> },
+  { label: 'Calendário', to: '/cliente/calendario', icon: <IconCalendario /> },
+  { label: 'Relatórios', to: '/cliente/relatorios', icon: <IconGrafico /> },
+]
 
-function IconEngrenagem() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v2.2M12 18.8V21M4.6 6.6l1.6 1.6M17.8 15.8l1.6 1.6M3 12h2.2M18.8 12H21M4.6 17.4l1.6-1.6M17.8 8.2l1.6-1.6" />
-    </svg>
-  )
-}
-
-export function AdminSidebar() {
+export function ClienteSidebar() {
   const { user } = useAuth()
   const location = useLocation()
-  const { podeAcessarModulo } = usePermissoes()
-
-  const isAdmin = user?.role === 'admin'
-
-  const itens: ItemMenu[] = [
-    ...(isAdmin ? [{ label: 'Cadastro de Clientes', to: '/admin/clientes', icon: <IconPessoa /> }] : []),
-    ...(isAdmin ? [{ label: 'Cadastro de Funcionários', to: '/admin/funcionarios', icon: <IconPessoas /> }] : []),
-    ...(isAdmin || podeAcessarModulo('licitacoes')
-      ? [{ label: 'Licitações', to: '/admin/licitacoes', icon: <IconDocumento /> }]
-      : []),
-    ...(isAdmin || podeAcessarModulo('disputas')
-      ? [{ label: 'Disputas', to: '/admin/disputas', icon: <IconMartelo /> }]
-      : []),
-    ...(isAdmin || podeAcessarModulo('relatorios')
-      ? [{ label: 'Relatórios', to: '/admin/relatorios', icon: <IconGrafico /> }]
-      : []),
-    ...(isAdmin || podeAcessarModulo('licitacoes')
-      ? [{ label: 'Calendário', to: '/admin/calendario', icon: <IconCalendario /> }]
-      : []),
-    ...(isAdmin ? [{ label: 'Configurações', to: '/admin/configuracoes', icon: <IconEngrenagem /> }] : []),
-  ]
 
   const iniciais = (user?.name ?? '')
     .split(' ')
@@ -133,20 +74,19 @@ export function AdminSidebar() {
   const inputFotoRef = useRef<HTMLInputElement>(null)
   // Arquivo escolhido no input, aguardando enquadramento no
   // FotoPerfilCropModal — só some (volta a null) ao cancelar ou confirmar
-  // o recorte (30/09, a pedido do Márcio: antes ia direto pro upload, sem
-  // deixar a pessoa escolher a parte da foto que aparece no avatar).
+  // o recorte, mesmo comportamento já usado no AdminSidebar.
   const [arquivoParaRecortar, setArquivoParaRecortar] = useState<File | null>(null)
 
   useEffect(() => {
-    if (!user?.funcionarioId) return
+    if (!user?.usuarioClienteId) return
     let ativo = true
-    funcionarioService.getById(user.funcionarioId).then((funcionario) => {
-      if (ativo && funcionario) setFotoUrl(funcionario.fotoUrl)
+    usuarioClienteService.buscarFotoPropria(user.usuarioClienteId).then((url) => {
+      if (ativo) setFotoUrl(url)
     })
     return () => {
       ativo = false
     }
-  }, [user?.funcionarioId])
+  }, [user?.usuarioClienteId])
 
   function handleSelecionarFoto(event: React.ChangeEvent<HTMLInputElement>) {
     const arquivo = event.target.files?.[0]
@@ -160,7 +100,7 @@ export function AdminSidebar() {
     if (!user) return
     setEnviandoFoto(true)
     try {
-      const url = await funcionarioService.uploadFoto(user.id, arquivoRecortado)
+      const url = await usuarioClienteService.uploadFoto(user.id, arquivoRecortado)
       setFotoUrl(url)
     } finally {
       setEnviandoFoto(false)
@@ -201,7 +141,7 @@ export function AdminSidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {itens.map((item) => {
+        {ITENS.map((item) => {
           const ativo = location.pathname === item.to
           return (
             <Link

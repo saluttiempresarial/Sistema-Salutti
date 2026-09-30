@@ -47,9 +47,10 @@ import {
   classificarStatusProposta,
   totalReferenciaItem,
   podeEditarPropostaCliente,
-  podeAdminLiberarPrazo,
+  podeAdminPreencherPropostaDiretamente,
+  propostaComercialTravadaDeVez,
   DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE,
-  DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO,
+  DIAS_UTEIS_LIMITE_ABSOLUTO_PROPOSTA,
 } from '@/utils/licitacaoCalculos'
 
 // Converte uma seção do checklist de exigências (Habilitação, Declarações
@@ -76,6 +77,12 @@ export function PropostaComercialPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+  // Liberar/travar o prazo do Cliente (29/09, atualizado no mesmo dia a
+  // pedido do Márcio): o Analista (Funcionário) também pode usar essa
+  // função agora, não é mais exclusivo do Admin. A RLS/RPC
+  // (funcionario_acessa_licitacao, migração 023) continua restringindo pela
+  // carteira dele — aqui na tela só decide se o bloco aparece.
+  const podeGerenciarPrazoCliente = isAdmin || user?.role === 'funcionario'
   const usuarioAtual = user?.name ?? 'Usuário atual'
 
   const [licitacao, setLicitacao] = useState<Licitacao | null>(null)
@@ -84,6 +91,10 @@ export function PropostaComercialPage() {
   const [salvoEm, setSalvoEm] = useState<number | null>(null)
   const [exportando, setExportando] = useState(false)
   const [alterandoPrazo, setAlterandoPrazo] = useState(false)
+  const [mostrarFormLiberar, setMostrarFormLiberar] = useState(false)
+  const [novaDataLiberacao, setNovaDataLiberacao] = useState('')
+  const [novaHoraLiberacao, setNovaHoraLiberacao] = useState('18:30')
+  const [erroLiberacao, setErroLiberacao] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     if (!id) return
@@ -113,16 +124,42 @@ export function PropostaComercialPage() {
     }
   }
 
-  // Liberar/travar o prazo do Cliente — só o Admin vê este botão (o
-  // próprio banco também bloqueia via RPC restrita a is_admin_ativo(),
-  // ver migração 023, então nem uma chamada direta à API funcionaria
-  // pra Funcionário).
-  async function handleAlternarPrazo(liberar: boolean) {
+  // Travar o prazo do Cliente de volta — Admin ou Analista (o banco também
+  // valida via RPC restrita a is_admin_ativo() OR funcionario_acessa_licitacao(),
+  // migração 023, então nem uma chamada direta à API passa por quem não
+  // tem permissão).
+  async function handleTravarPrazo() {
     if (!id) return
     setAlterandoPrazo(true)
     try {
-      await licitacaoService.liberarPrazoPropostaCliente(id, liberar, usuarioAtual)
+      await licitacaoService.liberarPrazoPropostaCliente(id, false, usuarioAtual)
       await carregar()
+    } finally {
+      setAlterandoPrazo(false)
+    }
+  }
+
+  // Liberar o prazo do Cliente até a data/hora que quem está liberando
+  // escolheu (não é mais um número fixo de dias — Admin/Analista decide).
+  async function handleConfirmarLiberacao() {
+    if (!id || !novaDataLiberacao || !novaHoraLiberacao) {
+      setErroLiberacao('Informe a data e o horário.')
+      return
+    }
+    const liberadoAte = new Date(`${novaDataLiberacao}T${novaHoraLiberacao}:00`)
+    if (Number.isNaN(liberadoAte.getTime())) {
+      setErroLiberacao('Data/horário inválidos.')
+      return
+    }
+    setErroLiberacao(null)
+    setAlterandoPrazo(true)
+    try {
+      await licitacaoService.liberarPrazoPropostaCliente(id, true, usuarioAtual, liberadoAte.toISOString())
+      setMostrarFormLiberar(false)
+      setNovaDataLiberacao('')
+      await carregar()
+    } catch (erro) {
+      setErroLiberacao(erro instanceof Error ? erro.message : 'Não foi possível liberar o prazo.')
     } finally {
       setAlterandoPrazo(false)
     }
@@ -372,40 +409,40 @@ export function PropostaComercialPage() {
             </p>
           )}
 
-          {/* Prazo do Cliente — só o Admin vê o controle de liberar/travar
-              (29/09, a pedido do Márcio). A liberação manual tem um teto: até
-              no máximo DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO dias úteis antes da
-              sessão. Depois disso o Cliente fica bloqueado de vez (mesmo que
-              o flag "liberado" ainda esteja ligado no banco) e nem o Admin
-              consegue mais reabrir — só preencher a proposta diretamente. */}
-          {isAdmin && licitacao.decisaoCliente !== 'recusar' && (
-            !podeAdminLiberarPrazo(licitacao) ? (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">
+          {/* Prazo do Cliente — Admin e Analista veem o controle de
+              liberar/travar (29/09, atualizado no mesmo dia a pedido do
+              Márcio). Quem libera escolhe a data/hora até quando vale —
+              não é mais um número fixo de dias. Trava ABSOLUTA (mesmo dia,
+              novo pedido): a partir de 1 dia útil antes da sessão, 18h30,
+              ninguém mais preenche a Proposta Comercial — nem Cliente, nem
+              Admin, nem Analista preenchendo direto — então some tudo (o
+              formulário de edição também fica bloqueado, via
+              podeAdminPreencherPropostaDiretamente). */}
+          {podeGerenciarPrazoCliente && licitacao.decisaoCliente !== 'recusar' && (
+            propostaComercialTravadaDeVez(licitacao) ? (
+              <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">
                 <p className="font-body text-xs text-red-700">
-                  🔒 Prazo encerrado definitivamente (passou de {DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO} dias úteis antes
-                  da sessão, 18h30). O Cliente não pode mais editar e não é mais possível liberar — a proposta só
-                  pode ser preenchida diretamente aqui.
+                  🔒 Prazo encerrado definitivamente ({DIAS_UTEIS_LIMITE_ABSOLUTO_PROPOSTA} dia útil antes da sessão,
+                  18h30). Ninguém pode mais preencher ou editar a Proposta Comercial desta licitação — nem o
+                  Cliente, nem o Admin, nem o Analista.
                 </p>
-                {licitacao.prazoPropostaLiberado && (
-                  <button
-                    type="button"
-                    onClick={() => handleAlternarPrazo(false)}
-                    disabled={alterandoPrazo}
-                    className="whitespace-nowrap font-body text-xs font-semibold text-red-700 hover:underline disabled:opacity-60"
-                  >
-                    {alterandoPrazo ? 'Travando...' : 'Travar liberação'}
-                  </button>
-                )}
               </div>
-            ) : licitacao.prazoPropostaLiberado ? (
+            ) : licitacao.prazoPropostaLiberado && licitacao.prazoPropostaLiberadoAte ? (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-forest-mist bg-forest-mist/40 px-3 py-2.5">
                 <p className="font-body text-xs text-forest-deep">
-                  🔓 Prazo liberado manualmente — o Cliente pode editar a proposta mesmo com o prazo automático
-                  vencido.
+                  🔓 Prazo liberado manualmente até{' '}
+                  <strong>
+                    {new Date(licitacao.prazoPropostaLiberadoAte).toLocaleDateString('pt-BR')}{' '}
+                    {new Date(licitacao.prazoPropostaLiberadoAte).toLocaleTimeString('pt-BR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </strong>{' '}
+                  — o Cliente pode editar a proposta até lá, mesmo com o prazo automático vencido.
                 </p>
                 <button
                   type="button"
-                  onClick={() => handleAlternarPrazo(false)}
+                  onClick={handleTravarPrazo}
                   disabled={alterandoPrazo}
                   className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline disabled:opacity-60"
                 >
@@ -414,19 +451,71 @@ export function PropostaComercialPage() {
               </div>
             ) : (
               !podeEditarPropostaCliente(licitacao) && (
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brass-pale bg-brass-pale/40 px-3 py-2.5">
-                  <p className="font-body text-xs text-brass">
-                    🔒 O prazo do Cliente encerrou (mais de {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias úteis
-                    antes da sessão, 18h30). Ele não consegue mais editar a proposta.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => handleAlternarPrazo(true)}
-                    disabled={alterandoPrazo}
-                    className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline disabled:opacity-60"
-                  >
-                    {alterandoPrazo ? 'Liberando...' : 'Liberar novamente para o Cliente'}
-                  </button>
+                <div className="mb-4 rounded-lg border border-brass-pale bg-brass-pale/40 px-3 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-body text-xs text-brass">
+                      🔒 O prazo do Cliente encerrou (mais de {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias úteis
+                      antes da sessão, 18h30). Ele não consegue mais editar a proposta.
+                    </p>
+                    {!mostrarFormLiberar && (
+                      <button
+                        type="button"
+                        onClick={() => setMostrarFormLiberar(true)}
+                        className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline"
+                      >
+                        Liberar novamente para o Cliente
+                      </button>
+                    )}
+                  </div>
+
+                  {mostrarFormLiberar && (
+                    <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-brass-pale/60 pt-3">
+                      <label className="flex flex-col gap-1">
+                        <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                          Liberar até a data
+                        </span>
+                        <input
+                          type="date"
+                          value={novaDataLiberacao}
+                          onChange={(e) => setNovaDataLiberacao(e.target.value)}
+                          className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                          Horário
+                        </span>
+                        <input
+                          type="time"
+                          value={novaHoraLiberacao}
+                          onChange={(e) => setNovaHoraLiberacao(e.target.value)}
+                          className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleConfirmarLiberacao}
+                        disabled={alterandoPrazo}
+                        className="rounded-lg bg-forest px-3.5 py-1.5 font-body text-xs font-semibold text-white hover:bg-forest-deep disabled:opacity-60"
+                      >
+                        {alterandoPrazo ? 'Liberando...' : 'Confirmar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMostrarFormLiberar(false)
+                          setErroLiberacao(null)
+                        }}
+                        disabled={alterandoPrazo}
+                        className="font-body text-xs font-semibold text-ink-soft hover:underline disabled:opacity-60"
+                      >
+                        Cancelar
+                      </button>
+                      {erroLiberacao && (
+                        <p className="w-full font-body text-xs text-red-700">{erroLiberacao}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             )
@@ -435,7 +524,7 @@ export function PropostaComercialPage() {
           <PropostaComercialCards
             licitacao={licitacao}
             podeEditarItens={isAdmin}
-            podeEditarPropostaComercial={isAdmin}
+            podeEditarPropostaComercial={isAdmin && podeAdminPreencherPropostaDiretamente(licitacao)}
             salvando={salvando}
             onSalvar={handleSalvar}
             textoBotaoSalvar="Salvar alterações"

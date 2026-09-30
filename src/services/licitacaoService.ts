@@ -81,6 +81,7 @@ interface LicitacaoRow {
   percentual_frete: number | null
   status_proposta: Licitacao['statusProposta']
   prazo_proposta_liberado: boolean
+  prazo_proposta_liberado_ate: string | null
   observacoes: string | null
   criado_em: string
   atualizado_em: string
@@ -199,6 +200,7 @@ function paraLicitacao(
     percentualFrete: row.percentual_frete ?? undefined,
     statusProposta: row.status_proposta,
     prazoPropostaLiberado: row.prazo_proposta_liberado ?? false,
+    prazoPropostaLiberadoAte: row.prazo_proposta_liberado_ate ?? undefined,
     observacoes: row.observacoes ?? '',
     historico: historico.map((h) => ({
       id: h.id,
@@ -535,14 +537,23 @@ export const licitacaoService = {
 
   // Liberar/travar manualmente o prazo do Cliente (29/09, a pedido do
   // Márcio) — depois que o prazo automático de 4 dias úteis vence, só o
-  // Admin pode reabrir a edição pro Cliente (sem novo prazo fixo). Passa
-  // por RPC restrita a is_admin_ativo() (migração 023) — Funcionário não
-  // consegue chamar isso mesmo tentando direto pela API.
-  async liberarPrazoPropostaCliente(id: string, liberar: boolean, usuario: string): Promise<Licitacao> {
+  // Admin pode reabrir a edição pro Cliente. Atualizado no mesmo dia: em vez
+  // de um limite fixo, o próprio Admin escolhe até que data/hora a
+  // liberação vale (`liberadoAte`, obrigatório quando `liberar` é true —
+  // a RPC também valida isso no banco, ver migração 023). Passa por RPC
+  // restrita a is_admin_ativo() — Funcionário não consegue chamar isso
+  // mesmo tentando direto pela API.
+  async liberarPrazoPropostaCliente(
+    id: string,
+    liberar: boolean,
+    usuario: string,
+    liberadoAte?: string
+  ): Promise<Licitacao> {
     const { error } = await supabase.rpc('liberar_prazo_proposta_cliente', {
       p_licitacao_id: id,
       p_liberar: liberar,
       p_usuario: usuario,
+      p_liberado_ate: liberar ? liberadoAte : null,
     })
     if (error) throw new Error(error.message)
 

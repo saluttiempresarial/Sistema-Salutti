@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { AdminLayout } from '@/components/AdminLayout'
+import { ClienteLayout } from '@/components/ClienteLayout'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { RoleRedirect } from '@/pages/RoleRedirect'
@@ -17,10 +18,11 @@ import { RelatoriosPage } from '@/pages/admin/relatorios/RelatoriosPage'
 import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
 import { CalendarioPage as AdminCalendarioPage } from '@/pages/admin/CalendarioPage'
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
-import { ClienteDashboard } from '@/pages/cliente/ClienteDashboard'
+import { LicitacoesPage as ClienteLicitacoesPage } from '@/pages/cliente/LicitacoesPage'
 import { LicitacaoDetalhePage } from '@/pages/cliente/LicitacaoDetalhePage'
 import { PropostaComercialPage as ClientePropostaComercialPage } from '@/pages/cliente/PropostaComercialPage'
 import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
+import { RelatoriosPage as ClienteRelatoriosPage } from '@/pages/cliente/RelatoriosPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { carregarRegraPrazoCache } from '@/utils/prazoUtils'
 
@@ -172,11 +174,17 @@ export default function App() {
             path="/cliente"
             element={
               <ProtectedRoute allowedRoles={['cliente']}>
-                <ClienteDashboard />
+                <ClienteLayout>
+                  <ClienteLicitacoesPage />
+                </ClienteLayout>
               </ProtectedRoute>
             }
           />
 
+          {/* Detalhe da licitação e Proposta Comercial seguem sem a
+              sidebar por enquanto (tela cheia, com o Header antigo) —
+              não foram incluídas nesta etapa do redesenho; revisar
+              depois se também devem entrar no ClienteLayout. */}
           <Route
             path="/cliente/licitacoes/:id"
             element={
@@ -199,7 +207,20 @@ export default function App() {
             path="/cliente/calendario"
             element={
               <ProtectedRoute allowedRoles={['cliente']}>
-                <ClienteCalendarioPage />
+                <ClienteLayout>
+                  <ClienteCalendarioPage />
+                </ClienteLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cliente/relatorios"
+            element={
+              <ProtectedRoute allowedRoles={['cliente']}>
+                <ClienteLayout>
+                  <ClienteRelatoriosPage />
+                </ClienteLayout>
               </ProtectedRoute>
             }
           />

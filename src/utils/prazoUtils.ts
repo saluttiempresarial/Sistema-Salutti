@@ -109,3 +109,17 @@ export function formatarDataHora(iso: string): string {
 export function formatarMoeda(valor: number): string {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+
+/** Formata um número no padrão brasileiro (ponto separando milhar, vírgula
+ *  separando decimal — ex.: 4.578.122,15) — a pedido do Márcio (30/09), pra
+ *  usar em toda exibição de número (quantidade, contagem etc.) que hoje
+ *  aparece "crua", sem separador de milhar. Não usar em campo de digitação
+ *  (input) — só em texto somente leitura, senão atrapalha o cursor
+ *  enquanto a pessoa digita. `casas` controla quantas casas decimais
+ *  aparecem (0 por padrão, já que quantidade normalmente é inteira). */
+export function formatarNumero(valor: number, casas = 0): string {
+  return valor.toLocaleString('pt-BR', {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  });
+}

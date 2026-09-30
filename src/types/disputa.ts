@@ -26,6 +26,19 @@
 // valor total mostrado no portal pode diferir um pouco da multiplicação
 // simples, por arredondamento). Só o % Acima do Mínimo continua automático,
 // calculado a partir do Valor Fechado, como já era.
+//
+// REESTRUTURADO de novo em 30/09, a pedido do Márcio: o resultado deixou
+// de ser por GRUPO INTEIRO e passou a ser por ITEM INDIVIDUAL sempre
+// (mesmo dentro de um grupo) — ver comentário no topo de
+// DisputaFormModal.tsx. `totalFechado` ficou sem uso nesta tela (Total e %
+// Acima do Mínimo saíram do card) — o campo continua aqui só para não
+// exigir uma migração de banco; código novo não deve mais preenchê-lo.
+// `valorFechado` continua com o mesmo nome no código (evita renomear a
+// coluna no banco), mas agora é chamado de "Valor ofertado" na tela — é o
+// valor que o Analista/Admin registra depois da disputa, sempre unitário
+// (já que toda linha agora é um item, nunca mais um grupo agregado).
+// `grupoId` também deixou de ser usado nas linhas novas (sempre null a
+// partir daqui), mas continua no tipo para ler disputas antigas.
 
 export type ResultadoDisputa = 'em_andamento' | 'ganho' | 'perdido' | 'homologado';
 

@@ -38,6 +38,11 @@ export function DisputasPage() {
   const [licitacoes, setLicitacoes] = useState<Licitacao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [filtroResultado, setFiltroResultado] = useState('');
+  // 30/09, a pedido do Márcio: um erro no carregamento (ex.: falha de
+  // permissão/consulta no Supabase) deixava a tela travada em "Carregando
+  // disputas..." pra sempre, porque setCarregando(false) só rodava no
+  // caminho de sucesso. Agora sempre desliga o carregando e mostra o erro.
+  const [erroCarregar, setErroCarregar] = useState<string | null>(null);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [disputaEmEdicao, setDisputaEmEdicao] = useState<Disputa | null>(null);
@@ -46,17 +51,23 @@ export function DisputasPage() {
   const carregar = useCallback(async () => {
     if (carregandoPermissoes) return;
     setCarregando(true);
-    const [todasDisputas, resultadoLicitacoes] = await Promise.all([
-      disputaService.listarTodas(),
-      licitacaoService.listar({ pageSize: 1000, ...restricaoDados }),
-    ]);
-    // Licitações já vêm filtradas pela permissão — restringe as disputas às
-    // que pertencem a uma dessas licitações (evita expor disputa de um
-    // cliente fora da carteira do funcionário).
-    const idsLicitacoesPermitidas = new Set(resultadoLicitacoes.itens.map((l) => l.id));
-    setDisputas(todasDisputas.filter((d) => idsLicitacoesPermitidas.has(d.licitacaoId)));
-    setLicitacoes(resultadoLicitacoes.itens);
-    setCarregando(false);
+    setErroCarregar(null);
+    try {
+      const [todasDisputas, resultadoLicitacoes] = await Promise.all([
+        disputaService.listarTodas(),
+        licitacaoService.listar({ pageSize: 1000, ...restricaoDados }),
+      ]);
+      // Licitações já vêm filtradas pela permissão — restringe as disputas às
+      // que pertencem a uma dessas licitações (evita expor disputa de um
+      // cliente fora da carteira do funcionário).
+      const idsLicitacoesPermitidas = new Set(resultadoLicitacoes.itens.map((l) => l.id));
+      setDisputas(todasDisputas.filter((d) => idsLicitacoesPermitidas.has(d.licitacaoId)));
+      setLicitacoes(resultadoLicitacoes.itens);
+    } catch (erro) {
+      setErroCarregar(erro instanceof Error ? erro.message : 'Erro desconhecido ao carregar as disputas.');
+    } finally {
+      setCarregando(false);
+    }
   }, [carregandoPermissoes, restricaoDados]);
 
   useEffect(() => {
@@ -174,7 +185,14 @@ export function DisputasPage() {
                 </td>
               </tr>
             )}
-            {!carregando && disputasFiltradas.length === 0 && (
+            {!carregando && erroCarregar && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-red-700">
+                  Não foi possível carregar as disputas: {erroCarregar}
+                </td>
+              </tr>
+            )}
+            {!carregando && !erroCarregar && disputasFiltradas.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-ink-soft">
                   Nenhuma disputa registrada ainda.

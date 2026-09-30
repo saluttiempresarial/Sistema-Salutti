@@ -133,4 +133,46 @@ export const usuarioClienteService = {
     if (error) throw new Error(error.message)
     return (data?.length ?? 0) > 0
   },
+
+  /** Busca só a foto de perfil do usuário do Cliente logado — usado pelo
+   *  ClienteSidebar para exibir o avatar, sem precisar carregar o
+   *  cadastro inteiro (nome, e-mail etc., que o próprio AuthUser já tem). */
+  async buscarFotoPropria(usuarioClienteId: string): Promise<string | undefined> {
+    const { data, error } = await supabase
+      .from('usuarios_cliente')
+      .select('foto_url')
+      .eq('id', usuarioClienteId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    return (data as { foto_url: string | null } | null)?.foto_url ?? undefined
+  },
+
+  /** Envia (ou substitui) a foto de perfil do usuário do Cliente logado.
+   *  Mesmo padrão de funcionarioService.uploadFoto: caminho no Storage
+   *  usa o próprio auth_user_id como pasta, upsert sempre sobrescreve o
+   *  mesmo arquivo, e a URL salva ganha um parâmetro de versão para
+   *  evitar foto antiga em cache no navegador.
+   *
+   *  IMPORTANTE: salva via a função atualizar_foto_propria_cliente() no
+   *  banco, não com um update direto na tabela — a RLS de
+   *  usuarios_cliente só libera UPDATE para Admin/Funcionário, então um
+   *  update direto seria silenciosamente ignorado quando quem chama é o
+   *  próprio usuário do Cliente (ver 028_foto_propria_usuario_cliente.sql). */
+  async uploadFoto(authUserId: string, arquivo: File): Promise<string> {
+    const extensao = arquivo.name.split('.').pop() ?? 'jpg'
+    const caminho = `${authUserId}/foto.${extensao}`
+
+    const { error: erroUpload } = await supabase.storage
+      .from('usuarios-cliente-fotos')
+      .upload(caminho, arquivo, { upsert: true })
+    if (erroUpload) throw new Error(erroUpload.message)
+
+    const { data } = supabase.storage.from('usuarios-cliente-fotos').getPublicUrl(caminho)
+    const fotoUrl = `${data.publicUrl}?t=${Date.now()}`
+
+    const { error: erroRpc } = await supabase.rpc('atualizar_foto_propria_cliente', { nova_url: fotoUrl })
+    if (erroRpc) throw new Error(erroRpc.message)
+
+    return fotoUrl
+  },
 }

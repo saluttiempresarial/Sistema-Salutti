@@ -15,11 +15,13 @@ import { ItemLicitacao, Licitacao } from '@/types/licitacao';
 export const DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE = 4;
 export const HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE = { hora: 18, minuto: 30 };
 
-// Limite MÁXIMO absoluto pra liberação manual do Admin (29/09, a pedido do
-// Márcio): mesmo liberando manualmente, o Cliente nunca pode editar a
-// proposta depois desse ponto — só o Admin preenche diretamente a partir
-// daí. Mesmo horário-limite (18h30) do prazo normal, por consistência.
-export const DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO = 2;
+// Trava ABSOLUTA da Proposta Comercial (29/09, atualizado no mesmo dia a
+// pedido do Márcio): a partir de 1 dia ÚTIL antes da sessão, às 18h30,
+// NINGUÉM mais preenche ou edita a Proposta Comercial — nem o Cliente, nem
+// o Admin, nem o Analista, e uma liberação manual não pode ir além desse
+// ponto. Ex.: sessão hoje (29/09) -> trava ontem (28/09) às 18h30. Mesmo
+// horário-limite do prazo do Cliente, por consistência.
+export const DIAS_UTEIS_LIMITE_ABSOLUTO_PROPOSTA = 1;
 
 /** Subtrai `dias` dias ÚTEIS de `data` (pula sábado e domingo — feriados
  *  não entram nessa conta, só fins de semana). */
@@ -44,13 +46,31 @@ function calcularLimiteEdicao(dataSessao: Date): Date {
   return limite;
 }
 
-/** Data/hora-limite ABSOLUTA para liberação manual (2 dias úteis antes da
- *  sessão, 18h30) — depois disso, nem o Admin consegue mais liberar pro
- *  Cliente, só preencher a proposta ele mesmo. */
-function calcularLimiteMaximoLiberacao(dataSessao: Date): Date {
-  const limite = subtrairDiasUteis(dataSessao, DIAS_UTEIS_LIMITE_MAXIMO_LIBERACAO);
+/** Data/hora-limite ABSOLUTA (1 dia útil antes da sessão, 18h30) — depois
+ *  disso a Proposta Comercial trava de vez, sem exceção nenhuma. */
+function calcularLimiteAbsoluto(dataSessao: Date): Date {
+  const limite = subtrairDiasUteis(dataSessao, DIAS_UTEIS_LIMITE_ABSOLUTO_PROPOSTA);
   limite.setHours(HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE.hora, HORA_LIMITE_EDICAO_PROPOSTA_CLIENTE.minuto, 0, 0);
   return limite;
+}
+
+/** true quando a Proposta Comercial já passou do limite absoluto (1 dia
+ *  útil antes da sessão, 18h30) — a partir daí ninguém mais edita, nem
+ *  Cliente, nem Admin, nem Analista, e liberação manual não tem efeito. */
+export function propostaComercialTravadaDeVez(
+  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>
+): boolean {
+  const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
+  return new Date() > calcularLimiteAbsoluto(dataSessao);
+}
+
+/** true enquanto o Admin/Analista ainda podem preencher a Proposta
+ *  Comercial diretamente (sem depender do prazo do Cliente) — só false
+ *  depois do limite absoluto. */
+export function podeAdminPreencherPropostaDiretamente(
+  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>
+): boolean {
+  return !propostaComercialTravadaDeVez(licitacao);
 }
 
 /**
@@ -59,37 +79,29 @@ function calcularLimiteMaximoLiberacao(dataSessao: Date): Date {
  * remarcada) ou a data original, subtraindo os dias úteis de antecedência
  * e travando às 18h30 do dia-limite.
  *
- * `prazoPropostaLiberado` (29/09): quando o Admin libera manualmente (ver
+ * `prazoPropostaLiberado` + `prazoPropostaLiberadoAte` (29/09, atualizado no
+ * mesmo dia): quando o Admin ou o Analista libera manualmente (ver
  * liberar_prazo_proposta_cliente, migração 023), o Cliente pode editar
- * mesmo com o prazo automático já vencido — sem novo prazo fixo, até o
- * Admin travar de novo. MAS isso tem um teto: passado o limite máximo (2
- * dias úteis antes da sessão, 18h30), o Cliente fica bloqueado de vez,
- * mesmo que a liberação manual continue marcada como "ligada" — só o
- * Admin preenche a partir daí.
+ * mesmo com o prazo automático já vencido — até a data/hora que quem
+ * liberou escolheu (`prazoPropostaLiberadoAte`), não é mais um número
+ * fixo de dias. Mas isso nunca ultrapassa a trava absoluta (1 dia útil
+ * antes da sessão, 18h30) — checada primeiro, sem exceção.
  */
 export function podeEditarPropostaCliente(
-  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao' | 'prazoPropostaLiberado'>
+  licitacao: Pick<
+    Licitacao,
+    'dataLicitacao' | 'dataEfetivaLicitacao' | 'prazoPropostaLiberado' | 'prazoPropostaLiberadoAte'
+  >
 ): boolean {
+  if (propostaComercialTravadaDeVez(licitacao)) return false;
+
+  if (licitacao.prazoPropostaLiberado && licitacao.prazoPropostaLiberadoAte) {
+    if (new Date() <= new Date(licitacao.prazoPropostaLiberadoAte)) return true;
+  }
+
   const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
-
-  if (new Date() > calcularLimiteMaximoLiberacao(dataSessao)) return false;
-  if (licitacao.prazoPropostaLiberado) return true;
-
   const limiteEdicao = calcularLimiteEdicao(dataSessao);
   return new Date() <= limiteEdicao;
-}
-
-/**
- * true enquanto o Admin ainda pode liberar (ou já pode ter liberado) o
- * prazo pro Cliente — depois do limite máximo (2 dias úteis antes da
- * sessão, 18h30) não faz mais sentido oferecer o botão de liberar, porque
- * o Cliente ficaria bloqueado de qualquer forma (ver podeEditarPropostaCliente).
- */
-export function podeAdminLiberarPrazo(
-  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao'>
-): boolean {
-  const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
-  return new Date() <= calcularLimiteMaximoLiberacao(dataSessao);
 }
 
 /**
@@ -99,17 +111,30 @@ export function podeAdminLiberarPrazo(
  * para o prazo interno (vermelho/amarelo/verde).
  */
 export function prazoPropostaClienteInfo(
-  licitacao: Pick<Licitacao, 'dataLicitacao' | 'dataEfetivaLicitacao' | 'prazoPropostaLiberado'>
+  licitacao: Pick<
+    Licitacao,
+    'dataLicitacao' | 'dataEfetivaLicitacao' | 'prazoPropostaLiberado' | 'prazoPropostaLiberadoAte'
+  >
 ): { texto: string; urgencia: 'vencido' | 'atencao' | 'ok' } {
+  if (propostaComercialTravadaDeVez(licitacao)) {
+    // Texto exibido só pro Cliente (ClienteDashboard e
+    // PropostaComercialPage-cliente, únicos que chamam esta função) — a
+    // pedido do Márcio (30/09), sem mencionar que é a Salutti quem
+    // preenche a partir daqui, informação que não é da conta do Cliente.
+    return { texto: 'Prazo encerrado', urgencia: 'vencido' };
+  }
+
+  if (licitacao.prazoPropostaLiberado && licitacao.prazoPropostaLiberadoAte) {
+    const liberadoAte = new Date(licitacao.prazoPropostaLiberadoAte);
+    if (new Date() <= liberadoAte) {
+      return {
+        texto: `Liberado até ${liberadoAte.toLocaleDateString('pt-BR')} ${liberadoAte.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+        urgencia: 'ok',
+      };
+    }
+  }
+
   const dataSessao = new Date(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao);
-
-  if (new Date() > calcularLimiteMaximoLiberacao(dataSessao)) {
-    return { texto: 'Prazo encerrado — só a Salutti preenche', urgencia: 'vencido' };
-  }
-  if (licitacao.prazoPropostaLiberado) {
-    return { texto: 'Liberado pelo Admin', urgencia: 'ok' };
-  }
-
   const limiteEdicao = calcularLimiteEdicao(dataSessao);
   const diffMs = limiteEdicao.getTime() - new Date().getTime();
   const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));

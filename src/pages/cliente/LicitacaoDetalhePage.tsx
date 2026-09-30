@@ -48,7 +48,7 @@ import {
   StatusExigencia,
   STATUS_EXIGENCIA_LABEL,
 } from '@/types/licitacao'
-import { formatarDataHora, formatarMoeda } from '@/utils/prazoUtils'
+import { formatarDataHora, formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
 
@@ -116,7 +116,7 @@ function ItemLeitura({ item }: { item: ItemLicitacao }) {
         <div>
           <p className="font-body text-sm font-semibold text-ink">Item {item.numero}</p>
           <p className="mt-0.5 font-body text-xs text-ink-soft">
-            {item.quantidade} {item.unidadeMedida} × {formatarMoeda(item.precoReferencia)}
+            {formatarNumero(item.quantidade)} {item.unidadeMedida} × {formatarMoeda(item.precoReferencia)}
             {item.exclusivoMeEpp && ' · Exclusivo ME/EPP'}
           </p>
         </div>
@@ -480,7 +480,17 @@ export function LicitacaoDetalhePage() {
                 </div>
               </div>
             ) : licitacao.decisaoCliente === 'pendente' ? (
-              !podeEditarPropostaCliente(licitacao) ? (
+              porteCliente === 'me_epp' ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
+                    🔒 Empresas classificadas como ME/EPP não enviam proposta pelo sistema — fale com a Salutti
+                    diretamente sobre esta licitação.
+                  </p>
+                  <Button variant="ghost" onClick={() => setRecusando(true)} disabled={decidindo}>
+                    Não vou participar
+                  </Button>
+                </div>
+              ) : !podeEditarPropostaCliente(licitacao) ? (
                 <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
                   🔒 O prazo para participar desta licitação já encerrou (até {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE}{' '}
                   dias úteis antes da sessão, às 18h30).
