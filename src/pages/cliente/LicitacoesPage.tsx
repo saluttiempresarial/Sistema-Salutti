@@ -1,4 +1,3 @@
-
 // src/pages/cliente/LicitacoesPage.tsx
 //
 // Tela principal do Portal do Cliente — cards de indicadores + tabela de
@@ -16,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DashboardShell, StatCard } from '@/components/DashboardShell'
+import { BotaoSair } from '@/components/BotaoSair'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
 import { Licitacao } from '@/types/licitacao'
@@ -69,7 +69,7 @@ export function LicitacoesPage() {
 
   if (!user?.clienteId) {
     return (
-      <DashboardShell showHeader={false} title={`Bem-vindo, ${user?.name ?? 'Cliente'}`}>
+      <DashboardShell showHeader={false} title={`Bem-vindo, ${user?.name ?? 'Cliente'}`} headerActions={<BotaoSair />}>
         <div className="rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
           <p className="font-body text-sm text-ink-soft">
             Este login não está vinculado a um registro de cliente ainda. Peça para a equipe Salutti
@@ -85,6 +85,7 @@ export function LicitacoesPage() {
       showHeader={false}
       title={`Bem-vindo, ${user.name}`}
       subtitle="Acompanhe suas licitações e confirme sua participação."
+      headerActions={<BotaoSair />}
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Licitações acompanhadas" value={String(licitacoes.length)} />

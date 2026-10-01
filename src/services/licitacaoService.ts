@@ -14,6 +14,17 @@
 // DECISÃO DE DESIGN (histórico): assim como em funcionarioService.ts, o
 // histórico não fica embutido no registro — vem da tabela
 // historico_acoes, filtrada por entidade_tipo='licitacao'.
+//
+// CORREÇÃO (01/10): os campos objeto, participacao e procedimento têm
+// CHECK CONSTRAINT no banco (só aceitam NULL ou um valor específico de uma
+// lista fixa — ver migração do schema). Como esses campos do formulário
+// não são obrigatórios, eles ficavam como '' (string vazia) quando o
+// Analista não selecionava nada — e '' não bate com NULL nem com nenhum
+// valor da lista, então o INSERT falhava com
+// "violates check constraint licitacoes_procedimento_check" (ou
+// _objeto_check / _participacao_check), silenciosamente (sem mensagem na
+// tela). Mesmo padrão de "|| null" já usado em distancia_matriz/link_edital
+// duas linhas abaixo — só faltava aplicar aqui também.
 
 import { supabase } from '@/lib/supabaseClient'
 import type {
@@ -220,7 +231,7 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     data_licitacao: dados.dataLicitacao,
     data_efetiva_licitacao: dados.dataEfetivaLicitacao || null,
     portal: dados.portal,
-    objeto: dados.objeto,
+    objeto: dados.objeto || null,
     numero_pregao: dados.numeroPregao,
     orgao: dados.orgao,
     estado: dados.estado,
@@ -229,10 +240,10 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     modalidade: dados.modalidade,
     estrutura: dados.estrutura,
     tipo_contratacao: dados.tipoContratacao,
-    procedimento: dados.procedimento,
+    procedimento: dados.procedimento || null,
     forma_disputa: dados.formaDisputa,
     modo_disputa: dados.modoDisputa,
-    participacao: dados.participacao,
+    participacao: dados.participacao || null,
     capag: dados.capag,
     restricoes_me_epp: dados.restricoesMeEpp,
     link_edital: dados.linkEdital || null,
@@ -587,19 +598,6 @@ export const licitacaoService = {
       const erro = resultados.find((r) => r.error)?.error
       if (erro) throw new Error(erro.message)
     })
-  },
-
-  // Chamado pelo Portal do Cliente — botão "Desistir da licitação" na tela
-  // de Proposta Comercial. Apaga tudo que o Cliente preencheu (proposta por
-  // item) e volta a decisão para "pendente", como se ele nunca tivesse
-  // clicado em "Quero Participar". Ação irreversível — a confirmação
-  // ("Tem certeza?") acontece na tela, antes de chamar isto aqui.
-  async desistirLicitacao(id: string, nomeCliente: string): Promise<void> {
-    const { error } = await supabase.rpc('desistir_licitacao_cliente', {
-      p_licitacao_id: id,
-      p_usuario: nomeCliente,
-    })
-    if (error) throw new Error(error.message)
   },
 
   // Chamado pela página de Proposta Comercial (Admin) quando o Admin edita

@@ -18,9 +18,16 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    "baseUrl": ".",
+    // "baseUrl" foi removido de propósito (01/10): com "moduleResolution":
+    // "bundler", o "paths" abaixo já resolve o alias "@/" sozinho, sem
+    // precisar de "baseUrl" — e "baseUrl" é uma opção preterida que virou
+    // ERRO FATAL de configuração em algumas instalações do TypeScript
+    // (variou de máquina pra máquina nos testes, por isso a solução foi
+    // tirar a opção problemática em vez de tentar acertar o valor exato
+    // de "ignoreDeprecations"). "npm run build" parava antes de checar um
+    // arquivo sequer por causa disso.
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]

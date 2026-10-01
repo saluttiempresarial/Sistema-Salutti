@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import { DashboardShell } from '@/components/DashboardShell'
+import { BotaoSair } from '@/components/BotaoSair'
 import { useAuth } from '@/context/AuthContext'
 import { licitacaoService } from '@/services/licitacaoService'
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
@@ -38,7 +39,12 @@ export function CalendarioPage() {
   }, [user?.clienteId])
 
   return (
-    <DashboardShell showHeader={false} title="Calendário" subtitle="Sessões das suas licitações.">
+    <DashboardShell
+      showHeader={false}
+      title="Calendário"
+      subtitle="Sessões das suas licitações."
+      headerActions={<BotaoSair />}
+    >
       {carregando ? (
         <p className="font-body text-sm text-ink-soft">Carregando...</p>
       ) : (

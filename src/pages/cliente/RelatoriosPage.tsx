@@ -6,10 +6,11 @@
 // link morto no menu enquanto os relatórios de verdade não são definidos.
 
 import { DashboardShell } from '@/components/DashboardShell'
+import { BotaoSair } from '@/components/BotaoSair'
 
 export function RelatoriosPage() {
   return (
-    <DashboardShell showHeader={false} title="Relatórios">
+    <DashboardShell showHeader={false} title="Relatórios" headerActions={<BotaoSair />}>
       <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-ink-soft/10 bg-white p-10 text-center shadow-soft">
         <svg
           viewBox="0 0 24 24"

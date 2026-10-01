@@ -44,17 +44,38 @@ import { licitacaoService } from '../../../services/licitacaoService';
 import { calcularAnaliseItem } from '../../../utils/licitacaoCalculos';
 import { formatarNumero, formatarMoeda } from '../../../utils/prazoUtils';
 
-// Mesmo padrão de formatação BR (vírgula decimal) já usado no resto do
-// sistema — substitui o <input type="number"> nativo, que corrompe
-// silenciosamente valores digitados com separador de milhar.
+// Insere o ponto de milhar na parte inteira de um texto já no padrão BR
+// (vírgula decimal) — "305978,18" -> "305.978,18". A pedido do Márcio
+// (01/10): todo valor numérico exibido no sistema tem que vir com ponto
+// separando milhar, vírgula separando decimal (ex.: 4.578.122,15) — não só
+// em texto de leitura, mas também no que aparece dentro dos campos de
+// digitação assim que o valor é carregado/salvo (ver onBlur do campo
+// "Valor ofertado" abaixo, que reformata o texto digitado nesse padrão).
+function aplicarSeparadorMilhar(texto: string): string {
+  const negativo = texto.startsWith('-');
+  const semSinal = negativo ? texto.slice(1) : texto;
+  const [parteInteira, parteDecimal] = semSinal.split(',');
+  const parteInteiraComPontos = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const resultado = parteDecimal !== undefined ? `${parteInteiraComPontos},${parteDecimal}` : parteInteiraComPontos;
+  return negativo ? `-${resultado}` : resultado;
+}
+
+// Mesmo padrão de formatação BR (ponto de milhar, vírgula decimal) já usado
+// no resto do sistema — substitui o <input type="number"> nativo, que
+// corrompe silenciosamente valores digitados com separador de milhar.
 function numeroParaCampoDecimal(valor: number | null | undefined, casas: number): string {
   if (valor == null) return '';
-  const texto = valor
-    .toFixed(casas)
-    .replace(/0+$/, '')
-    .replace(/,$|\.$/, '')
-    .replace('.', ',');
-  return texto === '' || texto === '-' ? '0' : texto;
+  // O corte de "zeros sobrando" só pode acontecer quando existe separador
+  // decimal (casas > 0) — ex.: "100,4000" -> "100,4". Sem essa checagem, um
+  // valor inteiro terminado em zero (ex.: 100, 1000) teria o próprio número
+  // cortado por engano (100 -> 1) — bug encontrado em numeroParaCampoDecimal
+  // de LicitacaoFormModal.tsx (01/10), corrigido aqui também por segurança.
+  let textoBruto = valor.toFixed(casas);
+  if (casas > 0) {
+    textoBruto = textoBruto.replace(/0+$/, '').replace(/\.$/, '');
+  }
+  const texto = textoBruto === '' || textoBruto === '-' ? '0' : textoBruto.replace('.', ',');
+  return aplicarSeparadorMilhar(texto);
 }
 
 function campoParaNumeroDecimal(texto: string, casas: number): number | undefined {
@@ -597,6 +618,16 @@ export function DisputaFormModal({
                                         value={valores.valorOfertadoTexto}
                                         onChange={(e) =>
                                           atualizarValorLinha(linha.chave, 'valorOfertadoTexto', e.target.value)
+                                        }
+                                        onBlur={() =>
+                                          atualizarValorLinha(
+                                            linha.chave,
+                                            'valorOfertadoTexto',
+                                            numeroParaCampoDecimal(
+                                              campoParaNumeroDecimal(valores.valorOfertadoTexto, 2),
+                                              2
+                                            )
+                                          )
                                         }
                                         placeholder="0,00"
                                         className="w-20 text-sm font-semibold text-ink focus:outline-none"

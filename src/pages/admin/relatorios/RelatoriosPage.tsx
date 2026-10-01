@@ -199,19 +199,35 @@ export function RelatoriosPage() {
       colunas: [
         { chave: 'pregao', titulo: 'Pregão' },
         { chave: 'sessao', titulo: 'Sessão Realizada' },
-        { chave: 'nossaOferta', titulo: 'Nossa Oferta' },
-        { chave: 'valorVencedor', titulo: 'Valor Vencedor' },
-        { chave: 'vencedor', titulo: 'Vencedor' },
+        { chave: 'itensComResultado', titulo: 'Itens c/ Resultado' },
+        { chave: 'valorOfertado', titulo: 'Valor Ofertado (soma)' },
         { chave: 'resultado', titulo: 'Resultado' },
       ],
-      linhas: disputasFiltradas.map((d) => ({
-        pregao: licitacaoPorId.get(d.licitacaoId)?.numeroPregao ?? '—',
-        sessao: d.dataSessaoRealizada ? formatarDataHora(d.dataSessaoRealizada) : '—',
-        nossaOferta: d.valorNossaOfertaFinal ? formatarMoeda(d.valorNossaOfertaFinal) : '—',
-        valorVencedor: d.valorVencedor ? formatarMoeda(d.valorVencedor) : '—',
-        vencedor: d.nomeVencedor || '—',
-        resultado: RESULTADO_DISPUTA_LABEL[d.resultado],
-      })),
+      // ATENÇÃO (01/10): esta tabela quebrava a build — 'nossaOferta',
+      // 'valorVencedor' e 'vencedor' usavam valorNossaOfertaFinal/
+      // valorVencedor/nomeVencedor, campos que existiam na Disputa ORIGINAL
+      // e que saíram do tipo quando o resultado passou a ser por item
+      // (reestruturação de 28-30/09 — ver src/types/disputa.ts). Como
+      // `npm run dev` não type-checa, o erro só aparecia em `npm run build`
+      // e a tela ficou quebrada sem avisar. Troquei pelas únicas
+      // informações equivalentes que o novo modelo por item realmente tem:
+      // quantos itens já têm "Valor ofertado" preenchido (de quantos no
+      // total) e a soma desses valores ofertados. Não existe mais, em
+      // nenhum lugar do sistema, um "Vencedor" (nome do concorrente) nem um
+      // "Valor Vencedor" por disputa — se isso ainda for necessário pro
+      // relatório, é preciso decidir onde esse dado passaria a ser
+      // registrado (hoje não há tela para isso).
+      linhas: disputasFiltradas.map((d) => {
+        const itensPreenchidos = d.itens.filter((i) => i.valorFechado != null);
+        const somaOfertada = itensPreenchidos.reduce((soma, i) => soma + (i.valorFechado ?? 0), 0);
+        return {
+          pregao: licitacaoPorId.get(d.licitacaoId)?.numeroPregao ?? '—',
+          sessao: d.dataSessaoRealizada ? formatarDataHora(d.dataSessaoRealizada) : '—',
+          itensComResultado: `${itensPreenchidos.length}/${d.itens.length}`,
+          valorOfertado: itensPreenchidos.length > 0 ? formatarMoeda(somaOfertada) : '—',
+          resultado: RESULTADO_DISPUTA_LABEL[d.resultado],
+        };
+      }),
     };
   }, [aba, licitacoesFiltradas, disputasFiltradas, licitacoes, nomesClientes]);
 

@@ -91,14 +91,35 @@ interface FormReferencia {
 // `casas` limita quantas casas decimais o valor guarda (o corte só acontece
 // na conversão de volta pra número — nunca no texto que a pessoa está
 // digitando). Preço (referência/proposta) usa 6 casas; frete usa 2.
+// Insere o ponto de milhar na parte inteira de um texto já no padrão BR
+// (vírgula decimal) — "305978,18" -> "305.978,18". A pedido do Márcio
+// (01/10): todo valor numérico exibido no sistema tem que vir com ponto
+// separando milhar, vírgula separando decimal (ex.: 4.578.122,15) — não só
+// em texto de leitura, mas também no que aparece dentro dos campos de
+// digitação assim que o valor é carregado/salvo (ver onBlur dos campos
+// que usam numeroParaCampo, mais abaixo).
+function aplicarSeparadorMilhar(texto: string): string {
+  const negativo = texto.startsWith('-')
+  const semSinal = negativo ? texto.slice(1) : texto
+  const [parteInteira, parteDecimal] = semSinal.split(',')
+  const parteInteiraComPontos = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const resultado = parteDecimal !== undefined ? `${parteInteiraComPontos},${parteDecimal}` : parteInteiraComPontos
+  return negativo ? `-${resultado}` : resultado
+}
+
 function numeroParaCampo(valor: number | null | undefined, casas = 6): string {
   if (valor == null) return ''
-  const texto = valor
-    .toFixed(casas)
-    .replace(/0+$/, '')
-    .replace(/,$|\.$/, '')
-    .replace('.', ',')
-  return texto === '' || texto === '-' ? '0' : texto
+  // O corte de "zeros sobrando" só pode acontecer quando existe separador
+  // decimal (casas > 0) — ex.: "100,4000" -> "100,4". Sem essa checagem, um
+  // valor inteiro terminado em zero (ex.: 100, 1000) teria o próprio número
+  // cortado por engano (100 -> 1) — mesmo bug encontrado e corrigido em
+  // numeroParaCampoDecimal de LicitacaoFormModal.tsx (01/10).
+  let textoBruto = valor.toFixed(casas)
+  if (casas > 0) {
+    textoBruto = textoBruto.replace(/0+$/, '').replace(/\.$/, '')
+  }
+  const texto = textoBruto === '' || textoBruto === '-' ? '0' : textoBruto.replace('.', ',')
+  return aplicarSeparadorMilhar(texto)
 }
 
 // Aceita tanto vírgula decimal com ponto de milhar ("1.234,5678") quanto
@@ -132,7 +153,9 @@ function montarFormReferenciaInicial(itens: ItemLicitacao[]): Record<string, For
   itens.forEach((item) => {
     mapa[item.id] = {
       unidadeMedida: item.unidadeMedida,
-      quantidade: String(item.quantidade),
+      // numeroParaCampo (não String() puro) — já carrega com ponto de
+      // milhar quando a quantidade for grande (ex.: 10.000), no padrão BR.
+      quantidade: numeroParaCampo(item.quantidade, 0),
       // 10 casas — mesmo limite usado no cadastro da licitação
       // (LicitacaoFormModal): valor de referência pode vir do edital com
       // mais de 6 casas decimais (ex.: 4,57550140), e o padrão de 6 casas
@@ -218,7 +241,9 @@ export function PropostaComercialCards({
     return {
       ...item,
       unidadeMedida: formReferencia?.unidadeMedida ?? item.unidadeMedida,
-      quantidade: formReferencia ? Number(formReferencia.quantidade) || item.quantidade : item.quantidade,
+      // campoParaNumero (não Number() puro) — o texto pode vir com ponto de
+      // milhar (ex.: "1.000"), que Number() interpretaria errado como 1.
+      quantidade: formReferencia ? campoParaNumero(formReferencia.quantidade, 0) ?? item.quantidade : item.quantidade,
       precoReferencia: formReferencia ? campoParaNumero(formReferencia.precoReferencia, 10) ?? item.precoReferencia : item.precoReferencia,
       propostaCliente: {
         ...item.propostaCliente,
@@ -637,6 +662,13 @@ export function PropostaComercialCards({
                                     valor={formProposta.precoMinimo}
                                     placeholder="0,00"
                                     onChange={(v) => atualizarCampoProposta(itemVivo.id, 'precoMinimo', v)}
+                                    onBlur={() =>
+                                      atualizarCampoProposta(
+                                        itemVivo.id,
+                                        'precoMinimo',
+                                        numeroParaCampo(campoParaNumero(formProposta.precoMinimo), 6)
+                                      )
+                                    }
                                   />
                                   <CampoEditavel
                                     label="Marca/Fabricante"
@@ -691,11 +723,25 @@ export function PropostaComercialCards({
                                   label="Quantidade"
                                   valor={formReferencia.quantidade}
                                   onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'quantidade', v)}
+                                  onBlur={() =>
+                                    atualizarCampoReferencia(
+                                      itemVivo.id,
+                                      'quantidade',
+                                      numeroParaCampo(campoParaNumero(formReferencia.quantidade, 0), 0)
+                                    )
+                                  }
                                 />
                                 <CampoEditavel
                                   label="Valor unit. referência (R$)"
                                   valor={formReferencia.precoReferencia}
                                   onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'precoReferencia', v)}
+                                  onBlur={() =>
+                                    atualizarCampoReferencia(
+                                      itemVivo.id,
+                                      'precoReferencia',
+                                      numeroParaCampo(campoParaNumero(formReferencia.precoReferencia, 10), 10)
+                                    )
+                                  }
                                 />
                               </div>
                             </div>
@@ -763,11 +809,17 @@ function CampoEditavel({
   valor,
   placeholder,
   onChange,
+  onBlur,
 }: {
   label: string
   valor: string
   placeholder?: string
   onChange: (valor: string) => void
+  /** Reformata o texto no padrão BR (ponto de milhar) ao sair do campo —
+   *  só passado pelos campos numéricos (Quantidade, Valor unitário, Valor
+   *  unit. referência); campos de texto livre (Marca, Modelo, Unidade)
+   *  não usam. */
+  onBlur?: () => void
 }) {
   return (
     <div>
@@ -777,6 +829,7 @@ function CampoEditavel({
         value={valor}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         className="w-full rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
       />
     </div>

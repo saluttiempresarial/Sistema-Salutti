@@ -188,10 +188,10 @@ export function FotoPerfilCropModal({ arquivo, onCancelar, onConfirmar }: FotoPe
           onPointerLeave={handlePointerUp}
         >
           {urlObjeto && (
-            // eslint-disable-next-line jsx-a11y/alt-text
             <img
               ref={imgRef}
               src={urlObjeto}
+              alt=""
               onLoad={handleImagemCarregada}
               draggable={false}
               className="absolute left-0 top-0 max-w-none select-none"
@@ -221,3 +221,4 @@ export function FotoPerfilCropModal({ arquivo, onCancelar, onConfirmar }: FotoPe
     </Modal>
   )
 }
+  

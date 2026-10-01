@@ -193,6 +193,11 @@ function criarFormularioVazio(): LicitacaoFormData {
     cobrarFrete: false,
     statusProposta: 'rascunho',
 
+    // Nova licitação sempre começa com o prazo de proposta no fluxo
+    // automático (não liberado manualmente) — ver prazoPropostaLiberado em
+    // licitacao.ts.
+    prazoPropostaLiberado: false,
+
     observacoes: '',
   };
 }
@@ -248,17 +253,38 @@ interface LicitacaoFormModalProps {
   carregando?: boolean;
 }
 
+// Insere o ponto de milhar na parte inteira de um texto já no padrão BR
+// (vírgula decimal) — "4575501,4" -> "4.575.501,4". A pedido do Márcio
+// (01/10): todo valor numérico exibido no sistema tem que vir com ponto
+// separando milhar, vírgula separando decimal (ex.: 4.578.122,15) — não só
+// em texto de leitura, mas também no que aparece dentro dos campos de
+// digitação assim que o valor é carregado/salvo (ver onBlur dos campos
+// abaixo, que reformatam o texto digitado nesse padrão).
+function aplicarSeparadorMilhar(texto: string): string {
+  const negativo = texto.startsWith('-');
+  const semSinal = negativo ? texto.slice(1) : texto;
+  const [parteInteira, parteDecimal] = semSinal.split(',');
+  const parteInteiraComPontos = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const resultado = parteDecimal !== undefined ? `${parteInteiraComPontos},${parteDecimal}` : parteInteiraComPontos;
+  return negativo ? `-${resultado}` : resultado;
+}
+
 // Converte um número para o texto exibido no campo, no padrão brasileiro
-// (vírgula decimal), com até `casas` casas decimais — sem casas de sobra
-// quando o valor é "redondo" (ex.: 4575501 -> "4575501", não "4575501,000000").
+// (ponto de milhar, vírgula decimal), com até `casas` casas decimais — sem
+// casas de sobra quando o valor é "redondo" (ex.: 4575501 -> "4.575.501",
+// não "4575501,000000").
 function numeroParaCampoDecimal(valor: number | null | undefined, casas: number): string {
   if (valor == null) return '';
-  const texto = valor
-    .toFixed(casas)
-    .replace(/0+$/, '')
-    .replace(/,$|\.$/, '')
-    .replace('.', ',');
-  return texto === '' || texto === '-' ? '0' : texto;
+  // O corte de "zeros sobrando" só pode acontecer quando existe separador
+  // decimal (casas > 0) — ex.: "100,4000" -> "100,4". Sem isso, um valor
+  // inteiro terminado em zero (ex.: 100, 1000, 250) teria o próprio número
+  // cortado por engano (100 -> 1), que era o bug no campo "Qtde" (01/10).
+  let textoBruto = valor.toFixed(casas);
+  if (casas > 0) {
+    textoBruto = textoBruto.replace(/0+$/, '').replace(/\.$/, '');
+  }
+  const texto = textoBruto === '' || textoBruto === '-' ? '0' : textoBruto.replace('.', ',');
+  return aplicarSeparadorMilhar(texto);
 }
 
 // Converte o texto digitado de volta para número — aceita tanto vírgula
@@ -634,21 +660,18 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 required
                 value={form.portal}
                 onChange={(e) => atualizarCampo('portal', e.target.value)}
-                placeholder="Ex: ComprasNet, BEC, Licitações-e"
               />
               <TextField
                 label="Número do pregão *"
                 required
                 value={form.numeroPregao}
                 onChange={(e) => atualizarCampo('numeroPregao', e.target.value)}
-                placeholder="Ex: PE 045/2026"
               />
               <TextField
                 label="Órgão *"
                 required
                 value={form.orgao}
                 onChange={(e) => atualizarCampo('orgao', e.target.value)}
-                placeholder="Ex: Prefeitura Municipal de..."
               />
               <div className="col-span-2">
                 <SelectField
@@ -684,7 +707,6 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 label="Distância da matriz"
                 value={form.distanciaMatriz}
                 onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value)}
-                placeholder="Ex: 120km ou cerca de 2h de viagem"
               />
               <div>
                 <SelectField
@@ -766,7 +788,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   setValorTotalTexto(e.target.value);
                   atualizarCampo('valorTotalLicitacao', campoParaNumeroDecimal(e.target.value, 10));
                 }}
-                placeholder="Ex.: 4575501,4321 — deixe em branco para orçamento sigiloso"
+                onBlur={() => setValorTotalTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(valorTotalTexto, 10), 10))}
               />
               <TextField
                 label="Link do edital"
@@ -824,13 +846,11 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 label="CAPAG"
                 value={form.capag}
                 onChange={(e) => atualizarCampo('capag', e.target.value)}
-                placeholder="Ex: B (3,96%)"
               />
               <TextField
                 label="Restrições à participação. Exclusiva ME/EPP?"
                 value={form.restricoesMeEpp}
                 onChange={(e) => atualizarCampo('restricoesMeEpp', e.target.value)}
-                placeholder="Ex: Não é exclusiva. A preferência para ME/EPP não será aplicada"
               />
             </div>
 
@@ -959,8 +979,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                           setValorIntervaloLancesTexto(e.target.value);
                           atualizarCondicoes('valorIntervaloLances', campoParaNumeroDecimal(e.target.value, 4));
                         }}
-                        onBlur={() => setEditandoValorIntervaloLances(false)}
-                        placeholder="Ex.: 500,00"
+                        onBlur={() => {
+                          setValorIntervaloLancesTexto((atual) =>
+                            numeroParaCampoDecimal(campoParaNumeroDecimal(atual, 4), 4)
+                          );
+                          setEditandoValorIntervaloLances(false);
+                        }}
                       />
                     ) : (
                       <button
@@ -987,8 +1011,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                           setPercentualIntervaloLancesTexto(e.target.value);
                           atualizarCondicoes('percentualIntervaloLances', campoParaNumeroDecimal(e.target.value, 4));
                         }}
-                        onBlur={() => setEditandoPercentualIntervaloLances(false)}
-                        placeholder="Ex.: 5,5"
+                        onBlur={() => {
+                          setPercentualIntervaloLancesTexto((atual) =>
+                            numeroParaCampoDecimal(campoParaNumeroDecimal(atual, 4), 4)
+                          );
+                          setEditandoPercentualIntervaloLances(false);
+                        }}
                       />
                     ) : (
                       <button
@@ -1200,7 +1228,6 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               value={form.pontosAtencao}
               onChange={(e) => atualizarCampo('pontosAtencao', e.target.value)}
               rows={8}
-              placeholder="Descreva riscos, restrições e estratégia para esta licitação"
             />
           </div>
         )}
@@ -1308,6 +1335,10 @@ function ItemLicitacaoRow({
   // o mesmo limite de 10 casas do "Valor total da licitação" em vez de 6,
   // que estava truncando/arredondando valores digitados com mais precisão.
   const [precoTexto, setPrecoTexto] = useState(() => numeroParaCampoDecimal(item.precoReferencia, 10));
+  // Mesmo padrão BR (ponto de milhar) aplicado à quantidade — um pregão pode
+  // ter itens com quantidades grandes (ex.: 10.000 unidades), e o
+  // <input type="number"> nativo não exibe separador de milhar.
+  const [qtdeTexto, setQtdeTexto] = useState(() => numeroParaCampoDecimal(item.quantidade, 0));
 
   return (
     <div className="relative rounded-lg bg-paper-2/60 p-3">
@@ -1338,9 +1369,13 @@ function ItemLicitacaoRow({
         <div className="w-28 shrink-0">
           <TextField
             label="Qtde"
-            type="number"
-            value={item.quantidade}
-            onChange={(e) => onChange(item.id, 'quantidade', Number(e.target.value))}
+            type="text"
+            value={qtdeTexto}
+            onChange={(e) => {
+              setQtdeTexto(e.target.value);
+              onChange(item.id, 'quantidade', campoParaNumeroDecimal(e.target.value, 0) ?? 0);
+            }}
+            onBlur={() => setQtdeTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(qtdeTexto, 0), 0))}
           />
         </div>
         <div className="w-44 shrink-0">
@@ -1352,6 +1387,7 @@ function ItemLicitacaoRow({
               setPrecoTexto(e.target.value);
               onChange(item.id, 'precoReferencia', campoParaNumeroDecimal(e.target.value, 10) ?? 0);
             }}
+            onBlur={() => setPrecoTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(precoTexto, 10), 10))}
           />
         </div>
         <div className="w-48 shrink-0">

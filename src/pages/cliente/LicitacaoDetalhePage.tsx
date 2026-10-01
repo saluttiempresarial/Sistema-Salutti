@@ -468,7 +468,6 @@ export function LicitacaoDetalhePage() {
                   value={motivoRecusa}
                   onChange={(e) => setMotivoRecusa(e.target.value)}
                   rows={2}
-                  placeholder="Ex: fora do nosso escopo de atuação no momento"
                 />
                 <div className="flex gap-2">
                   <Button variant="ghost" onClick={() => setRecusando(false)} disabled={decidindo}>
