@@ -113,11 +113,16 @@ export const STATUS_PROPOSTA_LABEL: Record<StatusProposta, string> = {
 
 // Aba 3 — Condições Comerciais: "Forma de pagamento (crédito em conta,
 // boleto, pix ou outros)" — únicas opções explicitadas na spec.
-export type FormaPagamento = 'credito_conta' | 'debito_conta' | 'boleto' | 'pix' | 'outros';
+//
+// REMOÇÃO (02/10, a pedido do Márcio): "Débito em conta" tirado da lista —
+// não é uma opção real de recebimento usada pela Salutti. Esse campo é
+// salvo dentro do bloco único `condicoesComerciais` (JSON), sem CHECK
+// CONSTRAINT própria no banco, então tirar a opção daqui é seguro e não
+// exige nenhuma migração.
+export type FormaPagamento = 'credito_conta' | 'boleto' | 'pix' | 'outros';
 
 export const FORMA_PAGAMENTO_LABEL: Record<FormaPagamento, string> = {
   credito_conta: 'Crédito em conta',
-  debito_conta: 'Débito em conta',
   boleto: 'Boleto',
   pix: 'Pix',
   outros: 'Outros',
@@ -356,7 +361,8 @@ export interface Licitacao {
   modoDisputa: string; // dropdown: Aberto / Fechado / Aberto-Fechado / Fechado-Aberto
   participacao: string; // dropdown: Exclusiva ME/EPP / Ampla concorrência (antes era Individual/Por lote — ver EstruturaLicitacao)
   capag: string; // texto livre, ex: "B (3,96%)"
-  restricoesMeEpp: string; // texto livre, ex: "Não é exclusiva. A preferência para ME/EPP não será aplicada"
+  // "restricoesMeEpp" removido (02/10) — era redundante com "participacao",
+  // que já tem as opções "Exclusiva ME/EPP" / "Ampla concorrência".
   linkEdital?: string;
   nomesArquivosEdital?: string[]; // simula o upload dos documentos do edital (mock) — qualquer tipo de arquivo, vários por licitação; real vai para Supabase Storage
   valorTotalLicitacao?: number; // ausente/undefined = orçamento sigiloso

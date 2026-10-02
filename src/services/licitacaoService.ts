@@ -14,17 +14,6 @@
 // DECISÃO DE DESIGN (histórico): assim como em funcionarioService.ts, o
 // histórico não fica embutido no registro — vem da tabela
 // historico_acoes, filtrada por entidade_tipo='licitacao'.
-//
-// CORREÇÃO (01/10): os campos objeto, participacao e procedimento têm
-// CHECK CONSTRAINT no banco (só aceitam NULL ou um valor específico de uma
-// lista fixa — ver migração do schema). Como esses campos do formulário
-// não são obrigatórios, eles ficavam como '' (string vazia) quando o
-// Analista não selecionava nada — e '' não bate com NULL nem com nenhum
-// valor da lista, então o INSERT falhava com
-// "violates check constraint licitacoes_procedimento_check" (ou
-// _objeto_check / _participacao_check), silenciosamente (sem mensagem na
-// tela). Mesmo padrão de "|| null" já usado em distancia_matriz/link_edital
-// duas linhas abaixo — só faltava aplicar aqui também.
 
 import { supabase } from '@/lib/supabaseClient'
 import type {
@@ -75,7 +64,6 @@ interface LicitacaoRow {
   modo_disputa: string
   participacao: string
   capag: string | null
-  restricoes_me_epp: string | null
   link_edital: string | null
   arquivo_edital_path: string | null
   valor_total_licitacao: number | null
@@ -187,7 +175,6 @@ function paraLicitacao(
     modoDisputa: row.modo_disputa,
     participacao: row.participacao,
     capag: row.capag ?? '',
-    restricoesMeEpp: row.restricoes_me_epp ?? '',
     linkEdital: row.link_edital ?? undefined,
     // Coluna arquivo_edital_path continua sendo um único texto no banco
     // (ainda é upload simulado, sem Storage de verdade por trás) — vários
@@ -245,7 +232,6 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     modo_disputa: dados.modoDisputa,
     participacao: dados.participacao || null,
     capag: dados.capag,
-    restricoes_me_epp: dados.restricoesMeEpp,
     link_edital: dados.linkEdital || null,
     arquivo_edital_path: dados.nomesArquivosEdital && dados.nomesArquivosEdital.length > 0 ? dados.nomesArquivosEdital.join(', ') : null,
     valor_total_licitacao: dados.valorTotalLicitacao ?? null,
@@ -266,64 +252,48 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
 }
 
 /** Apaga grupos/itens antigos e insere a lista nova por completo (decisão
- *  de design B — ver comentário no topo do arquivo). Grupos precisam ser
- *  inseridos primeiro, para os itens poderem referenciar o novo grupo_id. */
+ *  de design B — ver comentário no topo do arquivo).
+ *
+ *  ATUALIZADO (02/10, a pedido do Márcio): antes, isso era feito em 4
+ *  chamadas separadas ao Supabase (apagar itens -> apagar grupos ->
+ *  inserir grupos novos -> inserir itens novos). Se qualquer uma falhasse
+ *  no meio do caminho (conexão cair, erro de validação, etc.), a
+ *  licitação podia ficar com os itens/grupos antigos já apagados e os
+ *  novos não inseridos — risco real de perda de dados, sem nenhum aviso
+ *  na tela. Agora as 4 operações rodam dentro de uma função só no
+ *  Postgres (substituir_grupos_itens_licitacao, migração 030), numa
+ *  única transação: se qualquer parte falhar, o banco desfaz tudo
+ *  automaticamente e o erro sobe pra cá do mesmo jeito que antes (o
+ *  try/catch que já existe na tela continua funcionando sem mudança). */
 async function substituirGruposEItens(
   licitacaoId: string,
   grupos: GrupoItens[],
   itens: ItemLicitacao[]
 ) {
-  const { error: erroDeleteItens } = await supabase
-    .from('itens_licitacao')
-    .delete()
-    .eq('licitacao_id', licitacaoId)
-  if (erroDeleteItens) throw new Error(erroDeleteItens.message)
-
-  const { error: erroDeleteGrupos } = await supabase
-    .from('grupos_itens_licitacao')
-    .delete()
-    .eq('licitacao_id', licitacaoId)
-  if (erroDeleteGrupos) throw new Error(erroDeleteGrupos.message)
-
-  // Mapa "id antigo do grupo (do form) -> novo id gerado pelo banco", para
-  // os itens conseguirem apontar para o grupo certo depois do reinsert.
-  const mapaGrupoIds = new Map<string, string>()
-
-  if (grupos.length > 0) {
-    const { data: gruposInseridos, error: erroInsertGrupos } = await supabase
-      .from('grupos_itens_licitacao')
-      .insert(grupos.map((g) => ({ licitacao_id: licitacaoId, numero: g.numero, nome: g.nome })))
-      .select('id, nome')
-    if (erroInsertGrupos) throw new Error(erroInsertGrupos.message)
-
-    // Casa pela ordem (mesma ordem de entrada/retorno) — assume nomes não
-    // precisam ser únicos, então casar por índice é mais seguro que por nome.
-    grupos.forEach((grupoOriginal, index) => {
-      const inserido = gruposInseridos?.[index]
-      if (inserido) mapaGrupoIds.set(grupoOriginal.id, inserido.id)
-    })
-  }
-
-  if (itens.length > 0) {
-    const { error: erroInsertItens } = await supabase.from('itens_licitacao').insert(
-      itens.map((item) => ({
-        licitacao_id: licitacaoId,
-        grupo_id: item.grupoId ? mapaGrupoIds.get(item.grupoId) ?? null : null,
-        numero: item.numero,
-        descricao: item.descricao,
-        unidade_medida: item.unidadeMedida,
-        quantidade: item.quantidade,
-        preco_referencia: item.precoReferencia,
-        exclusivo_me_epp: item.exclusivoMeEpp,
-        proposta_codigo_interno: item.propostaCliente?.codigoInterno || null,
-        proposta_descricao: item.propostaCliente?.descricaoProduto || null,
-        proposta_marca: item.propostaCliente?.marca || null,
-        proposta_modelo: item.propostaCliente?.modelo || null,
-        proposta_preco_minimo: item.propostaCliente?.precoMinimo ?? null,
-      }))
-    )
-    if (erroInsertItens) throw new Error(erroInsertItens.message)
-  }
+  const { error } = await supabase.rpc('substituir_grupos_itens_licitacao', {
+    p_licitacao_id: licitacaoId,
+    p_grupos: grupos.map((g) => ({ id: g.id, numero: g.numero, nome: g.nome })),
+    p_itens: itens.map((item) => ({
+      id: item.id,
+      grupoId: item.grupoId ?? null,
+      numero: item.numero,
+      descricao: item.descricao,
+      unidadeMedida: item.unidadeMedida,
+      quantidade: item.quantidade,
+      precoReferencia: item.precoReferencia,
+      exclusivoMeEpp: item.exclusivoMeEpp,
+      propostaCliente: item.propostaCliente
+        ? {
+            codigoInterno: item.propostaCliente.codigoInterno ?? null,
+            descricaoProduto: item.propostaCliente.descricaoProduto ?? null,
+            marca: item.propostaCliente.marca ?? null,
+            modelo: item.propostaCliente.modelo ?? null,
+            precoMinimo: item.propostaCliente.precoMinimo ?? null,
+          }
+        : null,
+    })),
+  })
+  if (error) throw new Error(error.message)
 }
 
 async function buscarGruposEItens(licitacaoId: string): Promise<{ grupos: GrupoRow[]; itens: ItemRow[] }> {
@@ -598,6 +568,19 @@ export const licitacaoService = {
       const erro = resultados.find((r) => r.error)?.error
       if (erro) throw new Error(erro.message)
     })
+  },
+
+  // Chamado pelo Portal do Cliente — botão "Desistir da licitação" na tela
+  // de Proposta Comercial. Apaga tudo que o Cliente preencheu (proposta por
+  // item) e volta a decisão para "pendente", como se ele nunca tivesse
+  // clicado em "Quero Participar". Ação irreversível — a confirmação
+  // ("Tem certeza?") acontece na tela, antes de chamar isto aqui.
+  async desistirLicitacao(id: string, nomeCliente: string): Promise<void> {
+    const { error } = await supabase.rpc('desistir_licitacao_cliente', {
+      p_licitacao_id: id,
+      p_usuario: nomeCliente,
+    })
+    if (error) throw new Error(error.message)
   },
 
   // Chamado pela página de Proposta Comercial (Admin) quando o Admin edita

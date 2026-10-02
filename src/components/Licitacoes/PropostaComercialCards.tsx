@@ -41,6 +41,11 @@ import {
   totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
 import { formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
+import {
+  numeroParaCampoDecimal as numeroParaCampo,
+  campoParaNumeroDecimal as campoParaNumero,
+  aplicarMascaraAoDigitar,
+} from '@/utils/formatoNumerico'
 
 // Mesmo contrato que PropostaComercialTable.tsx já usa — mantido aqui com o
 // mesmo nome e formato para a troca de componente (Etapa 5) não exigir
@@ -91,50 +96,13 @@ interface FormReferencia {
 // `casas` limita quantas casas decimais o valor guarda (o corte só acontece
 // na conversão de volta pra número — nunca no texto que a pessoa está
 // digitando). Preço (referência/proposta) usa 6 casas; frete usa 2.
-// Insere o ponto de milhar na parte inteira de um texto já no padrão BR
-// (vírgula decimal) — "305978,18" -> "305.978,18". A pedido do Márcio
-// (01/10): todo valor numérico exibido no sistema tem que vir com ponto
-// separando milhar, vírgula separando decimal (ex.: 4.578.122,15) — não só
-// em texto de leitura, mas também no que aparece dentro dos campos de
-// digitação assim que o valor é carregado/salvo (ver onBlur dos campos
-// que usam numeroParaCampo, mais abaixo).
-function aplicarSeparadorMilhar(texto: string): string {
-  const negativo = texto.startsWith('-')
-  const semSinal = negativo ? texto.slice(1) : texto
-  const [parteInteira, parteDecimal] = semSinal.split(',')
-  const parteInteiraComPontos = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  const resultado = parteDecimal !== undefined ? `${parteInteiraComPontos},${parteDecimal}` : parteInteiraComPontos
-  return negativo ? `-${resultado}` : resultado
-}
-
-function numeroParaCampo(valor: number | null | undefined, casas = 6): string {
-  if (valor == null) return ''
-  // O corte de "zeros sobrando" só pode acontecer quando existe separador
-  // decimal (casas > 0) — ex.: "100,4000" -> "100,4". Sem essa checagem, um
-  // valor inteiro terminado em zero (ex.: 100, 1000) teria o próprio número
-  // cortado por engano (100 -> 1) — mesmo bug encontrado e corrigido em
-  // numeroParaCampoDecimal de LicitacaoFormModal.tsx (01/10).
-  let textoBruto = valor.toFixed(casas)
-  if (casas > 0) {
-    textoBruto = textoBruto.replace(/0+$/, '').replace(/\.$/, '')
-  }
-  const texto = textoBruto === '' || textoBruto === '-' ? '0' : textoBruto.replace('.', ',')
-  return aplicarSeparadorMilhar(texto)
-}
-
-// Aceita tanto vírgula decimal com ponto de milhar ("1.234,5678") quanto
-// ponto decimal solto ("1234.5678") — sem isso, um valor como "1.234,56"
-// vira "1.23456" ao trocar só a vírgula por ponto (o ponto de milhar não é
-// removido antes), corrompendo o número silenciosamente.
-function campoParaNumero(valor: string, casas = 6): number | undefined {
-  const limpo = valor.trim()
-  if (!limpo) return undefined
-  const semSeparadorMilhar = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo
-  const numero = parseFloat(semSeparadorMilhar)
-  if (isNaN(numero)) return undefined
-  const fator = Math.pow(10, casas)
-  return Math.round(numero * fator) / fator
-}
+//
+// numeroParaCampo/campoParaNumero (02/10): passam a ser apenas aliases das
+// funções centralizadas em utils/formatoNumerico.ts — essa duplicação
+// (quase idêntica à de LicitacaoFormModal.tsx) foi o que permitiu a mesma
+// falha (ponto solto lido como decimal, "10.000" virando 10) ser corrigida
+// num arquivo e esquecida no outro. Mantidos os nomes curtos aqui só pra
+// não precisar reescrever todas as chamadas já existentes no arquivo.
 
 function montarFormPropostaInicial(itens: ItemLicitacao[]): Record<string, FormProposta> {
   const mapa: Record<string, FormProposta> = {}
@@ -142,7 +110,7 @@ function montarFormPropostaInicial(itens: ItemLicitacao[]): Record<string, FormP
     mapa[item.id] = {
       marca: item.propostaCliente?.marca ?? '',
       modelo: item.propostaCliente?.modelo ?? '',
-      precoMinimo: numeroParaCampo(item.propostaCliente?.precoMinimo),
+      precoMinimo: numeroParaCampo(item.propostaCliente?.precoMinimo, 6, 2),
     }
   })
   return mapa
@@ -161,7 +129,7 @@ function montarFormReferenciaInicial(itens: ItemLicitacao[]): Record<string, For
       // mais de 6 casas decimais (ex.: 4,57550140), e o padrão de 6 casas
       // do numeroParaCampo estava truncando esse valor ao abrir o campo
       // aqui para edição pelo Admin.
-      precoReferencia: numeroParaCampo(item.precoReferencia, 10),
+      precoReferencia: numeroParaCampo(item.precoReferencia, 10, 2),
     }
   })
   return mapa
@@ -177,16 +145,31 @@ function removerPrefixoNumero(numeroPregao: string): string {
 }
 
 // Agrupa os itens por grupo/lote. Licitações com estrutura "Item" (sem
-// grupo) caem todas num único bloco "Itens", pra não forçar navegação em 2
-// níveis quando não existe divisão em grupos.
+// nenhum grupo) caem todas num único bloco "Itens individuais", pra não
+// forçar navegação em 2 níveis quando não existe divisão em grupos.
+//
+// CORREÇÃO (02/10, bug reportado pelo Márcio): licitações que misturam
+// grupo(s) COM itens individuais (ex.: 1 grupo "Cesta básica" + 1 item
+// avulso "Café") perdiam o item avulso nesta tela — antes, o bloco "sem
+// grupo" só era criado quando grupos.length === 0, então, assim que
+// existia 1 grupo, os itens sem grupoId ficavam de fora da lista de
+// blocos inteiramente (mesmo contando no total geral, que soma direto
+// licitacao.itens, por isso o contador "X de Y preenchidos" batia mas
+// nenhum card aparecia pro item avulso preencher). Agora o bloco de itens
+// individuais é incluído sempre que existir ao menos 1 item sem grupo,
+// independente de a licitação também ter grupo(s) ou não.
 function agruparItens(licitacao: Licitacao): BlocoGrupo[] {
-  if (licitacao.grupos.length === 0) {
-    return [{ grupo: null, itens: licitacao.itens }]
-  }
-  return licitacao.grupos.map((grupo) => ({
+  const blocos: BlocoGrupo[] = licitacao.grupos.map((grupo) => ({
     grupo,
     itens: licitacao.itens.filter((item) => item.grupoId === grupo.id),
   }))
+
+  const itensSemGrupo = licitacao.itens.filter((item) => !item.grupoId)
+  if (itensSemGrupo.length > 0 || blocos.length === 0) {
+    blocos.push({ grupo: null, itens: itensSemGrupo })
+  }
+
+  return blocos
 }
 
 export function PropostaComercialCards({
@@ -249,7 +232,7 @@ export function PropostaComercialCards({
         ...item.propostaCliente,
         marca: formProposta?.marca ?? item.propostaCliente?.marca ?? '',
         modelo: formProposta?.modelo ?? item.propostaCliente?.modelo ?? '',
-        precoMinimo: formProposta ? campoParaNumero(formProposta.precoMinimo) : item.propostaCliente?.precoMinimo,
+        precoMinimo: formProposta ? campoParaNumero(formProposta.precoMinimo, 6) : item.propostaCliente?.precoMinimo,
       },
     }
   }
@@ -446,7 +429,7 @@ export function PropostaComercialCards({
                 inputMode="decimal"
                 placeholder="0,00"
                 value={taxaFrete}
-                onChange={(e) => setTaxaFrete(e.target.value.replace(/-/g, ''))}
+                onChange={(e) => setTaxaFrete(aplicarMascaraAoDigitar(e.target.value, 2))}
                 className="w-24 rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
               />
               <span className="font-body text-[11px] text-ink-soft">aplicado a todos os itens da proposta</span>
@@ -661,12 +644,13 @@ export function PropostaComercialCards({
                                     label="Valor unitário (R$)"
                                     valor={formProposta.precoMinimo}
                                     placeholder="0,00"
+                                    casasDecimais={6}
                                     onChange={(v) => atualizarCampoProposta(itemVivo.id, 'precoMinimo', v)}
                                     onBlur={() =>
                                       atualizarCampoProposta(
                                         itemVivo.id,
                                         'precoMinimo',
-                                        numeroParaCampo(campoParaNumero(formProposta.precoMinimo), 6)
+                                        numeroParaCampo(campoParaNumero(formProposta.precoMinimo, 6), 6, 2)
                                       )
                                     }
                                   />
@@ -722,6 +706,7 @@ export function PropostaComercialCards({
                                 <CampoEditavel
                                   label="Quantidade"
                                   valor={formReferencia.quantidade}
+                                  casasDecimais={0}
                                   onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'quantidade', v)}
                                   onBlur={() =>
                                     atualizarCampoReferencia(
@@ -734,12 +719,13 @@ export function PropostaComercialCards({
                                 <CampoEditavel
                                   label="Valor unit. referência (R$)"
                                   valor={formReferencia.precoReferencia}
+                                  casasDecimais={10}
                                   onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'precoReferencia', v)}
                                   onBlur={() =>
                                     atualizarCampoReferencia(
                                       itemVivo.id,
                                       'precoReferencia',
-                                      numeroParaCampo(campoParaNumero(formReferencia.precoReferencia, 10), 10)
+                                      numeroParaCampo(campoParaNumero(formReferencia.precoReferencia, 10), 10, 2)
                                     )
                                   }
                                 />
@@ -810,6 +796,7 @@ function CampoEditavel({
   placeholder,
   onChange,
   onBlur,
+  casasDecimais,
 }: {
   label: string
   valor: string
@@ -820,6 +807,13 @@ function CampoEditavel({
    *  unit. referência); campos de texto livre (Marca, Modelo, Unidade)
    *  não usam. */
   onBlur?: () => void
+  /** Quando informado, aplica a máscara numérica BR (ponto de milhar,
+   *  vírgula decimal) em tempo real enquanto a pessoa digita, limitando a
+   *  este número de casas decimais — ver aplicarMascaraAoDigitar() em
+   *  utils/formatoNumerico.ts. Omitido para campos de texto livre (Marca,
+   *  Modelo, Unidade), que continuam digitação livre normal. Adicionado
+   *  em 02/10 junto com a correção do bug "10.000 virando 10". */
+  casasDecimais?: number
 }) {
   return (
     <div>
@@ -828,7 +822,9 @@ function CampoEditavel({
         type="text"
         value={valor}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) =>
+          onChange(casasDecimais !== undefined ? aplicarMascaraAoDigitar(e.target.value, casasDecimais) : e.target.value)
+        }
         onBlur={onBlur}
         className="w-full rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
       />

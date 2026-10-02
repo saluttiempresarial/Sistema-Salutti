@@ -24,7 +24,7 @@
 // edição — a listagem não traz esses dados, por design. Mostra um estado
 // simples de carregamento no lugar do formulário enquanto isso acontece.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import { Modal } from '../../../components/Modal';
 import { Tabs } from '../../../components/Tabs';
 import { TextField } from '../../../components/TextField';
@@ -71,6 +71,11 @@ import { clienteService } from '../../../services/clienteService';
 import { PorteEmpresa } from '../../../types/cliente';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
+// Funções de formatação/conversão numérica BR (vírgula decimal, ponto de
+// milhar) — centralizadas aqui (02/10) para não ficarem duplicadas entre
+// este arquivo e PropostaComercialCards.tsx, o que já causou um bug real
+// (ver comentário no próprio utilitário).
+import { numeroParaCampoDecimal, campoParaNumeroDecimal, aplicarMascaraAoDigitar } from '../../../utils/formatoNumerico';
 
 // Monta a lista de abas com a contagem de itens de checklist ainda sem
 // marcação (Exigido/Não exigido) ao lado do nome — para o Analista ver de
@@ -164,7 +169,6 @@ function criarFormularioVazio(): LicitacaoFormData {
     tipoContratacao: '',
     procedimento: '',
     capag: '',
-    restricoesMeEpp: '',
     linkEdital: '',
     nomesArquivosEdital: [] as string[],
     valorTotalLicitacao: undefined,
@@ -253,55 +257,16 @@ interface LicitacaoFormModalProps {
   carregando?: boolean;
 }
 
-// Insere o ponto de milhar na parte inteira de um texto já no padrão BR
-// (vírgula decimal) — "4575501,4" -> "4.575.501,4". A pedido do Márcio
-// (01/10): todo valor numérico exibido no sistema tem que vir com ponto
-// separando milhar, vírgula separando decimal (ex.: 4.578.122,15) — não só
-// em texto de leitura, mas também no que aparece dentro dos campos de
-// digitação assim que o valor é carregado/salvo (ver onBlur dos campos
-// abaixo, que reformatam o texto digitado nesse padrão).
-function aplicarSeparadorMilhar(texto: string): string {
-  const negativo = texto.startsWith('-');
-  const semSinal = negativo ? texto.slice(1) : texto;
-  const [parteInteira, parteDecimal] = semSinal.split(',');
-  const parteInteiraComPontos = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const resultado = parteDecimal !== undefined ? `${parteInteiraComPontos},${parteDecimal}` : parteInteiraComPontos;
-  return negativo ? `-${resultado}` : resultado;
-}
-
-// Converte um número para o texto exibido no campo, no padrão brasileiro
-// (ponto de milhar, vírgula decimal), com até `casas` casas decimais — sem
-// casas de sobra quando o valor é "redondo" (ex.: 4575501 -> "4.575.501",
-// não "4575501,000000").
-function numeroParaCampoDecimal(valor: number | null | undefined, casas: number): string {
-  if (valor == null) return '';
-  // O corte de "zeros sobrando" só pode acontecer quando existe separador
-  // decimal (casas > 0) — ex.: "100,4000" -> "100,4". Sem isso, um valor
-  // inteiro terminado em zero (ex.: 100, 1000, 250) teria o próprio número
-  // cortado por engano (100 -> 1), que era o bug no campo "Qtde" (01/10).
-  let textoBruto = valor.toFixed(casas);
-  if (casas > 0) {
-    textoBruto = textoBruto.replace(/0+$/, '').replace(/\.$/, '');
-  }
-  const texto = textoBruto === '' || textoBruto === '-' ? '0' : textoBruto.replace('.', ',');
-  return aplicarSeparadorMilhar(texto);
-}
-
-// Converte o texto digitado de volta para número — aceita tanto vírgula
-// decimal com ponto de milhar ("4.575.501,4321") quanto ponto decimal solto
-// ("4575501.4321"), sempre preservando até `casas` casas decimais (o valor
-// digitado é a fonte da verdade; o corte só acontece aqui, na conversão,
-// nunca truncando o que a pessoa está digitando na tela). É essa conversão
-// que substitui o <input type="number"> nativo, que não entende separador
-// de milhar nem vírgula decimal e descartava esses caracteres em silêncio.
-function campoParaNumeroDecimal(texto: string, casas: number): number | undefined {
-  const limpo = texto.trim();
-  if (!limpo) return undefined;
-  const semSeparadorMilhar = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo;
-  const numero = parseFloat(semSeparadorMilhar);
-  if (isNaN(numero)) return undefined;
-  const fator = Math.pow(10, casas);
-  return Math.round(numero * fator) / fator;
+// Agrupa um bloco de campos da aba "Informações Gerais" num card com título —
+// só reorganização visual (02/10, a pedido do Márcio), nenhum campo foi
+// adicionado, removido ou teve sua lógica alterada.
+function SecaoFormulario({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-ink-soft/15 p-4">
+      <p className="mb-3.5 font-body text-sm font-semibold text-ink">{titulo}</p>
+      <div className="grid grid-cols-2 gap-4">{children}</div>
+    </div>
+  );
 }
 
 export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao, carregando: carregandoDados }: LicitacaoFormModalProps) {
@@ -346,9 +311,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         declaracoes: normalizarChecklistCampo(licitacaoEmEdicao.declaracoes, DECLARACOES_ITENS),
         outrasExigencias: normalizarChecklistCampo(licitacaoEmEdicao.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
       });
-      setValorTotalTexto(numeroParaCampoDecimal(licitacaoEmEdicao.valorTotalLicitacao, 10));
+      setValorTotalTexto(numeroParaCampoDecimal(licitacaoEmEdicao.valorTotalLicitacao, 10, 2));
       setValorIntervaloLancesTexto(
-        numeroParaCampoDecimal(licitacaoEmEdicao.condicoesComerciais.valorIntervaloLances, 4)
+        numeroParaCampoDecimal(licitacaoEmEdicao.condicoesComerciais.valorIntervaloLances, 4, 2)
       );
       setPercentualIntervaloLancesTexto(
         numeroParaCampoDecimal(licitacaoEmEdicao.condicoesComerciais.percentualIntervaloLances, 4)
@@ -366,8 +331,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         declaracoes: normalizarChecklistCampo(rascunho.declaracoes, DECLARACOES_ITENS),
         outrasExigencias: normalizarChecklistCampo(rascunho.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
       });
-      setValorTotalTexto(numeroParaCampoDecimal(rascunho.valorTotalLicitacao, 10));
-      setValorIntervaloLancesTexto(numeroParaCampoDecimal(rascunho.condicoesComerciais.valorIntervaloLances, 4));
+      setValorTotalTexto(numeroParaCampoDecimal(rascunho.valorTotalLicitacao, 10, 2));
+      setValorIntervaloLancesTexto(numeroParaCampoDecimal(rascunho.condicoesComerciais.valorIntervaloLances, 4, 2));
       setPercentualIntervaloLancesTexto(
         numeroParaCampoDecimal(rascunho.condicoesComerciais.percentualIntervaloLances, 4)
       );
@@ -512,6 +477,19 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   }
 
   async function handleSalvar() {
+    // Bloqueia o salvamento se a licitação for "Exclusiva ME/EPP" e o
+    // cliente vinculado NÃO for ME/EPP (porte "Demais") — por definição
+    // legal (Lei 14.133/2021), uma empresa "Demais" não pode participar de
+    // licitação exclusiva, então não faz sentido registrar essa licitação
+    // pra esse cliente. A pedido do Márcio (02/10).
+    if (form.participacao === 'exclusiva_me_epp' && clienteEhDemais) {
+      setAbaAtiva('gerais');
+      setErroChecklist(
+        'Esta licitação está marcada como "Exclusiva ME/EPP" (campo "Participação"), mas o cliente vinculado é classificado como "Demais" — ele não pode participar de uma licitação exclusiva. Ajuste o campo ou verifique o cliente vinculado antes de salvar.'
+      );
+      return;
+    }
+
     // Bloqueia o salvamento se sobrar algum item do checklist sem marcação
     // (Exigido/Não exigido) — exceto o item "Outras" de cada seção, que é
     // opcional. Leva o Analista direto pra primeira aba com pendência.
@@ -609,8 +587,72 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
           <div className="mt-5 min-h-[320px]">
         {/* Aba 1 — Informações Gerais */}
         {abaAtiva === 'gerais' && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <SecaoFormulario titulo="Identificação">
+              <TextField
+                label="Portal *"
+                required
+                value={form.portal}
+                onChange={(e) => atualizarCampo('portal', e.target.value)}
+              />
+              <TextField
+                label="Número do pregão *"
+                required
+                value={form.numeroPregao}
+                onChange={(e) => atualizarCampo('numeroPregao', e.target.value)}
+              />
+              <div className="col-span-2">
+                <SelectField
+                  label="Objeto da licitação"
+                  value={form.objeto}
+                  onChange={(e) => atualizarCampo('objeto', e.target.value)}
+                  placeholder="Selecione"
+                  options={[
+                    { value: 'Produto', label: 'Produto' },
+                    { value: 'Serviços', label: 'Serviços' },
+                    { value: 'Obra', label: 'Obra' },
+                    { value: 'Serviços Técnicos', label: 'Serviços Técnicos' },
+                  ]}
+                />
+              </div>
+            </SecaoFormulario>
+
+            <SecaoFormulario titulo="Órgão e localização">
+              <div className="col-span-2">
+                <TextField
+                  label="Órgão *"
+                  required
+                  value={form.orgao}
+                  onChange={(e) => atualizarCampo('orgao', e.target.value)}
+                />
+              </div>
+              <TextField
+                label="Estado (UF) *"
+                required
+                maxLength={2}
+                value={form.estado}
+                onChange={(e) => atualizarCampo('estado', e.target.value.toUpperCase())}
+                placeholder="SP"
+              />
+              <TextField
+                label="Município *"
+                required
+                value={form.municipio}
+                onChange={(e) => atualizarCampo('municipio', e.target.value)}
+              />
+              <TextField
+                label="Distância da matriz"
+                value={form.distanciaMatriz}
+                onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value)}
+              />
+              <TextField
+                label="CAPAG"
+                value={form.capag}
+                onChange={(e) => atualizarCampo('capag', e.target.value)}
+              />
+            </SecaoFormulario>
+
+            <SecaoFormulario titulo="Datas e prazos">
               <TextField
                 label="Data e horário da licitação *"
                 required
@@ -631,83 +673,29 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   atualizarCampo('dataEfetivaLicitacao', e.target.value ? new Date(e.target.value).toISOString() : undefined)
                 }
               />
-            </div>
+              {prazoInterno && (
+                <div
+                  className={`col-span-2 rounded-lg border px-4 py-3 font-body text-sm ${
+                    urgencia === 'vencido'
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : urgencia === 'atencao'
+                      ? 'border-brass/40 bg-brass-pale text-brass'
+                      : 'border-forest/30 bg-forest-mist text-forest-deep'
+                  }`}
+                >
+                  <strong>Limite de retorno do cliente (automático):</strong> {formatarDataHora(prazoInterno.toISOString())}
+                  {urgencia === 'vencido' && ' — já vencido!'}
+                  {urgencia === 'atencao' && ' — atenção, prazo próximo!'}
+                  {licitacaoEmEdicao && (
+                    <span className="ml-1 text-xs opacity-80">
+                      (cadastrada em {formatarDataHora(licitacaoEmEdicao.criadoEm)})
+                    </span>
+                  )}
+                </div>
+              )}
+            </SecaoFormulario>
 
-            {prazoInterno && (
-              <div
-                className={`rounded-lg border px-4 py-3 font-body text-sm ${
-                  urgencia === 'vencido'
-                    ? 'border-red-200 bg-red-50 text-red-700'
-                    : urgencia === 'atencao'
-                    ? 'border-brass/40 bg-brass-pale text-brass'
-                    : 'border-forest/30 bg-forest-mist text-forest-deep'
-                }`}
-              >
-                <strong>Limite de retorno do cliente (automático):</strong> {formatarDataHora(prazoInterno.toISOString())}
-                {urgencia === 'vencido' && ' — já vencido!'}
-                {urgencia === 'atencao' && ' — atenção, prazo próximo!'}
-                {licitacaoEmEdicao && (
-                  <span className="ml-1 text-xs opacity-80">
-                    (cadastrada em {formatarDataHora(licitacaoEmEdicao.criadoEm)})
-                  </span>
-                )}
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <TextField
-                label="Portal *"
-                required
-                value={form.portal}
-                onChange={(e) => atualizarCampo('portal', e.target.value)}
-              />
-              <TextField
-                label="Número do pregão *"
-                required
-                value={form.numeroPregao}
-                onChange={(e) => atualizarCampo('numeroPregao', e.target.value)}
-              />
-              <TextField
-                label="Órgão *"
-                required
-                value={form.orgao}
-                onChange={(e) => atualizarCampo('orgao', e.target.value)}
-              />
-              <div className="col-span-2">
-                <SelectField
-                  label="Objeto da licitação"
-                  value={form.objeto}
-                  onChange={(e) => atualizarCampo('objeto', e.target.value)}
-                  placeholder="Selecione"
-                  options={[
-                    { value: 'Produto', label: 'Produto' },
-                    { value: 'Serviços', label: 'Serviços' },
-                    { value: 'Obra', label: 'Obra' },
-                    { value: 'Serviços Técnicos', label: 'Serviços Técnicos' },
-                  ]}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <TextField
-                  label="Estado (UF) *"
-                  required
-                  maxLength={2}
-                  value={form.estado}
-                  onChange={(e) => atualizarCampo('estado', e.target.value.toUpperCase())}
-                  placeholder="SP"
-                />
-                <TextField
-                  label="Município *"
-                  required
-                  value={form.municipio}
-                  onChange={(e) => atualizarCampo('municipio', e.target.value)}
-                />
-              </div>
-              <TextField
-                label="Distância da matriz"
-                value={form.distanciaMatriz}
-                onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value)}
-              />
+            <SecaoFormulario titulo="Modalidade e regras de disputa">
               <div>
                 <SelectField
                   label="Modalidade *"
@@ -720,6 +708,20 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 {form.modalidade && (
                   <p className="mt-1 font-body text-xs text-ink-soft">
                     {MODALIDADE_LICITACAO_DESCRICAO[form.modalidade as ModalidadeLicitacao]}
+                  </p>
+                )}
+              </div>
+              <div>
+                <SelectField
+                  label="Participação"
+                  value={form.participacao}
+                  onChange={(e) => atualizarCampo('participacao', e.target.value as ParticipacaoLicitacao)}
+                  placeholder="Selecione"
+                  options={Object.entries(PARTICIPACAO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+                />
+                {form.participacao && (
+                  <p className="mt-1 font-body text-xs text-ink-soft">
+                    {PARTICIPACAO_LICITACAO_DESCRICAO[form.participacao as ParticipacaoLicitacao]}
                   </p>
                 )}
               </div>
@@ -745,20 +747,6 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   { value: 'Fechado/Aberto', label: 'Fechado/Aberto' },
                 ]}
               />
-              <div>
-                <SelectField
-                  label="Participação"
-                  value={form.participacao}
-                  onChange={(e) => atualizarCampo('participacao', e.target.value as ParticipacaoLicitacao)}
-                  placeholder="Selecione"
-                  options={Object.entries(PARTICIPACAO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
-                />
-                {form.participacao && (
-                  <p className="mt-1 font-body text-xs text-ink-soft">
-                    {PARTICIPACAO_LICITACAO_DESCRICAO[form.participacao as ParticipacaoLicitacao]}
-                  </p>
-                )}
-              </div>
               <SelectField
                 label="Estrutura"
                 value={form.estrutura}
@@ -780,15 +768,19 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 placeholder="Selecione"
                 options={Object.entries(PROCEDIMENTO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
+            </SecaoFormulario>
+
+            <SecaoFormulario titulo="Valor e edital">
               <TextField
                 label="Valor total da licitação (R$)"
                 type="text"
                 value={valorTotalTexto}
                 onChange={(e) => {
-                  setValorTotalTexto(e.target.value);
-                  atualizarCampo('valorTotalLicitacao', campoParaNumeroDecimal(e.target.value, 10));
+                  const textoFormatado = aplicarMascaraAoDigitar(e.target.value, 10);
+                  setValorTotalTexto(textoFormatado);
+                  atualizarCampo('valorTotalLicitacao', campoParaNumeroDecimal(textoFormatado, 10));
                 }}
-                onBlur={() => setValorTotalTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(valorTotalTexto, 10), 10))}
+                onBlur={() => setValorTotalTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(valorTotalTexto, 10), 10, 2))}
               />
               <TextField
                 label="Link do edital"
@@ -796,65 +788,51 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 onChange={(e) => atualizarCampo('linkEdital', e.target.value)}
                 placeholder="https://..."
               />
-            </div>
+              <div className="col-span-2">
+                <label className="mb-1.5 block font-mono text-xs uppercase tracking-wide text-ink-soft">
+                  Documentos do edital
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) =>
+                    atualizarCampo('nomesArquivosEdital', Array.from(e.target.files ?? []).map((arquivo) => arquivo.name))
+                  }
+                  className="block w-full font-body text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-forest-mist file:px-3.5 file:py-2 file:font-body file:text-sm file:font-medium file:text-forest-deep"
+                />
 
-            <div>
-              <label className="mb-1.5 block font-mono text-xs uppercase tracking-wide text-ink-soft">
-                Documentos do edital
-              </label>
-              <input
-                type="file"
-                multiple
-                onChange={(e) =>
-                  atualizarCampo('nomesArquivosEdital', Array.from(e.target.files ?? []).map((arquivo) => arquivo.name))
-                }
-                className="block w-full font-body text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-forest-mist file:px-3.5 file:py-2 file:font-body file:text-sm file:font-medium file:text-forest-deep"
-              />
-              
-              {(form.nomesArquivosEdital ?? []).length > 0 && (
-                <div className="mt-1.5 font-body text-xs text-ink-soft">
-                  <p>
-                    {(form.nomesArquivosEdital ?? []).length}{' '}
-                    {(form.nomesArquivosEdital ?? []).length === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}:
-                  </p>
-                  <ul className="ml-4 list-disc">
-                    {(form.nomesArquivosEdital ?? []).map((nome, indice) => (
-                      <li key={`${nome}-${indice}`} className="flex items-center gap-2">
-                        <span>{nome}</span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            atualizarCampo(
-                              'nomesArquivosEdital',
-                              (form.nomesArquivosEdital ?? []).filter((_, i) => i !== indice)
-                            )
-                          }
-                          className="font-body text-xs font-semibold text-red-600 hover:underline"
-                        >
-                          Remover
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="italic">(upload simulado — sem backend de arquivos ainda)</p>
-                </div>
-              )}
-            </div>
+                {(form.nomesArquivosEdital ?? []).length > 0 && (
+                  <div className="mt-1.5 font-body text-xs text-ink-soft">
+                    <p>
+                      {(form.nomesArquivosEdital ?? []).length}{' '}
+                      {(form.nomesArquivosEdital ?? []).length === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}:
+                    </p>
+                    <ul className="ml-4 list-disc">
+                      {(form.nomesArquivosEdital ?? []).map((nome, indice) => (
+                        <li key={`${nome}-${indice}`} className="flex items-center gap-2">
+                          <span>{nome}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              atualizarCampo(
+                                'nomesArquivosEdital',
+                                (form.nomesArquivosEdital ?? []).filter((_, i) => i !== indice)
+                              )
+                            }
+                            className="font-body text-xs font-semibold text-red-600 hover:underline"
+                          >
+                            Remover
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="italic">(upload simulado — sem backend de arquivos ainda)</p>
+                  </div>
+                )}
+              </div>
+            </SecaoFormulario>
 
-            <div className="grid grid-cols-2 gap-4">
-              <TextField
-                label="CAPAG"
-                value={form.capag}
-                onChange={(e) => atualizarCampo('capag', e.target.value)}
-              />
-              <TextField
-                label="Restrições à participação. Exclusiva ME/EPP?"
-                value={form.restricoesMeEpp}
-                onChange={(e) => atualizarCampo('restricoesMeEpp', e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 border-t border-ink-soft/10 pt-5">
+            <SecaoFormulario titulo="Vinculação">
               <SelectField
                 label="Cliente vinculado *"
                 required
@@ -870,7 +848,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 onChange={(e) => atualizarCampo('status', e.target.value as StatusLicitacao)}
                 options={Object.entries(STATUS_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
-            </div>
+            </SecaoFormulario>
 
             {licitacaoEmEdicao && (
               <div className="rounded-lg border border-ink-soft/15 bg-forest-mist/30 px-4 py-3 font-body text-sm">
@@ -976,12 +954,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                         autoFocus
                         value={valorIntervaloLancesTexto}
                         onChange={(e) => {
-                          setValorIntervaloLancesTexto(e.target.value);
-                          atualizarCondicoes('valorIntervaloLances', campoParaNumeroDecimal(e.target.value, 4));
+                          const textoFormatado = aplicarMascaraAoDigitar(e.target.value, 4);
+                          setValorIntervaloLancesTexto(textoFormatado);
+                          atualizarCondicoes('valorIntervaloLances', campoParaNumeroDecimal(textoFormatado, 4));
                         }}
                         onBlur={() => {
                           setValorIntervaloLancesTexto((atual) =>
-                            numeroParaCampoDecimal(campoParaNumeroDecimal(atual, 4), 4)
+                            numeroParaCampoDecimal(campoParaNumeroDecimal(atual, 4), 4, 2)
                           );
                           setEditandoValorIntervaloLances(false);
                         }}
@@ -1008,8 +987,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                         autoFocus
                         value={percentualIntervaloLancesTexto}
                         onChange={(e) => {
-                          setPercentualIntervaloLancesTexto(e.target.value);
-                          atualizarCondicoes('percentualIntervaloLances', campoParaNumeroDecimal(e.target.value, 4));
+                          const textoFormatado = aplicarMascaraAoDigitar(e.target.value, 4);
+                          setPercentualIntervaloLancesTexto(textoFormatado);
+                          atualizarCondicoes('percentualIntervaloLances', campoParaNumeroDecimal(textoFormatado, 4));
                         }}
                         onBlur={() => {
                           setPercentualIntervaloLancesTexto((atual) =>
@@ -1066,29 +1046,51 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               <TextField
                 label="Prazo de pagamento (dias)"
                 type="number"
+                min={0}
                 value={form.condicoesComerciais.prazoPagamentoDias ?? ''}
-                onChange={(e) =>
-                  atualizarCondicoes('prazoPagamentoDias', e.target.value === '' ? undefined : Number(e.target.value))
-                }
+                onChange={(e) => {
+                  if (e.target.value === '') {
+                    atualizarCondicoes('prazoPagamentoDias', undefined);
+                    return;
+                  }
+                  const numero = Number(e.target.value);
+                  atualizarCondicoes('prazoPagamentoDias', Number.isNaN(numero) ? undefined : Math.max(0, numero));
+                }}
               />
               <TextField
                 label="Prazo de entrega (dias, até 2 dígitos)"
                 type="number"
+                min={0}
                 maxLength={2}
                 value={form.condicoesComerciais.prazoEntregaDias ?? ''}
                 onChange={(e) => {
-                  const valor = e.target.value === '' ? undefined : Math.min(99, Number(e.target.value));
-                  atualizarCondicoes('prazoEntregaDias', valor);
+                  if (e.target.value === '') {
+                    atualizarCondicoes('prazoEntregaDias', undefined);
+                    return;
+                  }
+                  const numero = Number(e.target.value);
+                  atualizarCondicoes(
+                    'prazoEntregaDias',
+                    Number.isNaN(numero) ? undefined : Math.min(99, Math.max(0, numero))
+                  );
                 }}
               />
               <TextField
                 label="Validade da proposta (dias, até 3 dígitos)"
                 type="number"
+                min={0}
                 maxLength={3}
                 value={form.condicoesComerciais.validadePropostaDias ?? ''}
                 onChange={(e) => {
-                  const valor = e.target.value === '' ? undefined : Math.min(999, Number(e.target.value));
-                  atualizarCondicoes('validadePropostaDias', valor);
+                  if (e.target.value === '') {
+                    atualizarCondicoes('validadePropostaDias', undefined);
+                    return;
+                  }
+                  const numero = Number(e.target.value);
+                  atualizarCondicoes(
+                    'validadePropostaDias',
+                    Number.isNaN(numero) ? undefined : Math.min(999, Math.max(0, numero))
+                  );
                 }}
               />
             </div>
@@ -1334,7 +1336,7 @@ function ItemLicitacaoRow({
   // pode vir do edital com muitas casas decimais (ex.: 4,57550140) — usamos
   // o mesmo limite de 10 casas do "Valor total da licitação" em vez de 6,
   // que estava truncando/arredondando valores digitados com mais precisão.
-  const [precoTexto, setPrecoTexto] = useState(() => numeroParaCampoDecimal(item.precoReferencia, 10));
+  const [precoTexto, setPrecoTexto] = useState(() => numeroParaCampoDecimal(item.precoReferencia, 10, 2));
   // Mesmo padrão BR (ponto de milhar) aplicado à quantidade — um pregão pode
   // ter itens com quantidades grandes (ex.: 10.000 unidades), e o
   // <input type="number"> nativo não exibe separador de milhar.
@@ -1372,8 +1374,9 @@ function ItemLicitacaoRow({
             type="text"
             value={qtdeTexto}
             onChange={(e) => {
-              setQtdeTexto(e.target.value);
-              onChange(item.id, 'quantidade', campoParaNumeroDecimal(e.target.value, 0) ?? 0);
+              const textoFormatado = aplicarMascaraAoDigitar(e.target.value, 0);
+              setQtdeTexto(textoFormatado);
+              onChange(item.id, 'quantidade', campoParaNumeroDecimal(textoFormatado, 0) ?? 0);
             }}
             onBlur={() => setQtdeTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(qtdeTexto, 0), 0))}
           />
@@ -1384,10 +1387,11 @@ function ItemLicitacaoRow({
             type="text"
             value={precoTexto}
             onChange={(e) => {
-              setPrecoTexto(e.target.value);
-              onChange(item.id, 'precoReferencia', campoParaNumeroDecimal(e.target.value, 10) ?? 0);
+              const textoFormatado = aplicarMascaraAoDigitar(e.target.value, 10);
+              setPrecoTexto(textoFormatado);
+              onChange(item.id, 'precoReferencia', campoParaNumeroDecimal(textoFormatado, 10) ?? 0);
             }}
-            onBlur={() => setPrecoTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(precoTexto, 10), 10))}
+            onBlur={() => setPrecoTexto(numeroParaCampoDecimal(campoParaNumeroDecimal(precoTexto, 10), 10, 2))}
           />
         </div>
         <div className="w-48 shrink-0">
@@ -1409,19 +1413,26 @@ function ItemLicitacaoRow({
         />
       </div>
 
-      <div className="mt-2">
-        <CheckboxField
-          label="Exclusivo para ME/EPP"
-          checked={item.exclusivoMeEpp}
-          onChange={(e) => onChange(item.id, 'exclusivoMeEpp', e.target.checked)}
-        />
-        {item.exclusivoMeEpp && clienteEhDemais && (
-          <p className="mt-1.5 rounded-md bg-brass-pale/60 px-2.5 py-1.5 font-body text-xs text-brass">
-            ⚠️ O cliente desta licitação é classificado como "Demais" — ele não vai poder enviar proposta
-            neste item (o sistema bloqueia isso automaticamente na Proposta Comercial dele).
-          </p>
-        )}
-      </div>
+      {/* "Exclusivo para ME/EPP" só se aplica a item individual — a pedido
+          do Márcio (02/10): quando o item pertence a um grupo, a
+          exclusividade é decidida no nível do grupo/lote (regra de
+          licitação), não item a item, então o checkbox não aparece aqui
+          para itens dentro de grupo. */}
+      {!item.grupoId && (
+        <div className="mt-2">
+          <CheckboxField
+            label="Exclusivo para ME/EPP"
+            checked={item.exclusivoMeEpp}
+            onChange={(e) => onChange(item.id, 'exclusivoMeEpp', e.target.checked)}
+          />
+          {item.exclusivoMeEpp && clienteEhDemais && (
+            <p className="mt-1.5 rounded-md bg-brass-pale/60 px-2.5 py-1.5 font-body text-xs text-brass">
+              ⚠️ O cliente desta licitação é classificado como "Demais" — ele não vai poder enviar proposta
+              neste item (o sistema bloqueia isso automaticamente na Proposta Comercial dele).
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
