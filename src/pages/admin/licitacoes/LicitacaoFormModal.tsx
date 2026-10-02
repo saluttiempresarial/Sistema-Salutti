@@ -588,6 +588,49 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         {/* Aba 1 — Informações Gerais */}
         {abaAtiva === 'gerais' && (
           <div className="space-y-4">
+            <SecaoFormulario titulo="Datas e prazos">
+              <TextField
+                label="Data e horário da licitação *"
+                required
+                type="datetime-local"
+                value={paraInputDatetimeLocal(form.dataLicitacao)}
+                onChange={(e) =>
+                  atualizarCampo(
+                    'dataLicitacao',
+                    e.target.value ? new Date(e.target.value).toISOString() : ''
+                  )
+                }
+              />
+              <TextField
+                label="Data efetiva (se suspensa e remarcada)"
+                type="datetime-local"
+                value={paraInputDatetimeLocal(form.dataEfetivaLicitacao)}
+                onChange={(e) =>
+                  atualizarCampo('dataEfetivaLicitacao', e.target.value ? new Date(e.target.value).toISOString() : undefined)
+                }
+              />
+              {prazoInterno && (
+                <div
+                  className={`col-span-2 rounded-lg border px-4 py-3 font-body text-sm ${
+                    urgencia === 'vencido'
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : urgencia === 'atencao'
+                      ? 'border-brass/40 bg-brass-pale text-brass'
+                      : 'border-forest/30 bg-forest-mist text-forest-deep'
+                  }`}
+                >
+                  <strong>Limite de retorno do cliente (automático):</strong> {formatarDataHora(prazoInterno.toISOString())}
+                  {urgencia === 'vencido' && ' — já vencido!'}
+                  {urgencia === 'atencao' && ' — atenção, prazo próximo!'}
+                  {licitacaoEmEdicao && (
+                    <span className="ml-1 text-xs opacity-80">
+                      (cadastrada em {formatarDataHora(licitacaoEmEdicao.criadoEm)})
+                    </span>
+                  )}
+                </div>
+              )}
+            </SecaoFormulario>
+
             <SecaoFormulario titulo="Identificação">
               <TextField
                 label="Portal *"
@@ -650,49 +693,6 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 value={form.capag}
                 onChange={(e) => atualizarCampo('capag', e.target.value)}
               />
-            </SecaoFormulario>
-
-            <SecaoFormulario titulo="Datas e prazos">
-              <TextField
-                label="Data e horário da licitação *"
-                required
-                type="datetime-local"
-                value={paraInputDatetimeLocal(form.dataLicitacao)}
-                onChange={(e) =>
-                  atualizarCampo(
-                    'dataLicitacao',
-                    e.target.value ? new Date(e.target.value).toISOString() : ''
-                  )
-                }
-              />
-              <TextField
-                label="Data efetiva (se suspensa e remarcada)"
-                type="datetime-local"
-                value={paraInputDatetimeLocal(form.dataEfetivaLicitacao)}
-                onChange={(e) =>
-                  atualizarCampo('dataEfetivaLicitacao', e.target.value ? new Date(e.target.value).toISOString() : undefined)
-                }
-              />
-              {prazoInterno && (
-                <div
-                  className={`col-span-2 rounded-lg border px-4 py-3 font-body text-sm ${
-                    urgencia === 'vencido'
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : urgencia === 'atencao'
-                      ? 'border-brass/40 bg-brass-pale text-brass'
-                      : 'border-forest/30 bg-forest-mist text-forest-deep'
-                  }`}
-                >
-                  <strong>Limite de retorno do cliente (automático):</strong> {formatarDataHora(prazoInterno.toISOString())}
-                  {urgencia === 'vencido' && ' — já vencido!'}
-                  {urgencia === 'atencao' && ' — atenção, prazo próximo!'}
-                  {licitacaoEmEdicao && (
-                    <span className="ml-1 text-xs opacity-80">
-                      (cadastrada em {formatarDataHora(licitacaoEmEdicao.criadoEm)})
-                    </span>
-                  )}
-                </div>
-              )}
             </SecaoFormulario>
 
             <SecaoFormulario titulo="Modalidade e regras de disputa">
