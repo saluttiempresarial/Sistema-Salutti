@@ -198,6 +198,21 @@ export function DisputaFormModal({
   const [carregandoLicitacao, setCarregandoLicitacao] = useState(false);
   const [licitacao, setLicitacao] = useState<Licitacao | null>(null);
   const [valoresPorLinha, setValoresPorLinha] = useState<Record<string, ValoresLinha>>({});
+  // Posição/Valor ofertado preenchido no nível do GRUPO (um valor só pro
+  // grupo inteiro, já total) — usado quando `modoResultado` trata o bloco
+  // como "grupo". Chave = grupoId. A pedido do Márcio (05/10): o resultado
+  // de uma disputa pode ter acontecido por grupo (lote fechado como um
+  // todo), por item (cada item com seu próprio preço unitário), ou os dois
+  // ao mesmo tempo (licitação com grupos E itens soltos) — a tela de
+  // Disputa precisa deixar escolher, já que o dado (grupoId vs itemId por
+  // linha) já existe desde antes da reestruturação de 30/09.
+  const [valoresPorGrupo, setValoresPorGrupo] = useState<Record<string, ValoresLinha>>({});
+  type ModoResultado = 'grupo' | 'item' | 'grupo_e_item';
+  const [modoResultado, setModoResultado] = useState<ModoResultado>('item');
+  // true assim que o Analista troca o modo manualmente — a partir daí o
+  // sistema para de tentar adivinhar e respeita a escolha, até o modal ser
+  // reaberto (fechado e aberto de novo, ou pra outra licitação).
+  const [modoEscolhidoManualmente, setModoEscolhidoManualmente] = useState(false);
   // Colapsa/expande os itens de um grupo (por grupoId) — default expandido,
   // já que agora cada item precisa ser preenchido individualmente.
   const [gruposColapsados, setGruposColapsados] = useState<Set<string>>(new Set());
@@ -241,18 +256,51 @@ export function DisputaFormModal({
       : criarFormularioVazio(licitacaoId);
     setForm(inicial);
     setErroSalvar(null);
+    setModoEscolhidoManualmente(false); // reabriu o modal — libera a detecção automática de novo
 
-    const valores: Record<string, ValoresLinha> = {};
+    // Separa os valores salvos em dois mapas — um por item, outro por grupo
+    // — porque cada linha salva é SEMPRE uma coisa ou outra (nunca as duas),
+    // conforme a constraint do banco (disputa_itens_item_xor_grupo).
+    const valoresItem: Record<string, ValoresLinha> = {};
+    const valoresGrupo: Record<string, ValoresLinha> = {};
     (disputaEmEdicao?.itens ?? []).forEach((linha) => {
-      const chave = linha.itemId ?? linha.grupoId;
-      if (!chave) return;
-      valores[chave] = {
+      const valoresLinha: ValoresLinha = {
         posicaoTexto: linha.posicao != null ? String(linha.posicao) : '',
         valorOfertadoTexto: numeroParaCampoDecimal(linha.valorFechado, 2),
       };
+      if (linha.itemId) valoresItem[linha.itemId] = valoresLinha;
+      else if (linha.grupoId) valoresGrupo[linha.grupoId] = valoresLinha;
     });
-    setValoresPorLinha(valores);
+    setValoresPorLinha(valoresItem);
+    setValoresPorGrupo(valoresGrupo);
   }, [isOpen, disputaEmEdicao, licitacaoId]);
+
+  // Decide o modo de preenchimento (grupo / item / grupo e item): numa
+  // disputa já salva, detecta pelo que já está gravado; numa disputa nova,
+  // sugere pela estrutura da licitação. Só roda enquanto o Analista não
+  // tiver trocado manualmente (ver `modoEscolhidoManualmente`).
+  useEffect(() => {
+    if (!isOpen || !licitacao || modoEscolhidoManualmente) return;
+
+    const linhasSalvas = disputaEmEdicao?.itens ?? [];
+    if (linhasSalvas.length > 0) {
+      const temLinhaDeGrupo = linhasSalvas.some((linha) => linha.grupoId);
+      const temLinhaDeItem = linhasSalvas.some((linha) => linha.itemId);
+      if (temLinhaDeGrupo && temLinhaDeItem) setModoResultado('grupo_e_item');
+      else if (temLinhaDeGrupo) setModoResultado('grupo');
+      else setModoResultado('item');
+      return;
+    }
+
+    const temGrupo = licitacao.grupos.length > 0;
+    const temItemSolto = licitacao.itens.some((item) => !item.grupoId);
+    setModoResultado(temGrupo && temItemSolto ? 'grupo_e_item' : temGrupo ? 'grupo' : 'item');
+  }, [isOpen, licitacao, disputaEmEdicao, modoEscolhidoManualmente]);
+
+  function escolherModoResultado(modo: ModoResultado) {
+    setModoResultado(modo);
+    setModoEscolhidoManualmente(true);
+  }
 
   // Chaves (itemId — ou grupoId, de disputas antigas) que já têm resultado
   // salvo nesta disputa — ficam visíveis mesmo que o Cliente não tenha (ou
@@ -303,6 +351,16 @@ export function DisputaFormModal({
     }));
   }
 
+  function atualizarValorGrupo(grupoId: string, campo: keyof ValoresLinha, valor: string) {
+    setValoresPorGrupo((atual) => ({
+      ...atual,
+      [grupoId]: {
+        ...(atual[grupoId] ?? { posicaoTexto: '', valorOfertadoTexto: '' }),
+        [campo]: valor,
+      },
+    }));
+  }
+
   function alternarGrupoColapsado(grupoId: string) {
     setGruposColapsados((atual) => {
       const novo = new Set(atual);
@@ -322,21 +380,37 @@ export function DisputaFormModal({
   }
 
   async function handleSalvar() {
-    const itens: DisputaResultadoLinhaFormData[] = linhasResultado
-      .map((linha) => {
+    const itens: DisputaResultadoLinhaFormData[] = [];
+
+    blocosVisuais.forEach((bloco) => {
+      // "Tratar como grupo" = este bloco tem grupo E o modo escolhido pede
+      // uma linha só pro grupo inteiro (não uma por item). Item solto
+      // (bloco.grupoId undefined) nunca cai aqui — não existe "grupo" pra
+      // gravar o valor.
+      const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
+
+      if (tratarComoGrupo && bloco.grupoId) {
+        const valores = valoresPorGrupo[bloco.grupoId];
+        const posicao = valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
+        const valorFechado = valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined;
+        if (posicao != null || valorFechado != null) {
+          itens.push({ grupoId: bloco.grupoId, posicao, valorFechado });
+        }
+        return;
+      }
+
+      bloco.linhas.forEach((linha) => {
         const valores = valoresPorLinha[linha.chave];
         const posicao = valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
         const valorFechado = valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined;
-        return {
-          itemId: linha.itemId,
-          posicao,
-          valorFechado,
-        };
-      })
-      // Só grava linha que tenha algo preenchido — não polui o banco com
-      // linhas vazias pra item que o analista ainda não chegou a
-      // registrar.
-      .filter((linha) => linha.posicao != null || linha.valorFechado != null);
+        // Só grava linha que tenha algo preenchido — não polui o banco com
+        // linhas vazias pra item que o analista ainda não chegou a
+        // registrar.
+        if (posicao != null || valorFechado != null) {
+          itens.push({ itemId: linha.itemId, posicao, valorFechado });
+        }
+      });
+    });
 
     setSalvando(true);
     setErroSalvar(null);
@@ -401,10 +475,55 @@ export function DisputaFormModal({
           </div>
         </div>
 
-        {/* Resultado por item — um card por item, sempre (mesmo dentro de
-            um grupo). Posição e Valor ofertado são preenchidos por
-            admin/analista; Valor de referência e Mínimo (c/ frete) vêm
-            calculados, só pra referência durante o preenchimento. */}
+        {/* Como a disputa aconteceu — define se o Valor ofertado é
+            preenchido por GRUPO inteiro (um valor só, já total) ou por ITEM
+            (preço unitário, somado automaticamente). A pedido do Márcio
+            (05/10): essa licitação tem grupo E item solto ao mesmo tempo,
+            então a tela precisa deixar escolher em vez de assumir um dos
+            dois. Sugerido automaticamente pela estrutura da licitação (ou
+            pelo que já está salvo, se a disputa já existe), mas pode trocar
+            a qualquer momento. */}
+        {!!licitacao && (licitacao.grupos.length > 0) && (
+          <div className="rounded-xl border border-ink-soft/15 p-4">
+            <p className="mb-3 font-body text-sm font-semibold text-ink">Como a disputa aconteceu?</p>
+            <div className="flex gap-2">
+              {(
+                [
+                  { valor: 'grupo', rotulo: 'Por grupo' },
+                  { valor: 'item', rotulo: 'Por item' },
+                  { valor: 'grupo_e_item', rotulo: 'Grupo e item' },
+                ] as { valor: ModoResultado; rotulo: string }[]
+              ).map((opcao) => (
+                <button
+                  key={opcao.valor}
+                  type="button"
+                  onClick={() => escolherModoResultado(opcao.valor)}
+                  className={`rounded-lg border px-3.5 py-2 font-body text-sm font-semibold transition-colors ${
+                    modoResultado === opcao.valor
+                      ? 'border-forest bg-forest text-white'
+                      : 'border-ink-soft/25 text-ink-soft hover:border-forest/50'
+                  }`}
+                >
+                  {opcao.rotulo}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 font-body text-xs text-ink-soft">
+              {modoResultado === 'grupo' &&
+                'O "Valor ofertado" é preenchido uma vez, já total, no card do grupo.'}
+              {modoResultado === 'item' &&
+                'O "Valor ofertado" é preenchido por item (preço unitário) — o total do grupo e o total geral somam automaticamente (valor × quantidade).'}
+              {modoResultado === 'grupo_e_item' &&
+                'Grupos são preenchidos como um todo; itens soltos (fora de grupo) são preenchidos individualmente.'}
+            </p>
+          </div>
+        )}
+
+        {/* Resultado por item — um card por item, ou um card por grupo
+            inteiro quando `modoResultado` tratar o bloco como grupo (ver
+            `tratarComoGrupo` abaixo). Valor de referência e Mínimo (c/
+            frete) vêm calculados, só pra referência durante o
+            preenchimento. */}
         <div>
           <h3 className="mb-2 font-display text-sm font-semibold text-ink">Resultado por item</h3>
           {carregandoLicitacao && <p className="font-body text-xs text-ink-soft">Carregando itens da licitação...</p>}
@@ -415,18 +534,33 @@ export function DisputaFormModal({
             <div className="space-y-4">
               {blocosVisuais.map((bloco, indiceBloco) => {
                 const colapsado = bloco.grupoId ? gruposColapsados.has(bloco.grupoId) : false;
-                // Soma dos "Valor ofertado" já digitados pros itens deste
-                // grupo — a pedido do Márcio (30/09), pra ele acompanhar o
-                // total sem precisar somar item por item. Some só o que já
-                // foi preenchido; fica "—" enquanto nada tiver valor ainda.
-                const valoresOfertadosGrupo = bloco.linhas.map((linha) =>
-                  campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2),
-                );
-                const totalOfertadoGrupo = valoresOfertadosGrupo.reduce(
-                  (soma: number, valor) => soma + (valor ?? 0),
-                  0,
-                );
-                const algumOfertadoPreenchido = valoresOfertadosGrupo.some((valor) => valor != null);
+                // "Tratar como grupo" = o modo escolhido pede uma linha só
+                // pro grupo inteiro — Posição/Valor ofertado ficam editáveis
+                // no card do grupo, e os itens abaixo viram só conferência.
+                // Item solto (sem grupo) nunca entra aqui.
+                const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
+                const valoresGrupo = bloco.grupoId ? valoresPorGrupo[bloco.grupoId] : undefined;
+
+                // Total ofertado do grupo: quando tratado como grupo, é o
+                // próprio valor digitado (já é o total do lote, não
+                // unitário). Quando os itens é que são preenchidos, cada
+                // "Valor ofertado" é unitário — o total do grupo é a soma
+                // de (valor × quantidade) de cada item, igual à mesma conta
+                // já usada pra "Total de referência"/"Mínimo" logo abaixo
+                // (antes desta correção, 05/10, a soma não multiplicava
+                // pela quantidade — subestimava o total sempre que o preço
+                // ofertado não era "1" por unidade).
+                const totalOfertadoGrupo = tratarComoGrupo
+                  ? campoParaNumeroDecimal(valoresGrupo?.valorOfertadoTexto ?? '', 2) ?? 0
+                  : bloco.linhas.reduce((soma, linha) => {
+                      const unitario = campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2);
+                      return soma + (unitario ?? 0) * linha.item.quantidade;
+                    }, 0);
+                const algumOfertadoPreenchido = tratarComoGrupo
+                  ? campoParaNumeroDecimal(valoresGrupo?.valorOfertadoTexto ?? '', 2) != null
+                  : bloco.linhas.some(
+                      (linha) => campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2) != null,
+                    );
                 const totalReferenciaGrupo = bloco.linhas.reduce(
                   (soma, linha) => soma + linha.item.precoReferencia * linha.item.quantidade,
                   0,
@@ -441,9 +575,11 @@ export function DisputaFormModal({
                 // (é o grupo inteiro que disputa, não cada item) — por
                 // isso mostra a primeira posição já preenchida entre os
                 // itens, em vez de somar (não faria sentido somar posição).
-                const posicaoGrupoTexto = bloco.linhas
-                  .map((linha) => valoresPorLinha[linha.chave]?.posicaoTexto)
-                  .find((texto) => texto && texto.trim() !== '');
+                const posicaoGrupoTexto = tratarComoGrupo
+                  ? valoresGrupo?.posicaoTexto ?? ''
+                  : bloco.linhas
+                      .map((linha) => valoresPorLinha[linha.chave]?.posicaoTexto)
+                      .find((texto) => texto && texto.trim() !== '') ?? '';
 
                 return (
                   <div key={bloco.grupoId ?? `sem-grupo-${indiceBloco}`}>
@@ -481,11 +617,24 @@ export function DisputaFormModal({
                                 <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
                                   Posição
                                 </span>
-                                <span className="flex items-center justify-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 w-14">
-                                  <span className="text-sm font-semibold text-ink">
-                                    {posicaoGrupoTexto || '—'}
+                                {tratarComoGrupo ? (
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={valoresGrupo?.posicaoTexto ?? ''}
+                                    onChange={(e) =>
+                                      atualizarValorGrupo(bloco.grupoId!, 'posicaoTexto', e.target.value)
+                                    }
+                                    placeholder="—"
+                                    className="w-14 rounded-lg border border-ink-soft/20 bg-white px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
+                                  />
+                                ) : (
+                                  <span className="flex items-center justify-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 w-14">
+                                    <span className="text-sm font-semibold text-ink">
+                                      {posicaoGrupoTexto || '—'}
+                                    </span>
                                   </span>
-                                </span>
+                                )}
                               </div>
 
                               <div className="flex flex-col gap-1">
@@ -514,11 +663,37 @@ export function DisputaFormModal({
                                 <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
                                   Valor ofertado
                                 </span>
-                                <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
-                                  <span className="text-sm font-semibold text-ink">
-                                    {algumOfertadoPreenchido ? formatarMoeda(totalOfertadoGrupo) : '—'}
+                                {tratarComoGrupo ? (
+                                  <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
+                                    <span className="text-xs text-ink-soft">R$</span>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={valoresGrupo?.valorOfertadoTexto ?? ''}
+                                      onChange={(e) =>
+                                        atualizarValorGrupo(bloco.grupoId!, 'valorOfertadoTexto', e.target.value)
+                                      }
+                                      onBlur={() =>
+                                        atualizarValorGrupo(
+                                          bloco.grupoId!,
+                                          'valorOfertadoTexto',
+                                          numeroParaCampoDecimal(
+                                            campoParaNumeroDecimal(valoresGrupo?.valorOfertadoTexto ?? '', 2),
+                                            2
+                                          )
+                                        )
+                                      }
+                                      placeholder="0,00"
+                                      className="w-24 text-sm font-semibold text-ink focus:outline-none"
+                                    />
                                   </span>
-                                </span>
+                                ) : (
+                                  <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
+                                    <span className="text-sm font-semibold text-ink">
+                                      {algumOfertadoPreenchido ? formatarMoeda(totalOfertadoGrupo) : '—'}
+                                    </span>
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -570,14 +745,20 @@ export function DisputaFormModal({
                                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
                                       Posição
                                     </span>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      value={valores.posicaoTexto}
-                                      onChange={(e) => atualizarValorLinha(linha.chave, 'posicaoTexto', e.target.value)}
-                                      placeholder="—"
-                                      className="w-14 rounded-lg border border-ink-soft/20 px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
-                                    />
+                                    {tratarComoGrupo ? (
+                                      <span className="flex items-center justify-center rounded-lg border border-ink-soft/10 bg-paper-2/50 px-2.5 py-1.5 w-14">
+                                        <span className="text-sm text-ink-soft">—</span>
+                                      </span>
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={valores.posicaoTexto}
+                                        onChange={(e) => atualizarValorLinha(linha.chave, 'posicaoTexto', e.target.value)}
+                                        placeholder="—"
+                                        className="w-14 rounded-lg border border-ink-soft/20 px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
+                                      />
+                                    )}
                                   </label>
 
                                   <div className="flex flex-col gap-1">
@@ -608,31 +789,37 @@ export function DisputaFormModal({
 
                                   <label className="flex flex-col gap-1">
                                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                      Valor ofertado
+                                      Valor ofertado {!tratarComoGrupo && <span className="normal-case font-normal text-ink-soft/70">(unit.)</span>}
                                     </span>
-                                    <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 px-2.5 py-1.5 focus-within:border-forest">
-                                      <span className="text-xs text-ink-soft">R$</span>
-                                      <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={valores.valorOfertadoTexto}
-                                        onChange={(e) =>
-                                          atualizarValorLinha(linha.chave, 'valorOfertadoTexto', e.target.value)
-                                        }
-                                        onBlur={() =>
-                                          atualizarValorLinha(
-                                            linha.chave,
-                                            'valorOfertadoTexto',
-                                            numeroParaCampoDecimal(
-                                              campoParaNumeroDecimal(valores.valorOfertadoTexto, 2),
-                                              2
+                                    {tratarComoGrupo ? (
+                                      <span className="flex items-center rounded-lg border border-ink-soft/10 bg-paper-2/50 px-2.5 py-1.5">
+                                        <span className="text-sm text-ink-soft">preenchido no grupo acima</span>
+                                      </span>
+                                    ) : (
+                                      <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 px-2.5 py-1.5 focus-within:border-forest">
+                                        <span className="text-xs text-ink-soft">R$</span>
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={valores.valorOfertadoTexto}
+                                          onChange={(e) =>
+                                            atualizarValorLinha(linha.chave, 'valorOfertadoTexto', e.target.value)
+                                          }
+                                          onBlur={() =>
+                                            atualizarValorLinha(
+                                              linha.chave,
+                                              'valorOfertadoTexto',
+                                              numeroParaCampoDecimal(
+                                                campoParaNumeroDecimal(valores.valorOfertadoTexto, 2),
+                                                2
+                                              )
                                             )
-                                          )
-                                        }
-                                        placeholder="0,00"
-                                        className="w-20 text-sm font-semibold text-ink focus:outline-none"
-                                      />
-                                    </span>
+                                          }
+                                          placeholder="0,00"
+                                          className="w-20 text-sm font-semibold text-ink focus:outline-none"
+                                        />
+                                      </span>
+                                    )}
                                   </label>
                                 </div>
                               </div>
@@ -644,6 +831,43 @@ export function DisputaFormModal({
                   </div>
                 );
               })}
+
+              {/* Total geral — soma tudo: grupos fechados por grupo (valor
+                  já total) + itens soltos (unitário × quantidade). A pedido
+                  do Márcio (05/10). */}
+              {(() => {
+                const totalGeral = blocosVisuais.reduce((somaBlocos, bloco) => {
+                  const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
+                  if (tratarComoGrupo && bloco.grupoId) {
+                    return somaBlocos + (campoParaNumeroDecimal(valoresPorGrupo[bloco.grupoId]?.valorOfertadoTexto ?? '', 2) ?? 0);
+                  }
+                  return (
+                    somaBlocos +
+                    bloco.linhas.reduce((soma, linha) => {
+                      const unitario = campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2);
+                      return soma + (unitario ?? 0) * linha.item.quantidade;
+                    }, 0)
+                  );
+                }, 0);
+                const algumPreenchido = blocosVisuais.some((bloco) => {
+                  const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
+                  if (tratarComoGrupo && bloco.grupoId) {
+                    return campoParaNumeroDecimal(valoresPorGrupo[bloco.grupoId]?.valorOfertadoTexto ?? '', 2) != null;
+                  }
+                  return bloco.linhas.some(
+                    (linha) => campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2) != null,
+                  );
+                });
+
+                return (
+                  <div className="flex items-center justify-between rounded-2xl border border-forest/30 bg-forest-mist px-5 py-3.5">
+                    <p className="font-body text-sm font-semibold text-forest-deep">Total geral ofertado</p>
+                    <p className="font-body text-base font-semibold text-forest-deep">
+                      {algumPreenchido ? formatarMoeda(totalGeral) : '—'}
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

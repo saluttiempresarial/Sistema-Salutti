@@ -477,6 +477,30 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   }
 
   async function handleSalvar() {
+    // Bloqueia o salvamento se faltar algum campo obrigatório da aba
+    // "Informações Gerais" — sem essa checagem, o formulário deixava
+    // enviar "clienteId" vazio pro banco, que rejeitava com um erro
+    // críptico de UUID inválido ("invalid input syntax for type uuid: ''"),
+    // sem nenhuma mensagem clara pro Analista. A pedido do Márcio (05/10).
+    const camposObrigatoriosFaltando: string[] = [];
+    if (!form.portal) camposObrigatoriosFaltando.push('Portal');
+    if (!form.numeroPregao) camposObrigatoriosFaltando.push('Número do pregão');
+    if (!form.orgao) camposObrigatoriosFaltando.push('Órgão');
+    if (!form.estado) camposObrigatoriosFaltando.push('Estado (UF)');
+    if (!form.municipio) camposObrigatoriosFaltando.push('Município');
+    if (!form.dataLicitacao) camposObrigatoriosFaltando.push('Data e horário da licitação');
+    if (!form.modalidade) camposObrigatoriosFaltando.push('Modalidade');
+    if (!form.clienteId) camposObrigatoriosFaltando.push('Cliente vinculado');
+    if (!form.status) camposObrigatoriosFaltando.push('Status');
+
+    if (camposObrigatoriosFaltando.length > 0) {
+      setAbaAtiva('gerais');
+      setErroChecklist(
+        `Preencha os campos obrigatórios antes de salvar (aba "Informações Gerais"): ${camposObrigatoriosFaltando.join(', ')}.`
+      );
+      return;
+    }
+
     // Bloqueia o salvamento se a licitação for "Exclusiva ME/EPP" e o
     // cliente vinculado NÃO for ME/EPP (porte "Demais") — por definição
     // legal (Lei 14.133/2021), uma empresa "Demais" não pode participar de
@@ -1058,7 +1082,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 }}
               />
               <TextField
-                label="Prazo de entrega (dias, até 2 dígitos)"
+                label="Prazo de entrega (dias)"
                 type="number"
                 min={0}
                 maxLength={2}
@@ -1076,7 +1100,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 }}
               />
               <TextField
-                label="Validade da proposta (dias, até 3 dígitos)"
+                label="Validade da proposta (dias)"
                 type="number"
                 min={0}
                 maxLength={3}
