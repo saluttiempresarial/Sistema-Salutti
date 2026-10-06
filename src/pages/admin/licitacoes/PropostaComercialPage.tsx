@@ -40,6 +40,7 @@ import {
   FORMA_PAGAMENTO_LABEL,
   ItemChecklistExigencia,
   STATUS_EXIGENCIA_LABEL,
+  DecisaoAcimaReferencia,
 } from '@/types/licitacao'
 import { formatarDataHora } from '@/utils/prazoUtils'
 import {
@@ -107,6 +108,17 @@ export function PropostaComercialPage() {
   useEffect(() => {
     carregar()
   }, [carregar])
+
+  // Liberar / barrar a participação em ITEM INDIVIDUAL acima da referência
+  // (migração 032). Admin e Analista (a RPC confere a carteira do Analista).
+  // Recarrega a licitação em silêncio — sem passar por `carregar()`, que
+  // mostraria a tela de "carregando" e fecharia o item aberto.
+  async function handleDecidirAcimaReferencia(itemIds: string[], decisao: DecisaoAcimaReferencia | null) {
+    if (!id) return
+    await licitacaoService.decidirParticipacaoAcimaReferencia(itemIds, decisao, usuarioAtual)
+    const atualizada = await licitacaoService.buscarPorId(id)
+    if (atualizada) setLicitacao(atualizada)
+  }
 
   async function handleSalvar(payload: SalvarPropostaComercialPayload) {
     if (!id) return
@@ -221,7 +233,6 @@ export function PropostaComercialPage() {
         { Campo: 'Forma de disputa', Valor: licitacao.formaDisputa || '—' },
         { Campo: 'Modo de disputa', Valor: licitacao.modoDisputa || '—' },
         { Campo: 'CAPAG', Valor: licitacao.capag || '—' },
-        { Campo: 'Restrições ME/EPP', Valor: licitacao.restricoesMeEpp || '—' },
         { Campo: 'Link do edital', Valor: licitacao.linkEdital || '—' },
         {
           Campo: 'Documentos do edital',
@@ -529,6 +540,7 @@ export function PropostaComercialPage() {
             onSalvar={handleSalvar}
             textoBotaoSalvar="Salvar alterações"
             ocultarNaoParticiparPorPadrao
+            onDecidirAcimaReferencia={podeGerenciarPrazoCliente ? handleDecidirAcimaReferencia : undefined}
           />
         </div>
       )}

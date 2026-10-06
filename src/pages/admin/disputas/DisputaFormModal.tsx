@@ -111,9 +111,25 @@ interface LinhaResultado {
 // `chavesForcadas` mantém visível um item que o Cliente não preencheu (ou
 // desistiu depois), mas que já tem resultado de disputa salvo antes — pra
 // não sumir um resultado já registrado ao reabrir uma disputa existente.
-function construirLinhas(licitacao: Licitacao, chavesForcadas: Set<string>): LinhaResultado[] {
+//
+// REGRA DE 06/10 (Márcio) — preço acima da referência:
+//   - GRUPO cujo total (já com frete) fica acima do total de referência não
+//     tem opção de concorrer: fica FORA da disputa, sem decisão possível.
+//   - ITEM INDIVIDUAL (sem grupo) acima da referência só entra na disputa
+//     se o Admin/Analista LIBEROU na Proposta Comercial (migração 032).
+//     Pendente ou barrado = fora da disputa.
+// Quem ficou de fora vai na lista `foraDaDisputa`, só para a tela avisar —
+// não aparece como card. Um grupo/item que já tem resultado salvo continua
+// visível (chavesForcadas), para não sumir um resultado já registrado.
+interface LinhasDaDisputa {
+  linhas: LinhaResultado[];
+  foraDaDisputa: string[];
+}
+
+function construirLinhas(licitacao: Licitacao, chavesForcadas: Set<string>): LinhasDaDisputa {
   const taxaFrete = licitacao.percentualFrete ?? 0;
   const linhas: LinhaResultado[] = [];
+  const foraDaDisputa: string[] = [];
 
   function linhaDoItem(item: ItemLicitacao, grupoId?: string, grupoRotulo?: string): LinhaResultado {
     const analise = calcularAnaliseItem(item, taxaFrete, true);
@@ -130,13 +146,29 @@ function construirLinhas(licitacao: Licitacao, chavesForcadas: Set<string>): Lin
 
   licitacao.grupos.forEach((grupo) => {
     const grupoRotulo = grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`;
-    licitacao.itens
-      .filter((item) => item.grupoId === grupo.id)
-      .forEach((item) => {
-        const participou = item.propostaCliente?.precoMinimo != null;
-        if (!participou && !chavesForcadas.has(item.id)) return;
-        linhas.push(linhaDoItem(item, grupo.id, grupoRotulo));
-      });
+    const itensDoGrupo = licitacao.itens.filter((item) => item.grupoId === grupo.id);
+
+    // Grupo acima da referência: só dá para medir com o grupo 100%
+    // preenchido (mesma regra da Proposta Comercial).
+    const grupoCompleto = itensDoGrupo.length > 0 && itensDoGrupo.every((item) => item.propostaCliente?.precoMinimo != null);
+    const totalReferencia = itensDoGrupo.reduce((soma, item) => soma + item.precoReferencia * item.quantidade, 0);
+    const totalProposta = itensDoGrupo.reduce(
+      (soma, item) => soma + (calcularAnaliseItem(item, taxaFrete, true).valorTotal ?? 0),
+      0,
+    );
+    const grupoAcimaDaReferencia = grupoCompleto && totalReferencia > 0 && totalProposta > totalReferencia;
+    const grupoComResultado = chavesForcadas.has(grupo.id) || itensDoGrupo.some((item) => chavesForcadas.has(item.id));
+
+    if (grupoAcimaDaReferencia && !grupoComResultado) {
+      foraDaDisputa.push(`${grupoRotulo} (grupo acima da referência)`);
+      return;
+    }
+
+    itensDoGrupo.forEach((item) => {
+      const participou = item.propostaCliente?.precoMinimo != null;
+      if (!participou && !chavesForcadas.has(item.id)) return;
+      linhas.push(linhaDoItem(item, grupo.id, grupoRotulo));
+    });
   });
 
   licitacao.itens
@@ -144,10 +176,19 @@ function construirLinhas(licitacao: Licitacao, chavesForcadas: Set<string>): Lin
     .forEach((item) => {
       const participou = item.propostaCliente?.precoMinimo != null;
       if (!participou && !chavesForcadas.has(item.id)) return;
+
+      const percentual = calcularAnaliseItem(item, taxaFrete, true).percentualDiferenca;
+      const acimaDaReferencia = percentual != null && percentual > 0;
+      if (acimaDaReferencia && item.decisaoAcimaReferencia !== 'liberado' && !chavesForcadas.has(item.id)) {
+        foraDaDisputa.push(
+          `Item ${item.numero} (${item.decisaoAcimaReferencia === 'barrado' ? 'não participar — decisão do analista' : 'acima da referência, aguardando decisão'})`,
+        );
+        return;
+      }
       linhas.push(linhaDoItem(item));
     });
 
-  return linhas;
+  return { linhas, foraDaDisputa };
 }
 
 interface ValoresLinha {
@@ -316,8 +357,11 @@ export function DisputaFormModal({
     [disputaEmEdicao],
   );
 
-  const linhasResultado = useMemo(
-    () => (licitacao ? construirLinhas(licitacao, chavesComResultadoRegistrado) : []),
+  const { linhas: linhasResultado, foraDaDisputa } = useMemo(
+    () =>
+      licitacao
+        ? construirLinhas(licitacao, chavesComResultadoRegistrado)
+        : { linhas: [] as LinhaResultado[], foraDaDisputa: [] as string[] },
     [licitacao, chavesComResultadoRegistrado],
   );
 
@@ -379,6 +423,20 @@ export function DisputaFormModal({
     });
   }
 
+  // Soma dos itens do bloco (valor unitário × quantidade) — null se nenhum
+  // item foi preenchido. No modo "Grupo e item" é o que alimenta o total do
+  // grupo automaticamente, igual ao modo "Por item".
+  function somaItensDoBloco(bloco: (typeof blocosVisuais)[number]): number | null {
+    let algum = false;
+    const soma = bloco.linhas.reduce((acc, linha) => {
+      const unitario = campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2);
+      if (unitario == null) return acc;
+      algum = true;
+      return acc + unitario * linha.item.quantidade;
+    }, 0);
+    return algum ? soma : null;
+  }
+
   async function handleSalvar() {
     const itens: DisputaResultadoLinhaFormData[] = [];
 
@@ -391,17 +449,29 @@ export function DisputaFormModal({
 
       if (tratarComoGrupo && bloco.grupoId) {
         const valores = valoresPorGrupo[bloco.grupoId];
+        const emGrupoEItem = modoResultado === 'grupo_e_item';
         const posicao = valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
-        const valorFechado = valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined;
+        // Total do grupo: o que o Analista digitou; se deixou em branco no
+        // modo "Grupo e item", vale a soma dos itens.
+        const valorFechado =
+          (valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined) ??
+          (emGrupoEItem ? somaItensDoBloco(bloco) ?? undefined : undefined);
         if (posicao != null || valorFechado != null) {
           itens.push({ grupoId: bloco.grupoId, posicao, valorFechado });
         }
-        return;
+        // Só no modo "Por grupo" os itens do grupo não são gravados. No modo
+        // "Grupo e item" o grupo grava o total E cada item grava o seu
+        // próprio resultado (linhas distintas — grupoId numa, itemId na
+        // outra — o que respeita a constraint disputa_itens_item_xor_grupo).
+        if (modoResultado === 'grupo') return;
       }
 
       bloco.linhas.forEach((linha) => {
         const valores = valoresPorLinha[linha.chave];
-        const posicao = valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
+        // No modo "Grupo e item", a posição vale para o grupo inteiro e fica só
+        // na linha do grupo — o item de um grupo grava apenas o valor.
+        const posicaoSoNoGrupo = !!bloco.grupoId && modoResultado === 'grupo_e_item';
+        const posicao = !posicaoSoNoGrupo && valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
         const valorFechado = valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined;
         // Só grava linha que tenha algo preenchido — não polui o banco com
         // linhas vazias pra item que o analista ainda não chegou a
@@ -514,7 +584,7 @@ export function DisputaFormModal({
               {modoResultado === 'item' &&
                 'O "Valor ofertado" é preenchido por item (preço unitário) — o total do grupo e o total geral somam automaticamente (valor × quantidade).'}
               {modoResultado === 'grupo_e_item' &&
-                'Grupos são preenchidos como um todo; itens soltos (fora de grupo) são preenchidos individualmente.'}
+                'Cada grupo recebe a posição e o valor total; abaixo dele, cada item recebe apenas o valor ofertado (preço unitário). Itens soltos (fora de grupo) recebem posição e valor individualmente.'}
             </p>
           </div>
         )}
@@ -528,7 +598,25 @@ export function DisputaFormModal({
           <h3 className="mb-2 font-display text-sm font-semibold text-ink">Resultado por item</h3>
           {carregandoLicitacao && <p className="font-body text-xs text-ink-soft">Carregando itens da licitação...</p>}
           {!carregandoLicitacao && linhasResultado.length === 0 && (
-            <p className="font-body text-xs text-ink-soft">Esta licitação ainda não tem itens cadastrados.</p>
+            <p className="font-body text-xs text-ink-soft">
+              {foraDaDisputa.length > 0
+                ? 'Nenhum grupo ou item está liberado para a disputa.'
+                : 'Esta licitação ainda não tem itens cadastrados.'}
+            </p>
+          )}
+          {!carregandoLicitacao && foraDaDisputa.length > 0 && (
+            <div className="mb-3 rounded-lg border border-brass/40 bg-brass-pale px-3 py-2 font-body text-xs text-brass">
+              <p className="font-semibold">Fora da disputa por estarem acima da referência:</p>
+              <ul className="mt-1 list-disc pl-4">
+                {foraDaDisputa.map((texto) => (
+                  <li key={texto}>{texto}</li>
+                ))}
+              </ul>
+              <p className="mt-1">
+                Grupo acima da referência não concorre. Item individual só entra se o Admin ou Analista liberar na
+                Proposta Comercial.
+              </p>
+            </div>
           )}
           {!carregandoLicitacao && linhasResultado.length > 0 && (
             <div className="space-y-4">
@@ -540,6 +628,11 @@ export function DisputaFormModal({
                 // Item solto (sem grupo) nunca entra aqui.
                 const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
                 const valoresGrupo = bloco.grupoId ? valoresPorGrupo[bloco.grupoId] : undefined;
+                // Itens do grupo ficam travados ("preenchido no grupo acima")
+                // só no modo "Por grupo". No modo "Grupo e item" o grupo tem
+                // o total e os itens continuam abertos para preenchimento
+                // individual (pedido do Márcio, 06/10).
+                const itensTravados = tratarComoGrupo && modoResultado === 'grupo';
 
                 // Total ofertado do grupo: quando tratado como grupo, é o
                 // próprio valor digitado (já é o total do lote, não
@@ -664,12 +757,18 @@ export function DisputaFormModal({
                                   Valor ofertado
                                 </span>
                                 {tratarComoGrupo ? (
+                                  <>
                                   <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
                                     <span className="text-xs text-ink-soft">R$</span>
                                     <input
                                       type="text"
                                       inputMode="decimal"
-                                      value={valoresGrupo?.valorOfertadoTexto ?? ''}
+                                      value={
+                                        valoresGrupo?.valorOfertadoTexto ||
+                                        (modoResultado === 'grupo_e_item' && somaItensDoBloco(bloco) != null
+                                          ? numeroParaCampoDecimal(somaItensDoBloco(bloco), 2)
+                                          : '')
+                                      }
                                       onChange={(e) =>
                                         atualizarValorGrupo(bloco.grupoId!, 'valorOfertadoTexto', e.target.value)
                                       }
@@ -687,6 +786,15 @@ export function DisputaFormModal({
                                       className="w-24 text-sm font-semibold text-ink focus:outline-none"
                                     />
                                   </span>
+                                  {modoResultado === 'grupo_e_item' &&
+                                    valoresGrupo?.valorOfertadoTexto &&
+                                    somaItensDoBloco(bloco) != null &&
+                                    campoParaNumeroDecimal(valoresGrupo.valorOfertadoTexto, 2) !== somaItensDoBloco(bloco) && (
+                                      <span className="text-[11px] text-ink-soft">
+                                        soma dos itens: {formatarMoeda(somaItensDoBloco(bloco) ?? 0)}
+                                      </span>
+                                    )}
+                                  </>
                                 ) : (
                                   <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
                                     <span className="text-sm font-semibold text-ink">
@@ -713,7 +821,14 @@ export function DisputaFormModal({
                           return (
                             <div
                               key={linha.chave}
-                              className="rounded-2xl border border-ink-soft/15 bg-white p-5 font-body shadow-soft"
+                              // Item dentro de um grupo ganha um tom verde claro
+                              // (com faixa lateral) para se diferenciar do item
+                              // solto, que continua branco (pedido do Márcio, 06/10).
+                              className={`rounded-2xl border p-5 font-body shadow-soft ${
+                                bloco.grupoId
+                                  ? 'border-forest/20 border-l-4 border-l-forest/50 bg-forest-mist/25'
+                                  : 'border-ink-soft/15 bg-white'
+                              }`}
                             >
                               <div className="flex items-stretch gap-6">
                                 {/* Item */}
@@ -745,9 +860,12 @@ export function DisputaFormModal({
                                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
                                       Posição
                                     </span>
-                                    {tratarComoGrupo ? (
+                                    {itensTravados || (bloco.grupoId && modoResultado === 'grupo_e_item') ? (
+                                      // Posição do grupo: só se preenche no card do grupo.
                                       <span className="flex items-center justify-center rounded-lg border border-ink-soft/10 bg-paper-2/50 px-2.5 py-1.5 w-14">
-                                        <span className="text-sm text-ink-soft">—</span>
+                                        <span className="text-sm text-ink-soft">
+                                          {!itensTravados && valoresGrupo?.posicaoTexto ? valoresGrupo.posicaoTexto : '—'}
+                                        </span>
                                       </span>
                                     ) : (
                                       <input
@@ -756,7 +874,7 @@ export function DisputaFormModal({
                                         value={valores.posicaoTexto}
                                         onChange={(e) => atualizarValorLinha(linha.chave, 'posicaoTexto', e.target.value)}
                                         placeholder="—"
-                                        className="w-14 rounded-lg border border-ink-soft/20 px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
+                                        className="w-14 rounded-lg border border-ink-soft/20 bg-white px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
                                       />
                                     )}
                                   </label>
@@ -765,7 +883,7 @@ export function DisputaFormModal({
                                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
                                       Valor de referência
                                     </span>
-                                    <span className="flex items-center rounded-lg border border-ink-soft/20 px-2.5 py-1.5">
+                                    <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
                                       <span className="text-sm font-semibold text-ink">
                                         {formatarMoeda(linha.item.precoReferencia)}
                                       </span>
@@ -776,7 +894,7 @@ export function DisputaFormModal({
                                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
                                       Mínimo (c/ frete)
                                     </span>
-                                    <span className="flex items-center rounded-lg border border-ink-soft/20 px-2.5 py-1.5">
+                                    <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
                                       {linha.precoMinimoComFreteUnitario > 0 ? (
                                         <span className="text-sm font-semibold text-ink">
                                           {formatarMoeda(linha.precoMinimoComFreteUnitario)}
@@ -789,14 +907,14 @@ export function DisputaFormModal({
 
                                   <label className="flex flex-col gap-1">
                                     <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                      Valor ofertado {!tratarComoGrupo && <span className="normal-case font-normal text-ink-soft/70">(unit.)</span>}
+                                      Valor ofertado {!itensTravados && <span className="normal-case font-normal text-ink-soft/70">(unit.)</span>}
                                     </span>
-                                    {tratarComoGrupo ? (
+                                    {itensTravados ? (
                                       <span className="flex items-center rounded-lg border border-ink-soft/10 bg-paper-2/50 px-2.5 py-1.5">
                                         <span className="text-sm text-ink-soft">preenchido no grupo acima</span>
                                       </span>
                                     ) : (
-                                      <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 px-2.5 py-1.5 focus-within:border-forest">
+                                      <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
                                         <span className="text-xs text-ink-soft">R$</span>
                                         <input
                                           type="text"
@@ -832,38 +950,155 @@ export function DisputaFormModal({
                 );
               })}
 
-              {/* Total geral — soma tudo: grupos fechados por grupo (valor
-                  já total) + itens soltos (unitário × quantidade). A pedido
-                  do Márcio (05/10). */}
+              {/* Resumo geral — Total de referência (vem da licitação), Mínimo
+                  (c/ frete) (vem da Proposta Comercial do Cliente), Total
+                  ofertado (soma conforme o Analista preenche: grupos pelo
+                  total do grupo, itens soltos por unitário × quantidade) e
+                  o percentual do ofertado sobre o mínimo (c/ frete). A
+                  pedido do Márcio (06/10). */}
               {(() => {
-                const totalGeral = blocosVisuais.reduce((somaBlocos, bloco) => {
+                const totalReferenciaGeral = blocosVisuais.reduce(
+                  (soma, bloco) =>
+                    soma + bloco.linhas.reduce((s2, linha) => s2 + linha.item.precoReferencia * linha.item.quantidade, 0),
+                  0,
+                );
+                const totalMinimoGeral = blocosVisuais.reduce(
+                  (soma, bloco) =>
+                    soma + bloco.linhas.reduce((s2, linha) => s2 + linha.precoMinimoComFreteUnitario * linha.item.quantidade, 0),
+                  0,
+                );
+                const algumMinimoGeral = blocosVisuais.some((bloco) =>
+                  bloco.linhas.some((linha) => linha.precoMinimoComFreteUnitario > 0),
+                );
+
+                // Valor ofertado de um bloco (null = Analista ainda não
+                // preencheu nada nele). Grupo com total digitado usa o total;
+                // no modo "Grupo e item", sem total digitado, usa a soma dos
+                // itens (unitário × quantidade).
+                const ofertadoDoBloco = (bloco: (typeof blocosVisuais)[number]): number | null => {
                   const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
                   if (tratarComoGrupo && bloco.grupoId) {
-                    return somaBlocos + (campoParaNumeroDecimal(valoresPorGrupo[bloco.grupoId]?.valorOfertadoTexto ?? '', 2) ?? 0);
+                    const valorGrupo = campoParaNumeroDecimal(valoresPorGrupo[bloco.grupoId]?.valorOfertadoTexto ?? '', 2);
+                    if (valorGrupo != null) return valorGrupo;
+                    if (modoResultado === 'grupo') return null;
                   }
-                  return (
-                    somaBlocos +
-                    bloco.linhas.reduce((soma, linha) => {
-                      const unitario = campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2);
-                      return soma + (unitario ?? 0) * linha.item.quantidade;
-                    }, 0)
-                  );
-                }, 0);
-                const algumPreenchido = blocosVisuais.some((bloco) => {
-                  const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
-                  if (tratarComoGrupo && bloco.grupoId) {
-                    return campoParaNumeroDecimal(valoresPorGrupo[bloco.grupoId]?.valorOfertadoTexto ?? '', 2) != null;
-                  }
-                  return bloco.linhas.some(
-                    (linha) => campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2) != null,
+                  let algum = false;
+                  const soma = bloco.linhas.reduce((acc, linha) => {
+                    const unitario = campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2);
+                    if (unitario == null) return acc;
+                    algum = true;
+                    return acc + unitario * linha.item.quantidade;
+                  }, 0);
+                  return algum ? soma : null;
+                };
+
+                let totalOfertadoGeral = 0;
+                let algumPreenchido = false;
+                // Mínimo (c/ frete) só dos blocos já preenchidos — para o
+                // percentual comparar o que foi ofertado com o mínimo do
+                // MESMO conjunto (senão, com a disputa preenchida pela
+                // metade, o percentual ficaria falsamente negativo).
+                let minimoDosPreenchidos = 0;
+                blocosVisuais.forEach((bloco) => {
+                  const ofertado = ofertadoDoBloco(bloco);
+                  if (ofertado == null) return;
+                  algumPreenchido = true;
+                  totalOfertadoGeral += ofertado;
+                  minimoDosPreenchidos += bloco.linhas.reduce(
+                    (soma, linha) => soma + linha.precoMinimoComFreteUnitario * linha.item.quantidade,
+                    0,
                   );
                 });
 
+                const percentualSobreMinimo =
+                  algumPreenchido && minimoDosPreenchidos > 0 ? (totalOfertadoGeral / minimoDosPreenchidos - 1) * 100 : null;
+                // Diferença em R$ entre o ofertado e o mínimo (c/ frete) do
+                // mesmo conjunto de grupos/itens preenchidos.
+                const diferencaReais =
+                  algumPreenchido && minimoDosPreenchidos > 0 ? totalOfertadoGeral - minimoDosPreenchidos : null;
+                const diferencaTexto =
+                  diferencaReais == null
+                    ? '—'
+                    : `${diferencaReais > 0 ? '+' : diferencaReais < 0 ? '−' : ''}${formatarMoeda(Math.abs(diferencaReais))}`;
+                const percentualTexto =
+                  percentualSobreMinimo == null
+                    ? '—'
+                    : `${percentualSobreMinimo > 0 ? '+' : ''}${percentualSobreMinimo.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}%`;
+
                 return (
-                  <div className="flex items-center justify-between rounded-2xl border border-forest/30 bg-forest-mist px-5 py-3.5">
-                    <p className="font-body text-sm font-semibold text-forest-deep">Total geral ofertado</p>
-                    <p className="font-body text-base font-semibold text-forest-deep">
-                      {algumPreenchido ? formatarMoeda(totalGeral) : '—'}
+                  <div className="rounded-2xl border border-forest/30 bg-forest-mist px-5 py-4 font-body">
+                    <p className="mb-3 text-sm font-semibold text-forest-deep">Resumo geral da disputa</p>
+                    <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                          Total de referência
+                        </span>
+                        <span className="text-base font-semibold text-forest-deep">
+                          {formatarMoeda(totalReferenciaGeral)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                          Mínimo (c/ frete)
+                        </span>
+                        {/* Vai somando conforme o Analista preenche: só entra o
+                            mínimo dos grupos/itens que já têm valor ofertado. */}
+                        <span className="text-base font-semibold text-forest-deep">
+                          {algumPreenchido && minimoDosPreenchidos > 0 ? formatarMoeda(minimoDosPreenchidos) : '—'}
+                        </span>
+                        {algumMinimoGeral && (
+                          <span className="text-[11px] text-ink-soft">
+                            de {formatarMoeda(totalMinimoGeral)} no total
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                          Total geral ofertado
+                        </span>
+                        <span className="text-base font-semibold text-forest-deep">
+                          {algumPreenchido ? formatarMoeda(totalOfertadoGeral) : '—'}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                          % ofertado × mínimo (c/ frete)
+                        </span>
+                        <span
+                          className={`text-base font-semibold ${
+                            percentualSobreMinimo == null
+                              ? 'text-forest-deep'
+                              : percentualSobreMinimo >= 0
+                                ? 'text-forest'
+                                : 'text-red-700'
+                          }`}
+                        >
+                          {percentualTexto}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                          Diferença (R$) ofertado − mínimo
+                        </span>
+                        <span
+                          className={`text-base font-semibold ${
+                            diferencaReais == null
+                              ? 'text-forest-deep'
+                              : diferencaReais >= 0
+                                ? 'text-forest'
+                                : 'text-red-700'
+                          }`}
+                        >
+                          {diferencaTexto}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-ink-soft">
+                      O percentual e a diferença em R$ comparam o total ofertado com o mínimo (c/ frete) apenas dos grupos/itens já preenchidos.
+                      Positivo = acima do mínimo; negativo = abaixo do mínimo.
                     </p>
                   </div>
                 );

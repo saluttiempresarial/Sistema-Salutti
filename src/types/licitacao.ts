@@ -325,6 +325,12 @@ export interface GrupoItens {
   nome: string; // ex.: "Grupo 1"
 }
 
+// Decisão do Admin/Analista sobre um ITEM INDIVIDUAL (sem grupo) cujo preço
+// ficou acima do valor de referência (migração 032). Ausente = pendente
+// (ninguém decidiu ainda). Grupos acima da referência não têm decisão —
+// são bloqueados automaticamente (regra de 06/10, Márcio).
+export type DecisaoAcimaReferencia = 'liberado' | 'barrado';
+
 export interface ItemLicitacao {
   id: string;
   grupoId?: string; // presente = item pertence a um grupo; ausente = item individual
@@ -335,6 +341,9 @@ export interface ItemLicitacao {
   precoReferencia: number; // valor unitário de referência (edital) — preenchido pelo Admin
   exclusivoMeEpp: boolean;
   propostaCliente?: PropostaClienteItem;
+  decisaoAcimaReferencia?: DecisaoAcimaReferencia;
+  decisaoAcimaReferenciaPor?: string; // quem decidiu
+  decisaoAcimaReferenciaEm?: string; // ISO datetime
 }
 
 // ---------------------------------------------------------------------------

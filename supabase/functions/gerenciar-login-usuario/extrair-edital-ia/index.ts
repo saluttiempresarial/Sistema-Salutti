@@ -81,6 +81,17 @@ const DECLARACOES_IDS = [
   'outras_declaracoes',
 ] as const;
 
+// Enums do formulário (src/types/licitacao.ts) — DUPLICADOS aqui pelo mesmo
+// motivo dos checklists acima. ATENÇÃO: "MODALIDADE_IDS" hoje só tem 2
+// valores no front-end (pregao_eletronico, concorrencia); se isso mudar lá
+// (ex.: para incluir tomada_de_precos, convite etc.), espelhe aqui também.
+const MODALIDADE_IDS = ['pregao_eletronico', 'concorrencia'] as const;
+const TIPO_CONTRATACAO_IDS = ['licitacao', 'dispensa', 'inexigibilidade'] as const;
+const PROCEDIMENTO_IDS = ['convencional', 'srp'] as const;
+const PARTICIPACAO_IDS = ['exclusiva_me_epp', 'ampla_concorrencia'] as const;
+const ESTRUTURA_IDS = ['item', 'lote_grupo'] as const;
+const FORMA_PAGAMENTO_IDS = ['credito_conta', 'debito_conta', 'boleto', 'pix', 'outros'] as const;
+
 const OUTRAS_EXIGENCIAS_IDS = [
   'amostra',
   'catalogo_folder_tecnico',
@@ -120,13 +131,13 @@ const extracaoSchema = z.object({
   orgao: z.string(),
   estado: z.string().length(2),
   municipio: z.string(),
-  modalidade: z.string(),
-  estrutura: z.enum(['item', 'lote_grupo']),
-  tipoContratacao: z.string(),
-  procedimento: z.string(),
+  modalidade: z.enum(MODALIDADE_IDS),
+  estrutura: z.enum(ESTRUTURA_IDS),
+  tipoContratacao: z.enum(TIPO_CONTRATACAO_IDS),
+  procedimento: z.enum(PROCEDIMENTO_IDS),
   formaDisputa: z.string(),
   modoDisputa: z.string(),
-  participacao: z.enum(['exclusiva_me_epp', 'ampla_concorrencia']),
+  participacao: z.enum(PARTICIPACAO_IDS),
   capag: z.string().optional(),
   valorTotalLicitacao: z.number().optional(),
 
@@ -147,7 +158,7 @@ const extracaoSchema = z.object({
     valorIntervaloLances: z.number().optional(),
     percentualIntervaloLances: z.number().optional(),
     intervaloLancesDetalhe: z.string().optional(),
-    formaPagamento: z.string(),
+    formaPagamento: z.enum(FORMA_PAGAMENTO_IDS),
     prazoPagamentoDias: z.number().optional(),
     possuiGarantias: z.boolean(),
     garantiasDetalhe: z.string().optional(),
@@ -220,13 +231,13 @@ const ferramentaExtracao = {
       orgao: { type: 'string' },
       estado: { type: 'string', description: 'sigla UF, 2 letras' },
       municipio: { type: 'string' },
-      modalidade: { type: 'string' },
-      estrutura: { type: 'string', enum: ['item', 'lote_grupo'] },
-      tipoContratacao: { type: 'string' },
-      procedimento: { type: 'string' },
+      modalidade: { type: 'string', enum: [...MODALIDADE_IDS] },
+      estrutura: { type: 'string', enum: [...ESTRUTURA_IDS] },
+      tipoContratacao: { type: 'string', enum: [...TIPO_CONTRATACAO_IDS] },
+      procedimento: { type: 'string', enum: [...PROCEDIMENTO_IDS] },
       formaDisputa: { type: 'string' },
       modoDisputa: { type: 'string' },
-      participacao: { type: 'string', enum: ['exclusiva_me_epp', 'ampla_concorrencia'] },
+      participacao: { type: 'string', enum: [...PARTICIPACAO_IDS] },
       capag: { type: 'string' },
       valorTotalLicitacao: { type: 'number' },
 
@@ -250,7 +261,7 @@ const ferramentaExtracao = {
           valorIntervaloLances: { type: 'number' },
           percentualIntervaloLances: { type: 'number' },
           intervaloLancesDetalhe: { type: 'string' },
-          formaPagamento: { type: 'string' },
+          formaPagamento: { type: 'string', enum: [...FORMA_PAGAMENTO_IDS] },
           prazoPagamentoDias: { type: 'number' },
           possuiGarantias: { type: 'boolean' },
           garantiasDetalhe: { type: 'string' },
@@ -333,7 +344,8 @@ REGRAS OBRIGATÓRIAS:
 6. "participacao" = "exclusiva_me_epp" somente se TODO o objeto for exclusivo ME/EPP/COOP; se houver mistura de lotes amplos e exclusivos, ou só parte for exclusiva, use "ampla_concorrencia" e detalhe a regra de exclusividade por lote no campo pontosAtencao.
 7. Cada item em "itens" deve referenciar seu grupo por "grupoNumero" (igual ao "numero" do grupo correspondente em "grupos"), quando houver agrupamento. Itens individuais (estrutura = "item") não precisam de grupoNumero.
 8. "pontosAtencao" deve resumir riscos e exigências que merecem atenção humana: prazos apertados, exigências incomuns, ambiguidades do próprio edital, divergências (ex.: número do pregão divergente entre capa e nome do arquivo), e qualquer suposição que você tenha feito.
-9. Responda SOMENTE pela ferramenta "preencher_licitacao" — nunca em texto livre.`;
+9. Os campos "modalidade", "tipoContratacao", "procedimento" e, em condicoesComerciais, "formaPagamento" só aceitam os valores fixos definidos no schema da ferramenta — nunca escreva um valor fora dessa lista. Se o edital descrever algo que não se encaixa perfeitamente em nenhuma opção (ex.: uma modalidade de licitação diferente de Pregão Eletrônico ou Concorrência), escolha a opção mais próxima, explique a discrepância em pontosAtencao e liste o campo em camposComBaixaConfianca.
+10. Responda SOMENTE pela ferramenta "preencher_licitacao" — nunca em texto livre.`;
 
 // ---------------------------------------------------------------------------
 // Handler HTTP
@@ -372,6 +384,17 @@ Deno.serve(async (req: Request) => {
 
     const bytes = new Uint8Array(await arquivo.arrayBuffer());
     const base64 = encodeBase64(bytes);
+
+    // O PDF só serve de ponte entre o navegador e esta function — o
+    // Analista mantém o original no próprio computador. Por isso o arquivo
+    // é apagado do Storage logo depois de lido (antes mesmo de chamar a
+    // IA), para não acumular editais no bucket nem quando a extração
+    // falhar. Se a remoção falhar, só registra no log: não vale derrubar a
+    // extração por causa de um arquivo temporário.
+    const { error: erroRemocao } = await supabase.storage.from(bucket).remove([path]);
+    if (erroRemocao) {
+      console.error('Não foi possível apagar o PDF temporário do Storage:', erroRemocao.message);
+    }
 
     const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });
 

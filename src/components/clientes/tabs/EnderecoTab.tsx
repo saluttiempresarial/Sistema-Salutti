@@ -19,12 +19,15 @@ export function EnderecoTab({ endereco, errors, onChange, onClearError }: Endere
   const [buscandoCep, setBuscandoCep] = useState(false)
   const [cepNaoEncontrado, setCepNaoEncontrado] = useState(false)
 
-  async function handleCepBlur() {
-    if (!isValidCEP(endereco.cep)) return
+  // Busca o endereço assim que o CEP tem 8 dígitos (chamada pelo onChange,
+  // com o valor recém-digitado) e também ao sair do campo (onBlur), caso o
+  // CEP tenha sido colado ou preenchido de outra forma.
+  async function buscarEndereco(cep: string) {
+    if (!isValidCEP(cep)) return
 
     setBuscandoCep(true)
     setCepNaoEncontrado(false)
-    const resultado = await viaCepService.buscarEnderecoPorCep(endereco.cep)
+    const resultado = await viaCepService.buscarEnderecoPorCep(cep)
     setBuscandoCep(false)
 
     if (!resultado) {
@@ -53,11 +56,16 @@ export function EnderecoTab({ endereco, errors, onChange, onClearError }: Endere
           error={errors.cep}
           placeholder="00000-000"
           onChange={(e) => {
-            onChange({ cep: maskCEP(e.target.value) })
+            const cepMascarado = maskCEP(e.target.value)
+            onChange({ cep: cepMascarado })
             onClearError('cep')
             setCepNaoEncontrado(false)
+            if (isValidCEP(cepMascarado)) buscarEndereco(cepMascarado)
           }}
-          onBlur={handleCepBlur}
+          onBlur={() => {
+            // Evita repetir a busca se o endereço já foi preenchido pelo onChange.
+            if (!endereco.endereco) buscarEndereco(endereco.cep)
+          }}
         />
         {buscandoCep && (
           <p className="mt-1 font-body text-xs text-ink-soft">Buscando endereço pelo CEP…</p>

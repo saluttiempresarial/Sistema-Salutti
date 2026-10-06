@@ -32,7 +32,7 @@
 // disso, Etapa 5: trocar de verdade nas telas.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Licitacao, ItemLicitacao, GrupoItens, PropostaClienteItem } from '@/types/licitacao'
+import { Licitacao, ItemLicitacao, GrupoItens, PropostaClienteItem, DecisaoAcimaReferencia } from '@/types/licitacao'
 import { PorteEmpresa } from '@/types/cliente'
 import {
   calcularAnaliseItem,
@@ -41,11 +41,6 @@ import {
   totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
 import { formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
-import {
-  numeroParaCampoDecimal as numeroParaCampo,
-  campoParaNumeroDecimal as campoParaNumero,
-  aplicarMascaraAoDigitar,
-} from '@/utils/formatoNumerico'
 
 // Mesmo contrato que PropostaComercialTable.tsx já usa — mantido aqui com o
 // mesmo nome e formato para a troca de componente (Etapa 5) não exigir
@@ -74,6 +69,13 @@ interface PropostaComercialCardsProps {
   /** true na tela do Admin — itens "❌ Não participar" ficam ocultos por
    *  padrão, com um botão para revelar a lista inteira. */
   ocultarNaoParticiparPorPadrao?: boolean
+  /** Só passado nas telas do Admin/Analista. Quando presente, ITENS
+   *  INDIVIDUAIS (sem grupo) com preço acima da referência mostram os
+   *  botões "Liberar para disputa" / "Não participar" (decisão gravada
+   *  por esta função, que também recarrega a licitação). Grupos acima da
+   *  referência não têm decisão — são bloqueados automaticamente (regra
+   *  de 06/10, Márcio). Ausente = nenhuma decisão aparece na tela. */
+  onDecidirAcimaReferencia?: (itemIds: string[], decisao: DecisaoAcimaReferencia | null) => Promise<void>
 }
 
 interface BlocoGrupo {
@@ -96,13 +98,50 @@ interface FormReferencia {
 // `casas` limita quantas casas decimais o valor guarda (o corte só acontece
 // na conversão de volta pra número — nunca no texto que a pessoa está
 // digitando). Preço (referência/proposta) usa 6 casas; frete usa 2.
-//
-// numeroParaCampo/campoParaNumero (02/10): passam a ser apenas aliases das
-// funções centralizadas em utils/formatoNumerico.ts — essa duplicação
-// (quase idêntica à de LicitacaoFormModal.tsx) foi o que permitiu a mesma
-// falha (ponto solto lido como decimal, "10.000" virando 10) ser corrigida
-// num arquivo e esquecida no outro. Mantidos os nomes curtos aqui só pra
-// não precisar reescrever todas as chamadas já existentes no arquivo.
+// Insere o ponto de milhar na parte inteira de um texto já no padrão BR
+// (vírgula decimal) — "305978,18" -> "305.978,18". A pedido do Márcio
+// (01/10): todo valor numérico exibido no sistema tem que vir com ponto
+// separando milhar, vírgula separando decimal (ex.: 4.578.122,15) — não só
+// em texto de leitura, mas também no que aparece dentro dos campos de
+// digitação assim que o valor é carregado/salvo (ver onBlur dos campos
+// que usam numeroParaCampo, mais abaixo).
+function aplicarSeparadorMilhar(texto: string): string {
+  const negativo = texto.startsWith('-')
+  const semSinal = negativo ? texto.slice(1) : texto
+  const [parteInteira, parteDecimal] = semSinal.split(',')
+  const parteInteiraComPontos = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const resultado = parteDecimal !== undefined ? `${parteInteiraComPontos},${parteDecimal}` : parteInteiraComPontos
+  return negativo ? `-${resultado}` : resultado
+}
+
+function numeroParaCampo(valor: number | null | undefined, casas = 6): string {
+  if (valor == null) return ''
+  // O corte de "zeros sobrando" só pode acontecer quando existe separador
+  // decimal (casas > 0) — ex.: "100,4000" -> "100,4". Sem essa checagem, um
+  // valor inteiro terminado em zero (ex.: 100, 1000) teria o próprio número
+  // cortado por engano (100 -> 1) — mesmo bug encontrado e corrigido em
+  // numeroParaCampoDecimal de LicitacaoFormModal.tsx (01/10).
+  let textoBruto = valor.toFixed(casas)
+  if (casas > 0) {
+    textoBruto = textoBruto.replace(/0+$/, '').replace(/\.$/, '')
+  }
+  const texto = textoBruto === '' || textoBruto === '-' ? '0' : textoBruto.replace('.', ',')
+  return aplicarSeparadorMilhar(texto)
+}
+
+// Aceita tanto vírgula decimal com ponto de milhar ("1.234,5678") quanto
+// ponto decimal solto ("1234.5678") — sem isso, um valor como "1.234,56"
+// vira "1.23456" ao trocar só a vírgula por ponto (o ponto de milhar não é
+// removido antes), corrompendo o número silenciosamente.
+function campoParaNumero(valor: string, casas = 6): number | undefined {
+  const limpo = valor.trim()
+  if (!limpo) return undefined
+  const semSeparadorMilhar = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo
+  const numero = parseFloat(semSeparadorMilhar)
+  if (isNaN(numero)) return undefined
+  const fator = Math.pow(10, casas)
+  return Math.round(numero * fator) / fator
+}
 
 function montarFormPropostaInicial(itens: ItemLicitacao[]): Record<string, FormProposta> {
   const mapa: Record<string, FormProposta> = {}
@@ -110,7 +149,7 @@ function montarFormPropostaInicial(itens: ItemLicitacao[]): Record<string, FormP
     mapa[item.id] = {
       marca: item.propostaCliente?.marca ?? '',
       modelo: item.propostaCliente?.modelo ?? '',
-      precoMinimo: numeroParaCampo(item.propostaCliente?.precoMinimo, 6, 2),
+      precoMinimo: numeroParaCampo(item.propostaCliente?.precoMinimo),
     }
   })
   return mapa
@@ -129,7 +168,7 @@ function montarFormReferenciaInicial(itens: ItemLicitacao[]): Record<string, For
       // mais de 6 casas decimais (ex.: 4,57550140), e o padrão de 6 casas
       // do numeroParaCampo estava truncando esse valor ao abrir o campo
       // aqui para edição pelo Admin.
-      precoReferencia: numeroParaCampo(item.precoReferencia, 10, 2),
+      precoReferencia: numeroParaCampo(item.precoReferencia, 10),
     }
   })
   return mapa
@@ -145,31 +184,16 @@ function removerPrefixoNumero(numeroPregao: string): string {
 }
 
 // Agrupa os itens por grupo/lote. Licitações com estrutura "Item" (sem
-// nenhum grupo) caem todas num único bloco "Itens individuais", pra não
-// forçar navegação em 2 níveis quando não existe divisão em grupos.
-//
-// CORREÇÃO (02/10, bug reportado pelo Márcio): licitações que misturam
-// grupo(s) COM itens individuais (ex.: 1 grupo "Cesta básica" + 1 item
-// avulso "Café") perdiam o item avulso nesta tela — antes, o bloco "sem
-// grupo" só era criado quando grupos.length === 0, então, assim que
-// existia 1 grupo, os itens sem grupoId ficavam de fora da lista de
-// blocos inteiramente (mesmo contando no total geral, que soma direto
-// licitacao.itens, por isso o contador "X de Y preenchidos" batia mas
-// nenhum card aparecia pro item avulso preencher). Agora o bloco de itens
-// individuais é incluído sempre que existir ao menos 1 item sem grupo,
-// independente de a licitação também ter grupo(s) ou não.
+// grupo) caem todas num único bloco "Itens", pra não forçar navegação em 2
+// níveis quando não existe divisão em grupos.
 function agruparItens(licitacao: Licitacao): BlocoGrupo[] {
-  const blocos: BlocoGrupo[] = licitacao.grupos.map((grupo) => ({
+  if (licitacao.grupos.length === 0) {
+    return [{ grupo: null, itens: licitacao.itens }]
+  }
+  return licitacao.grupos.map((grupo) => ({
     grupo,
     itens: licitacao.itens.filter((item) => item.grupoId === grupo.id),
   }))
-
-  const itensSemGrupo = licitacao.itens.filter((item) => !item.grupoId)
-  if (itensSemGrupo.length > 0 || blocos.length === 0) {
-    blocos.push({ grupo: null, itens: itensSemGrupo })
-  }
-
-  return blocos
 }
 
 export function PropostaComercialCards({
@@ -181,6 +205,7 @@ export function PropostaComercialCards({
   textoBotaoSalvar,
   porteCliente,
   ocultarNaoParticiparPorPadrao,
+  onDecidirAcimaReferencia,
 }: PropostaComercialCardsProps) {
   const blocos = useMemo(() => agruparItens(licitacao), [licitacao])
   const [grupoAberto, setGrupoAberto] = useState<string | null>(
@@ -197,6 +222,10 @@ export function PropostaComercialCards({
   )
   const [taxaFrete, setTaxaFrete] = useState<string>(numeroParaCampo(licitacao.percentualFrete, 2))
   const [erro, setErro] = useState<string | null>(null)
+  // Decisão de liberar/barrar item acima da referência (só Admin/Analista).
+  const visaoEquipe = !!onDecidirAcimaReferencia
+  const [decidindoItemId, setDecidindoItemId] = useState<string | null>(null)
+  const [erroDecisao, setErroDecisao] = useState<string | null>(null)
 
   // Depois de salvar, a página recarrega a licitação (atualizadoEm muda) —
   // resincroniza os formulários locais com o que voltou do banco, pra não
@@ -232,7 +261,7 @@ export function PropostaComercialCards({
         ...item.propostaCliente,
         marca: formProposta?.marca ?? item.propostaCliente?.marca ?? '',
         modelo: formProposta?.modelo ?? item.propostaCliente?.modelo ?? '',
-        precoMinimo: formProposta ? campoParaNumero(formProposta.precoMinimo, 6) : item.propostaCliente?.precoMinimo,
+        precoMinimo: formProposta ? campoParaNumero(formProposta.precoMinimo) : item.propostaCliente?.precoMinimo,
       },
     }
   }
@@ -241,6 +270,32 @@ export function PropostaComercialCards({
 
   const totalItens = itensAoVivo.length
   const preenchidos = itensAoVivo.filter((item) => item.propostaCliente?.precoMinimo != null).length
+
+  // Item individual (sem grupo) com preço acima da referência: só entra na
+  // disputa se o Admin/Analista liberar. Esta lista conta os que ainda
+  // estão sem decisão, para o aviso no topo.
+  function itemIndividualAcimaDaReferencia(item: ItemLicitacao): boolean {
+    if (item.grupoId || item.propostaCliente?.precoMinimo == null) return false
+    if (item.exclusivoMeEpp && porteCliente === 'demais') return false
+    const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
+    return classificarStatusProposta(analise.percentualDiferenca).chave === 'nao_participar'
+  }
+  const quantidadePendentesDecisao = visaoEquipe
+    ? itensAoVivo.filter((item) => itemIndividualAcimaDaReferencia(item) && !item.decisaoAcimaReferencia).length
+    : 0
+
+  async function decidirItem(itemId: string, decisao: DecisaoAcimaReferencia | null) {
+    if (!onDecidirAcimaReferencia) return
+    setDecidindoItemId(itemId)
+    setErroDecisao(null)
+    try {
+      await onDecidirAcimaReferencia([itemId], decisao)
+    } catch (e) {
+      setErroDecisao(e instanceof Error ? e.message : 'Não foi possível registrar a decisão.')
+    } finally {
+      setDecidindoItemId(null)
+    }
+  }
 
   // ANÁLISE DA PARTICIPAÇÃO (antigo "Total geral da licitação") — a pedido
   // do Márcio (25/09): Valor de referência E Valor da proposta começam os
@@ -429,7 +484,7 @@ export function PropostaComercialCards({
                 inputMode="decimal"
                 placeholder="0,00"
                 value={taxaFrete}
-                onChange={(e) => setTaxaFrete(aplicarMascaraAoDigitar(e.target.value, 2))}
+                onChange={(e) => setTaxaFrete(e.target.value.replace(/-/g, ''))}
                 className="w-24 rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
               />
               <span className="font-body text-[11px] text-ink-soft">aplicado a todos os itens da proposta</span>
@@ -467,12 +522,23 @@ export function PropostaComercialCards({
         </div>
       </div>
 
+      {quantidadePendentesDecisao > 0 && (
+        <div className="rounded-lg border border-brass/40 bg-brass-pale px-3 py-2 font-body text-xs text-brass">
+          ⏳ {quantidadePendentesDecisao} {quantidadePendentesDecisao === 1 ? 'item individual está' : 'itens individuais estão'}{' '}
+          acima da referência, aguardando decisão. Abra o item e escolha <strong>Liberar para disputa</strong> ou{' '}
+          <strong>Não participar</strong>. Sem liberação, o item não aparece na Disputa.
+        </div>
+      )}
+      {erroDecisao && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 font-body text-sm text-red-700">{erroDecisao}</p>
+      )}
+
       {ocultarNaoParticiparPorPadrao && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-paper-2/70 px-3 py-2">
           <p className="font-body text-xs text-ink-soft">
             {ocultarNaoParticipar
-              ? 'Itens com status "❌ Não participar" e grupos que o Cliente ainda não começou a preencher estão ocultos nesta visualização.'
-              : 'Mostrando todos os grupos e itens, incluindo os "❌ Não participar" e os que o Cliente ainda não preencheu.'}
+              ? 'Grupos que o Cliente ainda não começou a preencher estão ocultos nesta visualização.'
+              : 'Mostrando todos os grupos, inclusive os que o Cliente ainda não preencheu.'}
           </p>
           <button
             type="button"
@@ -531,12 +597,10 @@ export function PropostaComercialCards({
         const statusGrupo = classificarStatusProposta(percentualGrupo)
         const nomeGrupo = grupo ? (grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`) : 'Itens individuais'
 
-        const itensVisiveis = ocultarNaoParticipar
-          ? itensAoVivoDoGrupo.filter((item) => {
-              const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
-              return classificarStatusProposta(analise.percentualDiferenca).chave !== 'nao_participar'
-            })
-          : itensAoVivoDoGrupo
+        // Itens acima da referência NÃO ficam mais ocultos (06/10): eles
+        // precisam estar visíveis para o Admin/Analista decidir.
+        const itensVisiveis = itensAoVivoDoGrupo
+        const grupoAcimaDaReferencia = !!grupo && statusGrupo.chave === 'nao_participar'
 
         return (
           <div key={idBloco} className="overflow-hidden rounded-2xl border border-ink-soft/10 bg-white shadow-soft">
@@ -576,6 +640,11 @@ export function PropostaComercialCards({
                 <span className={`whitespace-nowrap rounded-full px-3 py-1 font-body text-xs font-semibold ${statusGrupo.classe}`}>
                   {statusGrupo.label}
                 </span>
+                {visaoEquipe && grupoAcimaDaReferencia && (
+                  <span className="whitespace-nowrap rounded-full bg-ink px-3 py-1 font-body text-xs font-semibold text-white">
+                    ⛔ Sem opção de concorrer
+                  </span>
+                )}
                 <IconeChevron aberto={aberto} />
               </div>
             </button>
@@ -616,6 +685,23 @@ export function PropostaComercialCards({
                           <span className={`whitespace-nowrap rounded-full px-2.5 py-1 font-body text-[11px] font-semibold ${status.classe}`}>
                             {status.label}
                           </span>
+                          {visaoEquipe && itemIndividualAcimaDaReferencia(itemVivo) && (
+                            <span
+                              className={`whitespace-nowrap rounded-full px-2.5 py-1 font-body text-[11px] font-semibold ${
+                                itemVivo.decisaoAcimaReferencia === 'liberado'
+                                  ? 'bg-forest-mist text-forest-deep'
+                                  : itemVivo.decisaoAcimaReferencia === 'barrado'
+                                    ? 'bg-ink text-white'
+                                    : 'bg-brass-pale text-brass'
+                              }`}
+                            >
+                              {itemVivo.decisaoAcimaReferencia === 'liberado'
+                                ? '✅ Liberado para disputa'
+                                : itemVivo.decisaoAcimaReferencia === 'barrado'
+                                  ? '⛔ Não participar'
+                                  : '⏳ Aguardando decisão'}
+                            </span>
+                          )}
                           <IconeChevron aberto={itemAbertoAgora} />
                         </div>
                       </button>
@@ -644,13 +730,12 @@ export function PropostaComercialCards({
                                     label="Valor unitário (R$)"
                                     valor={formProposta.precoMinimo}
                                     placeholder="0,00"
-                                    casasDecimais={6}
                                     onChange={(v) => atualizarCampoProposta(itemVivo.id, 'precoMinimo', v)}
                                     onBlur={() =>
                                       atualizarCampoProposta(
                                         itemVivo.id,
                                         'precoMinimo',
-                                        numeroParaCampo(campoParaNumero(formProposta.precoMinimo, 6), 6, 2)
+                                        numeroParaCampo(campoParaNumero(formProposta.precoMinimo), 6)
                                       )
                                     }
                                   />
@@ -692,6 +777,45 @@ export function PropostaComercialCards({
                             </div>
                           )}
 
+                          {visaoEquipe && itemIndividualAcimaDaReferencia(itemVivo) && (
+                            <div className="mt-4 rounded-lg border border-brass/40 bg-brass-pale/50 p-3">
+                              <p className="font-body text-xs text-ink">
+                                Este item está acima da referência. Ele só participa da disputa se você liberar.
+                                {itemVivo.decisaoAcimaReferencia && itemVivo.decisaoAcimaReferenciaPor
+                                  ? ` Decisão registrada por ${itemVivo.decisaoAcimaReferenciaPor}.`
+                                  : ''}
+                              </p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={decidindoItemId === itemVivo.id || itemVivo.decisaoAcimaReferencia === 'liberado'}
+                                  onClick={() => decidirItem(itemVivo.id, 'liberado')}
+                                  className="rounded-lg bg-forest px-3 py-1.5 font-body text-xs font-semibold text-white disabled:opacity-50"
+                                >
+                                  Liberar para disputa
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={decidindoItemId === itemVivo.id || itemVivo.decisaoAcimaReferencia === 'barrado'}
+                                  onClick={() => decidirItem(itemVivo.id, 'barrado')}
+                                  className="rounded-lg bg-ink px-3 py-1.5 font-body text-xs font-semibold text-white disabled:opacity-50"
+                                >
+                                  Não participar
+                                </button>
+                                {itemVivo.decisaoAcimaReferencia && (
+                                  <button
+                                    type="button"
+                                    disabled={decidindoItemId === itemVivo.id}
+                                    onClick={() => decidirItem(itemVivo.id, null)}
+                                    className="font-body text-xs font-semibold text-forest hover:underline disabled:opacity-50"
+                                  >
+                                    Desfazer decisão
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
                           {podeEditarItens && formReferencia && (
                             <div className="mt-4 rounded-lg border border-dashed border-ink-soft/20 p-3">
                               <p className="mb-2 font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
@@ -706,7 +830,6 @@ export function PropostaComercialCards({
                                 <CampoEditavel
                                   label="Quantidade"
                                   valor={formReferencia.quantidade}
-                                  casasDecimais={0}
                                   onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'quantidade', v)}
                                   onBlur={() =>
                                     atualizarCampoReferencia(
@@ -719,13 +842,12 @@ export function PropostaComercialCards({
                                 <CampoEditavel
                                   label="Valor unit. referência (R$)"
                                   valor={formReferencia.precoReferencia}
-                                  casasDecimais={10}
                                   onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'precoReferencia', v)}
                                   onBlur={() =>
                                     atualizarCampoReferencia(
                                       itemVivo.id,
                                       'precoReferencia',
-                                      numeroParaCampo(campoParaNumero(formReferencia.precoReferencia, 10), 10, 2)
+                                      numeroParaCampo(campoParaNumero(formReferencia.precoReferencia, 10), 10)
                                     )
                                   }
                                 />
@@ -796,7 +918,6 @@ function CampoEditavel({
   placeholder,
   onChange,
   onBlur,
-  casasDecimais,
 }: {
   label: string
   valor: string
@@ -807,13 +928,6 @@ function CampoEditavel({
    *  unit. referência); campos de texto livre (Marca, Modelo, Unidade)
    *  não usam. */
   onBlur?: () => void
-  /** Quando informado, aplica a máscara numérica BR (ponto de milhar,
-   *  vírgula decimal) em tempo real enquanto a pessoa digita, limitando a
-   *  este número de casas decimais — ver aplicarMascaraAoDigitar() em
-   *  utils/formatoNumerico.ts. Omitido para campos de texto livre (Marca,
-   *  Modelo, Unidade), que continuam digitação livre normal. Adicionado
-   *  em 02/10 junto com a correção do bug "10.000 virando 10". */
-  casasDecimais?: number
 }) {
   return (
     <div>
@@ -822,9 +936,7 @@ function CampoEditavel({
         type="text"
         value={valor}
         placeholder={placeholder}
-        onChange={(e) =>
-          onChange(casasDecimais !== undefined ? aplicarMascaraAoDigitar(e.target.value, casasDecimais) : e.target.value)
-        }
+        onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         className="w-full rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
       />

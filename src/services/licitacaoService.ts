@@ -22,6 +22,7 @@ import type {
   StatusLicitacao,
   GrupoItens,
   ItemLicitacao,
+  DecisaoAcimaReferencia,
   PropostaClienteItem,
 } from '@/types/licitacao'
 
@@ -108,6 +109,9 @@ interface ItemRow {
   proposta_marca: string | null
   proposta_modelo: string | null
   proposta_preco_minimo: number | null
+  decisao_acima_referencia: DecisaoAcimaReferencia | null
+  decisao_acima_referencia_por: string | null
+  decisao_acima_referencia_em: string | null
 }
 
 interface HistoricoRow {
@@ -147,6 +151,9 @@ function paraItem(row: ItemRow): ItemLicitacao {
     precoReferencia: row.preco_referencia,
     exclusivoMeEpp: row.exclusivo_me_epp,
     propostaCliente,
+    decisaoAcimaReferencia: row.decisao_acima_referencia ?? undefined,
+    decisaoAcimaReferenciaPor: row.decisao_acima_referencia_por ?? undefined,
+    decisaoAcimaReferenciaEm: row.decisao_acima_referencia_em ?? undefined,
   }
 }
 
@@ -568,6 +575,26 @@ export const licitacaoService = {
       const erro = resultados.find((r) => r.error)?.error
       if (erro) throw new Error(erro.message)
     })
+  },
+
+  // Chamado pelo Admin/Analista na Proposta Comercial: libera ("liberado"),
+  // barra ("barrado") ou desfaz (null → volta a "pendente") a participação
+  // em ITEM INDIVIDUAL cujo preço ficou acima da referência (migração 032).
+  // Passa por uma função no banco (decidir_participacao_acima_referencia),
+  // que só aceita Admin ativo ou Analista com carteira sobre a licitação.
+  // Grupos acima da referência não passam por aqui — são bloqueados
+  // automaticamente na tela, sem decisão.
+  async decidirParticipacaoAcimaReferencia(
+    itemIds: string[],
+    decisao: DecisaoAcimaReferencia | null,
+    usuario: string
+  ): Promise<void> {
+    const { error } = await supabase.rpc('decidir_participacao_acima_referencia', {
+      p_item_ids: itemIds,
+      p_decisao: decisao,
+      p_usuario: usuario,
+    })
+    if (error) throw new Error(error.message)
   },
 
   // Chamado pelo Portal do Cliente — botão "Desistir da licitação" na tela

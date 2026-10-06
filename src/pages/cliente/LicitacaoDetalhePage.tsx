@@ -282,9 +282,6 @@ export function LicitacaoDetalhePage() {
                   value={PARTICIPACAO_LICITACAO_LABEL[licitacao.participacao as ParticipacaoLicitacao] ?? licitacao.participacao}
                 />
                 <Campo label="CAPAG" value={licitacao.capag} />
-                <div className="col-span-2">
-                  <Campo label="Restrições ME/EPP" value={licitacao.restricoesMeEpp} />
-                </div>
                 <Campo
                   label="Valor total"
                   value={licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}

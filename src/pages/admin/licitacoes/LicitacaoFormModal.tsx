@@ -76,6 +76,16 @@ import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade 
 // este arquivo e PropostaComercialCards.tsx, o que já causou um bug real
 // (ver comentário no próprio utilitário).
 import { numeroParaCampoDecimal, campoParaNumeroDecimal, aplicarMascaraAoDigitar } from '../../../utils/formatoNumerico';
+// Importação de edital por IA (05/10, a pedido do Márcio) — pré-preenche o
+// formulário a partir do PDF do edital; nunca grava sozinha, sempre fica
+// como rascunho para o Admin/Analista revisar e confirmar antes de salvar.
+import { editalIaService } from '../../../services/editalIaService';
+import type { ExtracaoEditalIA, ItemChecklistExtraidoIA } from '../../../types/extracaoEditalIA';
+
+// Chave geral da importação de edital por IA. Mantida em false enquanto a
+// função extrair-edital-ia não estiver publicada (falta chave da API +
+// deploy). Para reativar: troque para true — nada mais precisa mudar.
+const IMPORTACAO_EDITAL_IA_ATIVA = false;
 
 // Monta a lista de abas com a contagem de itens de checklist ainda sem
 // marcação (Exigido/Não exigido) ao lado do nome — para o Analista ver de
@@ -245,6 +255,25 @@ function normalizarChecklistCampo(
   return estaPreenchido(valor) ? valor : criarChecklistVazio(definicao);
 }
 
+// Aplica o que a IA extraiu do edital sobre um checklist em branco (lista
+// fixa de ids/labels) — só ids que batem com a lista fixa são aplicados;
+// qualquer id desconhecido devolvido pela IA é ignorado (a validação na
+// Edge Function já devia ter barrado isso, mas o front-end não confia
+// cegamente). Itens não mencionados na extração ficam sem status, como se
+// o formulário tivesse acabado de ser criado — aguardando revisão manual.
+function mesclarChecklistComExtracao(
+  checklistVazio: ItemChecklistExigencia[],
+  itensExtraidos: ItemChecklistExtraidoIA[] | undefined
+): ItemChecklistExigencia[] {
+  if (!itensExtraidos || itensExtraidos.length === 0) return checklistVazio;
+  const porId = new Map(itensExtraidos.map((item) => [item.id, item]));
+  return checklistVazio.map((item) => {
+    const extraido = porId.get(item.id);
+    if (!extraido) return item;
+    return { ...item, status: extraido.status, detalhamento: extraido.detalhamento };
+  });
+}
+
 interface LicitacaoFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -296,6 +325,14 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // do checklist (Habilitação/Declarações/Outras Exigências) — ver
   // handleSalvar.
   const [erroChecklist, setErroChecklist] = useState<string | null>(null);
+  // Importação de edital por IA — ver editalIaService.ts. "importando" cobre
+  // tanto o upload do PDF quanto a chamada à Edge Function (uma única
+  // operação do ponto de vista do Analista). "camposComBaixaConfianca" vem
+  // da própria extração e vira o aviso "confira com atenção" depois de
+  // aplicada; fica vazio antes da primeira importação ou após descartada.
+  const [importandoEdital, setImportandoEdital] = useState(false);
+  const [erroImportacaoEdital, setErroImportacaoEdital] = useState<string | null>(null);
+  const [camposComBaixaConfianca, setCamposComBaixaConfianca] = useState<string[]>([]);
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   useEffect(() => {
@@ -476,6 +513,104 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     setForm((atual) => ({ ...atual, itens: atual.itens.filter((i) => i.id !== id) }));
   }
 
+  // Pré-preenche o formulário com o que a IA extraiu do PDF do edital.
+  // Nunca salva sozinha — só popula o estado, exatamente como se o
+  // Analista tivesse digitado tudo à mão. "estrutura"/"participacao" vêm
+  // da IA já nos valores de enum corretos (EstruturaLicitacao/
+  // ParticipacaoLicitacao), conforme o prompt da Edge Function.
+  function aplicarExtracaoIA(extracao: ExtracaoEditalIA) {
+    const novosGrupos: GrupoItens[] = extracao.grupos.map((g) => ({
+      id: gerarIdLocal('grp'),
+      numero: g.numero,
+      nome: g.nome,
+    }));
+    const grupoIdPorNumero = new Map(novosGrupos.map((g) => [g.numero, g.id]));
+
+    const novosItens: ItemLicitacao[] = extracao.itens.map((item) => ({
+      id: gerarIdLocal('item'),
+      grupoId: item.grupoNumero ? grupoIdPorNumero.get(item.grupoNumero) : undefined,
+      numero: item.numero,
+      descricao: item.descricao,
+      unidadeMedida: item.unidadeMedida,
+      quantidade: item.quantidade,
+      precoReferencia: item.precoReferencia,
+      exclusivoMeEpp: item.exclusivoMeEpp,
+    }));
+
+    setForm((atual) => ({
+      ...atual,
+      dataLicitacao: extracao.dataLicitacao ?? atual.dataLicitacao,
+      portal: extracao.portal,
+      objeto: extracao.objeto,
+      numeroPregao: extracao.numeroPregao,
+      orgao: extracao.orgao,
+      estado: extracao.estado,
+      municipio: extracao.municipio,
+      modalidade: extracao.modalidade,
+      estrutura: extracao.estrutura,
+      tipoContratacao: extracao.tipoContratacao,
+      procedimento: extracao.procedimento,
+      formaDisputa: extracao.formaDisputa,
+      modoDisputa: extracao.modoDisputa,
+      participacao: extracao.participacao,
+      capag: extracao.capag ?? atual.capag,
+      valorTotalLicitacao: extracao.valorTotalLicitacao ?? atual.valorTotalLicitacao,
+
+      habilitacao: {
+        juridica: mesclarChecklistComExtracao(atual.habilitacao.juridica, extracao.habilitacao.juridica),
+        fiscalSocialTrabalhista: mesclarChecklistComExtracao(
+          atual.habilitacao.fiscalSocialTrabalhista,
+          extracao.habilitacao.fiscalSocialTrabalhista
+        ),
+        economicoFinanceira: mesclarChecklistComExtracao(
+          atual.habilitacao.economicoFinanceira,
+          extracao.habilitacao.economicoFinanceira
+        ),
+        tecnica: mesclarChecklistComExtracao(atual.habilitacao.tecnica, extracao.habilitacao.tecnica),
+      },
+
+      declaracoes: mesclarChecklistComExtracao(atual.declaracoes, extracao.declaracoes),
+      outrasExigencias: mesclarChecklistComExtracao(atual.outrasExigencias, extracao.outrasExigencias),
+
+      condicoesComerciais: {
+        ...atual.condicoesComerciais,
+        ...extracao.condicoesComerciais,
+      },
+
+      grupos: novosGrupos,
+      itens: novosItens,
+
+      pontosAtencao: [atual.pontosAtencao, extracao.pontosAtencao].filter(Boolean).join('\n\n'),
+    }));
+
+    // Campos de texto mascarado (BR) não vêm do spread acima — precisam
+    // ser reformatados manualmente, mesmo padrão usado ao carregar uma
+    // licitação existente (ver useEffect de abertura do modal).
+    setValorTotalTexto(numeroParaCampoDecimal(extracao.valorTotalLicitacao, 10, 2));
+    setValorIntervaloLancesTexto(
+      numeroParaCampoDecimal(extracao.condicoesComerciais.valorIntervaloLances, 4, 2)
+    );
+    setPercentualIntervaloLancesTexto(
+      numeroParaCampoDecimal(extracao.condicoesComerciais.percentualIntervaloLances, 4)
+    );
+
+    setCamposComBaixaConfianca(extracao.camposComBaixaConfianca ?? []);
+  }
+
+  async function handleImportarEdital(arquivo: File) {
+    setImportandoEdital(true);
+    setErroImportacaoEdital(null);
+    try {
+      const { extracao } = await editalIaService.extrairDoPdf(arquivo);
+      aplicarExtracaoIA(extracao);
+      setAbaAtiva('gerais');
+    } catch (erro) {
+      setErroImportacaoEdital(erro instanceof Error ? erro.message : 'Erro desconhecido ao importar o edital.');
+    } finally {
+      setImportandoEdital(false);
+    }
+  }
+
   async function handleSalvar() {
     // Bloqueia o salvamento se faltar algum campo obrigatório da aba
     // "Informações Gerais" — sem essa checagem, o formulário deixava
@@ -586,6 +721,57 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       ) : (
         <>
           <Tabs tabs={tabs} activeTab={abaAtiva} onChange={setAbaAtiva} />
+
+          {/* Importação de edital por IA — só faz sentido numa licitação
+              nova; numa edição já existe dado real, importar por cima
+              poderia sobrescrever algo que o Analista já confirmou. */}
+          {IMPORTACAO_EDITAL_IA_ATIVA && !licitacaoEmEdicao && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-forest/20 bg-forest/5 px-3 py-2">
+              <label className="flex cursor-pointer items-center gap-2 font-body text-xs font-semibold text-forest">
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  disabled={importandoEdital}
+                  onChange={(e) => {
+                    const arquivo = e.target.files?.[0];
+                    e.target.value = ''; // permite re-selecionar o mesmo arquivo depois
+                    if (arquivo) void handleImportarEdital(arquivo);
+                  }}
+                />
+                <span className="rounded-md border border-forest/30 bg-white px-3 py-1.5">
+                  {importandoEdital ? 'Lendo edital...' : '📄 Importar edital (PDF)'}
+                </span>
+              </label>
+              <p className="font-body text-xs text-ink-soft">
+                A IA lê o PDF e pré-preenche o formulário — revise tudo antes de salvar.
+              </p>
+            </div>
+          )}
+
+          {erroImportacaoEdital && (
+            <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
+              Falha ao importar o edital: {erroImportacaoEdital}
+            </div>
+          )}
+
+          {camposComBaixaConfianca.length > 0 && (
+            <div className="mb-4 rounded-lg border border-brass/40 bg-brass-pale px-3 py-2">
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-body text-xs text-brass">
+                  <span className="font-semibold">Confira com atenção</span> — a IA teve baixa certeza
+                  nestes campos ao ler o edital: {camposComBaixaConfianca.join(', ')}.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCamposComBaixaConfianca([])}
+                  className="whitespace-nowrap font-body text-xs font-semibold text-brass underline hover:no-underline"
+                >
+                  Já conferi
+                </button>
+              </div>
+            </div>
+          )}
 
           {erroChecklist && (
             <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
