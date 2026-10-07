@@ -136,7 +136,13 @@ function numeroParaCampo(valor: number | null | undefined, casas = 6): string {
 function campoParaNumero(valor: string, casas = 6): number | undefined {
   const limpo = valor.trim()
   if (!limpo) return undefined
-  const semSeparadorMilhar = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo
+  // Só pontos no formato de milhar (ex.: "1.000", "12.345.678") = separador de milhar BR.
+  // Ponto + 1-2 ou 4+ casas (ex.: "1234.5678") continua sendo decimal.
+  const semSeparadorMilhar = limpo.includes(',')
+    ? limpo.replace(/\./g, '').replace(',', '.')
+    : /^[1-9]\d{0,2}(\.\d{3})+$/.test(limpo)
+      ? limpo.replace(/\./g, '')
+      : limpo
   const numero = parseFloat(semSeparadorMilhar)
   if (isNaN(numero)) return undefined
   const fator = Math.pow(10, casas)
@@ -190,10 +196,16 @@ function agruparItens(licitacao: Licitacao): BlocoGrupo[] {
   if (licitacao.grupos.length === 0) {
     return [{ grupo: null, itens: licitacao.itens }]
   }
-  return licitacao.grupos.map((grupo) => ({
+  const blocosDosGrupos: BlocoGrupo[] = licitacao.grupos.map((grupo) => ({
     grupo,
     itens: licitacao.itens.filter((item) => item.grupoId === grupo.id),
   }))
+  // Itens soltos (sem grupo) numa licitação que também tem grupos ficam num
+  // bloco próprio "Itens individuais". Sem isso eles sumiam da tela, embora
+  // continuassem contando nos totais.
+  const idsDosGrupos = new Set(licitacao.grupos.map((grupo) => grupo.id))
+  const itensSoltos = licitacao.itens.filter((item) => !item.grupoId || !idsDosGrupos.has(item.grupoId))
+  return itensSoltos.length > 0 ? [...blocosDosGrupos, { grupo: null, itens: itensSoltos }] : blocosDosGrupos
 }
 
 export function PropostaComercialCards({

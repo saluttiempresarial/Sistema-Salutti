@@ -81,7 +81,11 @@ function numeroParaCampoDecimal(valor: number | null | undefined, casas: number)
 function campoParaNumeroDecimal(texto: string, casas: number): number | undefined {
   const limpo = texto.trim();
   if (!limpo) return undefined;
-  const semSeparadorMilhar = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo;
+  const semSeparadorMilhar = limpo.includes(',')
+    ? limpo.replace(/\./g, '').replace(',', '.')
+    : /^[1-9]\d{0,2}(\.\d{3})+$/.test(limpo)
+      ? limpo.replace(/\./g, '')
+      : limpo;
   const numero = parseFloat(semSeparadorMilhar);
   if (isNaN(numero)) return undefined;
   const fator = Math.pow(10, casas);
@@ -612,10 +616,6 @@ export function DisputaFormModal({
                   <li key={texto}>{texto}</li>
                 ))}
               </ul>
-              <p className="mt-1">
-                Grupo acima da referência não concorre. Item individual só entra se o Admin ou Analista liberar na
-                Proposta Comercial.
-              </p>
             </div>
           )}
           {!carregandoLicitacao && linhasResultado.length > 0 && (

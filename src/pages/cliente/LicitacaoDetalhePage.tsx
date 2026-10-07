@@ -28,6 +28,9 @@ import { Button } from '@/components/Button'
 import { TextAreaField } from '@/components/TextAreaField'
 import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
+// Balão "ⓘ" com a explicação de cada exigência (Guia de Exigências do Edital).
+import { InfoTooltip } from '@/components/InfoTooltip'
+import { explicacaoDaExigencia } from '@/data/explicacaoExigencias'
 import {
   Licitacao,
   ItemLicitacao,
@@ -90,7 +93,12 @@ function ChecklistLeitura({ titulo, itens }: { titulo?: string; itens: ItemCheck
               key={item.id}
               className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-ink-soft/10 px-3 py-2.5 last:border-b-0"
             >
-              <p className="font-body text-sm text-ink">{item.label}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="font-body text-sm text-ink">{item.label}</p>
+                {explicacaoDaExigencia(item.id) && (
+                  <InfoTooltip titulo={item.label} texto={explicacaoDaExigencia(item.id) as string} />
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   className={`whitespace-nowrap rounded-md px-2 py-0.5 font-body text-xs font-semibold ${

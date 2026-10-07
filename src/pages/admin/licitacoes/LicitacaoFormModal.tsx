@@ -82,6 +82,11 @@ import { numeroParaCampoDecimal, campoParaNumeroDecimal, aplicarMascaraAoDigitar
 import { editalIaService } from '../../../services/editalIaService';
 import type { ExtracaoEditalIA, ItemChecklistExtraidoIA } from '../../../types/extracaoEditalIA';
 
+// Balão "ⓘ" com a explicação de cada exigência dos checklists (texto do
+// Guia de Exigências do Edital — ver src/data/explicacaoExigencias.ts).
+import { InfoTooltip } from '../../../components/InfoTooltip';
+import { explicacaoDaExigencia } from '../../../data/explicacaoExigencias';
+
 // Chave geral da importação de edital por IA. Mantida em false enquanto a
 // função extrair-edital-ia não estiver publicada (falta chave da API +
 // deploy). Para reativar: troque para true — nada mais precisa mudar.
@@ -1483,7 +1488,12 @@ function ChecklistSection({
             key={item.id}
             className="grid grid-cols-12 items-center gap-2 border-b border-ink-soft/10 px-3 py-2.5 last:border-b-0"
           >
-            <div className="col-span-4 pr-2 font-body text-sm text-ink">{item.label}</div>
+            <div className="col-span-4 flex items-center gap-1.5 pr-2 font-body text-sm text-ink">
+              <span>{item.label}</span>
+              {explicacaoDaExigencia(item.id) && (
+                <InfoTooltip titulo={item.label} texto={explicacaoDaExigencia(item.id) as string} />
+              )}
+            </div>
             <div className="col-span-3 flex gap-1.5">
               <button
                 type="button"
