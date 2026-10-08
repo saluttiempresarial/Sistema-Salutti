@@ -104,6 +104,7 @@ interface ItemRow {
   quantidade: number
   preco_referencia: number
   exclusivo_me_epp: boolean
+  familia_id: string | null
   proposta_codigo_interno: string | null
   proposta_descricao: string | null
   proposta_marca: string | null
@@ -144,6 +145,7 @@ function paraItem(row: ItemRow): ItemLicitacao {
   return {
     id: row.id,
     grupoId: row.grupo_id ?? undefined,
+    familiaId: row.familia_id ?? undefined,
     numero: row.numero,
     descricao: row.descricao,
     unidadeMedida: row.unidade_medida,
@@ -289,6 +291,7 @@ async function substituirGruposEItens(
       quantidade: item.quantidade,
       precoReferencia: item.precoReferencia,
       exclusivoMeEpp: item.exclusivoMeEpp,
+      familiaId: item.familiaId ?? null,
       propostaCliente: item.propostaCliente
         ? {
             codigoInterno: item.propostaCliente.codigoInterno ?? null,
@@ -405,6 +408,53 @@ export const licitacaoService = {
     }))
 
     return { itens, total: count ?? 0, page, pageSize }
+  },
+
+  // Usado pelos Indicadores: todas as licitações COM grupos e itens, sem
+  // paginação e sem histórico. Faz 3 consultas em lote (licitações, grupos e
+  // itens) em vez de uma por licitação. O Supabase limita cada resposta a
+  // 1000 linhas, então cada consulta é lida em páginas. As regras de acesso
+  // (RLS) continuam valendo: cada perfil só recebe o que pode ver.
+  async listarCompletas(restricao: { clienteIds?: string[]; licitacaoIds?: string[] } = {}): Promise<Licitacao[]> {
+    const TAMANHO_PAGINA = 1000
+
+    async function lerTudo<T>(
+      montar: (de: number, ate: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>
+    ): Promise<T[]> {
+      const todas: T[] = []
+      for (let de = 0; ; de += TAMANHO_PAGINA) {
+        const { data, error } = await montar(de, de + TAMANHO_PAGINA - 1)
+        if (error) throw new Error(error.message)
+        const pagina = (data as T[] | null) ?? []
+        todas.push(...pagina)
+        if (pagina.length < TAMANHO_PAGINA) break
+      }
+      return todas
+    }
+
+    const [licitacoesRows, gruposRows, itensRows] = await Promise.all([
+      lerTudo<LicitacaoRow>((de, ate) => {
+        let query = supabase.from('licitacoes').select('*')
+        query = aplicarRestricaoPermissao(query, restricao.clienteIds, restricao.licitacaoIds)
+        return query.order('id').range(de, ate)
+      }),
+      lerTudo<GrupoRow>((de, ate) => supabase.from('grupos_itens_licitacao').select('*').order('id').range(de, ate)),
+      lerTudo<ItemRow>((de, ate) => supabase.from('itens_licitacao').select('*').order('id').range(de, ate)),
+    ])
+
+    const gruposPorLicitacao = new Map<string, GrupoRow[]>()
+    gruposRows.forEach((g) => {
+      const id = (g as GrupoRow & { licitacao_id: string }).licitacao_id
+      gruposPorLicitacao.set(id, [...(gruposPorLicitacao.get(id) ?? []), g])
+    })
+    const itensPorLicitacao = new Map<string, ItemRow[]>()
+    itensRows.forEach((i) => {
+      itensPorLicitacao.set(i.licitacao_id, [...(itensPorLicitacao.get(i.licitacao_id) ?? []), i])
+    })
+
+    return licitacoesRows.map((row) =>
+      paraLicitacao(row, gruposPorLicitacao.get(row.id) ?? [], itensPorLicitacao.get(row.id) ?? [])
+    )
   },
 
   // Usado pelo Portal do Cliente: todas as licitações de um cliente

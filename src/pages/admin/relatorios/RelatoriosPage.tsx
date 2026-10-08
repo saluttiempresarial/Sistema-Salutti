@@ -13,12 +13,49 @@ import { licitacaoService } from '../../../services/licitacaoService';
 import { disputaService } from '../../../services/disputaService';
 import { clienteService } from '../../../services/clienteService';
 import { Licitacao, ModalidadeLicitacao, STATUS_LICITACAO_LABEL, MODALIDADE_LICITACAO_LABEL } from '../../../types/licitacao';
-import { Disputa, RESULTADO_DISPUTA_LABEL } from '../../../types/disputa';
+import { Disputa, RESULTADO_DISPUTA_LABEL, ResultadoItemDisputa } from '../../../types/disputa';
 import { formatarDataHora, formatarMoeda } from '../../../utils/prazoUtils';
 import { totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 import { exportarParaExcel, exportarParaPDF, ColunaRelatorio } from '../../../utils/exportUtils';
 
 type AbaRelatorio = 'licitacoes' | 'disputas';
+
+// Resumo do resultado por item/grupo de uma disputa (migração 036), na ordem
+// em que aparece na tabela: "2 ganhos · 2 perdidos". Linhas sem resultado
+// informado não entram na contagem.
+const ROTULO_RESULTADO_ITEM: Record<ResultadoItemDisputa, { singular: string; plural: string }> = {
+  ganho: { singular: 'ganho', plural: 'ganhos' },
+  perdido: { singular: 'perdido', plural: 'perdidos' },
+  fracassado: { singular: 'fracassado', plural: 'fracassados' },
+  deserto: { singular: 'deserto', plural: 'desertos' },
+  cancelado: { singular: 'cancelado', plural: 'cancelados' },
+};
+
+function resumirResultadosDosItens(disputa: Disputa): string {
+  const partes = (Object.keys(ROTULO_RESULTADO_ITEM) as ResultadoItemDisputa[])
+    .map((resultado) => {
+      const quantidade = disputa.itens.filter((i) => i.resultadoItem === resultado).length;
+      if (quantidade === 0) return null;
+      const rotulo = ROTULO_RESULTADO_ITEM[resultado];
+      return `${quantidade} ${quantidade === 1 ? rotulo.singular : rotulo.plural}`;
+    })
+    .filter((parte): parte is string => parte !== null);
+  return partes.length > 0 ? partes.join(' · ') : '—';
+}
+
+// Vencedores dos itens/grupos perdidos: "JW — R$ 40,00; WW — R$ 3.450,00
+// (grupo)". O valor é unitário para item e total para grupo.
+function listarVencedoresDosPerdidos(disputa: Disputa): string {
+  const perdidos = disputa.itens.filter((i) => i.resultadoItem === 'perdido');
+  if (perdidos.length === 0) return '—';
+  return perdidos
+    .map((i) => {
+      const nome = i.nomeVencedor?.trim() || 'não informado';
+      const valor = i.valorVencedor != null ? formatarMoeda(i.valorVencedor) : 'valor não informado';
+      return `${nome} — ${valor}${i.grupoId ? ' (grupo)' : ''}`;
+    })
+    .join('; ');
+}
 
 const ABAS: { id: AbaRelatorio; label: string }[] = [
   { id: 'licitacoes', label: 'Licitações' },
@@ -202,6 +239,8 @@ export function RelatoriosPage() {
         { chave: 'itensComResultado', titulo: 'Itens c/ Resultado' },
         { chave: 'valorOfertado', titulo: 'Valor Ofertado (soma)' },
         { chave: 'resultado', titulo: 'Resultado' },
+        { chave: 'resultadoPorItem', titulo: 'Resultado por Item' },
+        { chave: 'vencedores', titulo: 'Vencedores (itens perdidos)' },
       ],
       // ATENÇÃO (01/10): esta tabela quebrava a build — 'nossaOferta',
       // 'valorVencedor' e 'vencedor' usavam valorNossaOfertaFinal/
@@ -212,11 +251,11 @@ export function RelatoriosPage() {
       // e a tela ficou quebrada sem avisar. Troquei pelas únicas
       // informações equivalentes que o novo modelo por item realmente tem:
       // quantos itens já têm "Valor ofertado" preenchido (de quantos no
-      // total) e a soma desses valores ofertados. Não existe mais, em
-      // nenhum lugar do sistema, um "Vencedor" (nome do concorrente) nem um
-      // "Valor Vencedor" por disputa — se isso ainda for necessário pro
-      // relatório, é preciso decidir onde esse dado passaria a ser
-      // registrado (hoje não há tela para isso).
+      // total) e a soma desses valores ofertados.
+      // ATUALIZADO em 08/10 (migração 036): o vencedor voltou, agora POR
+      // ITEM/GRUPO perdido (nome e valor), registrado na tela da Disputa.
+      // As colunas "Resultado por Item" e "Vencedores (itens perdidos)"
+      // resumem esse registro.
       linhas: disputasFiltradas.map((d) => {
         const itensPreenchidos = d.itens.filter((i) => i.valorFechado != null);
         const somaOfertada = itensPreenchidos.reduce((soma, i) => soma + (i.valorFechado ?? 0), 0);
@@ -226,6 +265,8 @@ export function RelatoriosPage() {
           itensComResultado: `${itensPreenchidos.length}/${d.itens.length}`,
           valorOfertado: itensPreenchidos.length > 0 ? formatarMoeda(somaOfertada) : '—',
           resultado: RESULTADO_DISPUTA_LABEL[d.resultado],
+          resultadoPorItem: resumirResultadosDosItens(d),
+          vencedores: listarVencedoresDosPerdidos(d),
         };
       }),
     };

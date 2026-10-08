@@ -139,11 +139,11 @@ export function DisputasPage() {
             defaultValue=""
             className="rounded-md bg-forest px-4 py-2.5 font-body text-sm font-medium text-paper shadow-soft"
           >
-            <option value="" disabled>
+            <option value="" disabled className="bg-white text-ink-soft">
               + Registrar disputa para...
             </option>
             {licitacoesSemDisputa.map((l) => (
-              <option key={l.id} value={l.id} className="text-ink">
+              <option key={l.id} value={l.id} className="bg-white text-ink">
                 {l.numeroPregao} — {l.orgao}
               </option>
             ))}

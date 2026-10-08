@@ -340,6 +340,7 @@ export interface ItemLicitacao {
   quantidade: number;
   precoReferencia: number; // valor unitário de referência (edital) — preenchido pelo Admin
   exclusivoMeEpp: boolean;
+  familiaId?: string; // família de produto do cliente (relatórios) — opcional
   propostaCliente?: PropostaClienteItem;
   decisaoAcimaReferencia?: DecisaoAcimaReferencia;
   decisaoAcimaReferenciaPor?: string; // quem decidiu

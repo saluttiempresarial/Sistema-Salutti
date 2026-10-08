@@ -49,6 +49,19 @@ export const RESULTADO_DISPUTA_LABEL: Record<ResultadoDisputa, string> = {
   homologado: 'Homologado',
 };
 
+/** Resultado de CADA item na disputa (migração 036) — alimenta os relatórios
+ *  (produtos ganhos, perdas evitáveis, distância da derrota etc.). Preenchido
+ *  pelo Analista/Admin; o sistema não deduz. */
+export type ResultadoItemDisputa = 'ganho' | 'perdido' | 'fracassado' | 'deserto' | 'cancelado';
+
+export const RESULTADO_ITEM_DISPUTA_LABEL: Record<ResultadoItemDisputa, string> = {
+  ganho: 'Ganho',
+  perdido: 'Perdido',
+  fracassado: 'Fracassado',
+  deserto: 'Deserto',
+  cancelado: 'Cancelado',
+};
+
 /** Um item avulso é preenchido com `itemId`; um grupo inteiro é preenchido
  *  com `grupoId`. Nunca os dois ao mesmo tempo — ver constraint no banco
  *  (disputa_itens_item_xor_grupo, migração 021). */
@@ -60,6 +73,10 @@ export interface DisputaResultadoLinha {
   posicao?: number; // classificação obtida na disputa (ex.: 1, 2, 22...)
   valorFechado?: number; // unitário (item avulso) ou total (grupo)
   totalFechado?: number; // preenchido manualmente — não é mais Valor Fechado × quantidade
+  resultadoItem?: ResultadoItemDisputa; // resultado deste item (migração 036)
+  valorVencedor?: number; // unitário do vencedor — só quando resultadoItem = 'perdido'
+  nomeVencedor?: string; // empresa vencedora — só quando resultadoItem = 'perdido'
+  observacao?: string;
 }
 
 export type DisputaResultadoLinhaFormData = Omit<DisputaResultadoLinha, 'id' | 'disputaId'>;

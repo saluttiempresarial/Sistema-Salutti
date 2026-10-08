@@ -38,6 +38,8 @@ import {
   DisputaResultadoLinhaFormData,
   ResultadoDisputa,
   RESULTADO_DISPUTA_LABEL,
+  ResultadoItemDisputa,
+  RESULTADO_ITEM_DISPUTA_LABEL,
 } from '../../../types/disputa';
 import { Licitacao, ItemLicitacao } from '../../../types/licitacao';
 import { licitacaoService } from '../../../services/licitacaoService';
@@ -198,7 +200,19 @@ function construirLinhas(licitacao: Licitacao, chavesForcadas: Set<string>): Lin
 interface ValoresLinha {
   posicaoTexto: string;
   valorOfertadoTexto: string;
+  // Resultado do item (migração 036). '' = ainda não informado.
+  resultadoItem: ResultadoItemDisputa | '';
+  valorVencedorTexto: string; // só vale quando resultadoItem = 'perdido'
+  nomeVencedor: string; // só vale quando resultadoItem = 'perdido'
 }
+
+const VALORES_VAZIOS: ValoresLinha = {
+  posicaoTexto: '',
+  valorOfertadoTexto: '',
+  resultadoItem: '',
+  valorVencedorTexto: '',
+  nomeVencedor: '',
+};
 
 // Especificação de item cheia demais pra mostrar de cara na tabela (ver
 // nota sobre "ver mais/ver menos" mais abaixo). Limite aproximado — não
@@ -291,12 +305,18 @@ export function DisputaFormModal({
           resultado: disputaEmEdicao.resultado,
           observacoes: disputaEmEdicao.observacoes,
           linkAtaSigaPregao: disputaEmEdicao.linkAtaSigaPregao,
-          itens: disputaEmEdicao.itens.map(({ itemId, grupoId, posicao, valorFechado }) => ({
-            itemId,
-            grupoId,
-            posicao,
-            valorFechado,
-          })),
+          itens: disputaEmEdicao.itens.map(
+            ({ itemId, grupoId, posicao, valorFechado, resultadoItem, valorVencedor, nomeVencedor, observacao }) => ({
+              itemId,
+              grupoId,
+              posicao,
+              valorFechado,
+              resultadoItem,
+              valorVencedor,
+              nomeVencedor,
+              observacao,
+            })
+          ),
         }
       : criarFormularioVazio(licitacaoId);
     setForm(inicial);
@@ -312,6 +332,9 @@ export function DisputaFormModal({
       const valoresLinha: ValoresLinha = {
         posicaoTexto: linha.posicao != null ? String(linha.posicao) : '',
         valorOfertadoTexto: numeroParaCampoDecimal(linha.valorFechado, 2),
+        resultadoItem: linha.resultadoItem ?? '',
+        valorVencedorTexto: numeroParaCampoDecimal(linha.valorVencedor, 2),
+        nomeVencedor: linha.nomeVencedor ?? '',
       };
       if (linha.itemId) valoresItem[linha.itemId] = valoresLinha;
       else if (linha.grupoId) valoresGrupo[linha.grupoId] = valoresLinha;
@@ -389,21 +412,21 @@ export function DisputaFormModal({
     setForm((atual) => ({ ...atual, [campo]: valor }));
   }
 
-  function atualizarValorLinha(chave: string, campo: keyof ValoresLinha, valor: string) {
+  function atualizarValorLinha<K extends keyof ValoresLinha>(chave: string, campo: K, valor: ValoresLinha[K]) {
     setValoresPorLinha((atual) => ({
       ...atual,
       [chave]: {
-        ...(atual[chave] ?? { posicaoTexto: '', valorOfertadoTexto: '' }),
+        ...(atual[chave] ?? VALORES_VAZIOS),
         [campo]: valor,
       },
     }));
   }
 
-  function atualizarValorGrupo(grupoId: string, campo: keyof ValoresLinha, valor: string) {
+  function atualizarValorGrupo<K extends keyof ValoresLinha>(grupoId: string, campo: K, valor: ValoresLinha[K]) {
     setValoresPorGrupo((atual) => ({
       ...atual,
       [grupoId]: {
-        ...(atual[grupoId] ?? { posicaoTexto: '', valorOfertadoTexto: '' }),
+        ...(atual[grupoId] ?? VALORES_VAZIOS),
         [campo]: valor,
       },
     }));
@@ -460,8 +483,20 @@ export function DisputaFormModal({
         const valorFechado =
           (valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined) ??
           (emGrupoEItem ? somaItensDoBloco(bloco) ?? undefined : undefined);
-        if (posicao != null || valorFechado != null) {
-          itens.push({ grupoId: bloco.grupoId, posicao, valorFechado });
+        const resultadoGrupo = valores?.resultadoItem || undefined;
+        const grupoPerdido = resultadoGrupo === 'perdido';
+        const valorVencedorGrupo =
+          grupoPerdido && valores ? campoParaNumeroDecimal(valores.valorVencedorTexto, 2) : undefined;
+        const nomeVencedorGrupo = grupoPerdido && valores?.nomeVencedor.trim() ? valores.nomeVencedor.trim() : undefined;
+        if (posicao != null || valorFechado != null || resultadoGrupo) {
+          itens.push({
+            grupoId: bloco.grupoId,
+            posicao,
+            valorFechado,
+            resultadoItem: resultadoGrupo,
+            valorVencedor: valorVencedorGrupo,
+            nomeVencedor: nomeVencedorGrupo,
+          });
         }
         // Só no modo "Por grupo" os itens do grupo não são gravados. No modo
         // "Grupo e item" o grupo grava o total E cada item grava o seu
@@ -477,11 +512,19 @@ export function DisputaFormModal({
         const posicaoSoNoGrupo = !!bloco.grupoId && modoResultado === 'grupo_e_item';
         const posicao = !posicaoSoNoGrupo && valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
         const valorFechado = valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined;
+        const resultadoItem = valores?.resultadoItem || undefined;
+        // Vencedor só faz sentido quando perdemos o item: nos demais
+        // resultados (ganho, fracassado, deserto, cancelado) os dois campos
+        // são descartados, mesmo que tenham sido digitados antes de trocar o
+        // resultado.
+        const perdeu = resultadoItem === 'perdido';
+        const valorVencedor = perdeu && valores ? campoParaNumeroDecimal(valores.valorVencedorTexto, 2) : undefined;
+        const nomeVencedor = perdeu && valores?.nomeVencedor.trim() ? valores.nomeVencedor.trim() : undefined;
         // Só grava linha que tenha algo preenchido — não polui o banco com
         // linhas vazias pra item que o analista ainda não chegou a
         // registrar.
-        if (posicao != null || valorFechado != null) {
-          itens.push({ itemId: linha.itemId, posicao, valorFechado });
+        if (posicao != null || valorFechado != null || resultadoItem) {
+          itens.push({ itemId: linha.itemId, posicao, valorFechado, resultadoItem, valorVencedor, nomeVencedor });
         }
       });
     });
@@ -499,6 +542,39 @@ export function DisputaFormModal({
   }
 
   const resultadoMudaStatus = form.resultado === 'ganho' || form.resultado === 'perdido';
+
+  // Sugestão do resultado GERAL a partir dos resultados por item/grupo (a
+  // pedido do Márcio, 08/10). Só um texto: nunca altera o campo sozinha.
+  //   - ao menos um item/grupo ganho  -> sugere "Ganho"
+  //   - todos perdidos                -> sugere "Perdido"
+  //   - demais casos (fracassado, deserto, cancelado, misturas sem ganho)
+  //                                   -> sem sugestão; decisão do Analista
+  // Conta as mesmas unidades que são gravadas em handleSalvar: o resultado do
+  // grupo quando o bloco é tratado como grupo (e, no modo "Grupo e item", os
+  // itens do grupo só entram se o grupo não tiver resultado); o resultado de
+  // cada item solto.
+  const resultadosInformados: ResultadoItemDisputa[] = [];
+  blocosVisuais.forEach((bloco) => {
+    const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
+    const doGrupo = tratarComoGrupo && bloco.grupoId ? valoresPorGrupo[bloco.grupoId]?.resultadoItem : '';
+    if (doGrupo) {
+      resultadosInformados.push(doGrupo);
+      return;
+    }
+    if (tratarComoGrupo && modoResultado === 'grupo') return;
+    bloco.linhas.forEach((linha) => {
+      const resultado = valoresPorLinha[linha.chave]?.resultadoItem;
+      if (resultado) resultadosInformados.push(resultado);
+    });
+  });
+  const sugestaoResultadoGeral: 'ganho' | 'perdido' | null =
+    resultadosInformados.length === 0
+      ? null
+      : resultadosInformados.some((r) => r === 'ganho')
+        ? 'ganho'
+        : resultadosInformados.every((r) => r === 'perdido')
+          ? 'perdido'
+          : null;
 
   return (
     <Modal
@@ -544,6 +620,26 @@ export function DisputaFormModal({
             {resultadoMudaStatus && (
               <p className="mt-1 font-body text-xs text-ink-soft">
                 Isso vai atualizar automaticamente o status da licitação.
+              </p>
+            )}
+            {resultadosInformados.length > 0 && (
+              <p
+                className={`mt-1 font-body text-xs ${
+                  sugestaoResultadoGeral && sugestaoResultadoGeral !== form.resultado
+                    ? 'font-semibold text-brass'
+                    : 'text-ink-soft'
+                }`}
+              >
+                {sugestaoResultadoGeral === 'ganho' &&
+                  (form.resultado === 'ganho'
+                    ? 'Coerente com os resultados: ao menos um item/grupo foi ganho.'
+                    : 'Sugestão pelos resultados dos itens: "Ganho" (ao menos um item/grupo foi ganho).')}
+                {sugestaoResultadoGeral === 'perdido' &&
+                  (form.resultado === 'perdido'
+                    ? 'Coerente com os resultados: todos os itens/grupos foram perdidos.'
+                    : 'Sugestão pelos resultados dos itens: "Perdido" (todos os itens/grupos foram perdidos).')}
+                {sugestaoResultadoGeral === null &&
+                  'Sem sugestão: os resultados dos itens não indicam ganho nem perda total — decisão do Analista.'}
               </p>
             )}
           </div>
@@ -803,6 +899,83 @@ export function DisputaFormModal({
                                   </span>
                                 )}
                               </div>
+
+                              {/* Resultado do GRUPO (migração 036): quando o grupo é
+                                  disputado como um todo, o resultado e o vencedor
+                                  também são do grupo — valores em TOTAL, como o
+                                  Valor ofertado ao lado. */}
+                              {tratarComoGrupo && (
+                                <>
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                                      Resultado do grupo
+                                    </span>
+                                    <select
+                                      value={valoresGrupo?.resultadoItem ?? ''}
+                                      onChange={(e) =>
+                                        atualizarValorGrupo(
+                                          bloco.grupoId!,
+                                          'resultadoItem',
+                                          e.target.value as ResultadoItemDisputa | ''
+                                        )
+                                      }
+                                      className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm font-semibold text-ink focus:border-forest focus:outline-none"
+                                    >
+                                      <option value="">—</option>
+                                      {Object.entries(RESULTADO_ITEM_DISPUTA_LABEL).map(([valor, rotulo]) => (
+                                        <option key={valor} value={valor}>
+                                          {rotulo}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+
+                                  {valoresGrupo?.resultadoItem === 'perdido' && (
+                                    <>
+                                      <label className="flex flex-col gap-1">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                                          Valor do vencedor <span className="normal-case font-normal text-ink-soft/70">(total)</span>
+                                        </span>
+                                        <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
+                                          <span className="text-xs text-ink-soft">R$</span>
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={valoresGrupo.valorVencedorTexto}
+                                            onChange={(e) =>
+                                              atualizarValorGrupo(bloco.grupoId!, 'valorVencedorTexto', e.target.value)
+                                            }
+                                            onBlur={() =>
+                                              atualizarValorGrupo(
+                                                bloco.grupoId!,
+                                                'valorVencedorTexto',
+                                                numeroParaCampoDecimal(
+                                                  campoParaNumeroDecimal(valoresGrupo.valorVencedorTexto, 2),
+                                                  2
+                                                )
+                                              )
+                                            }
+                                            placeholder="0,00"
+                                            className="w-24 text-sm font-semibold text-ink focus:outline-none"
+                                          />
+                                        </span>
+                                      </label>
+                                      <label className="flex flex-col gap-1">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                                          Vencedor
+                                        </span>
+                                        <input
+                                          type="text"
+                                          value={valoresGrupo.nomeVencedor}
+                                          onChange={(e) => atualizarValorGrupo(bloco.grupoId!, 'nomeVencedor', e.target.value)}
+                                          placeholder="Nome da empresa"
+                                          className="w-48 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none"
+                                        />
+                                      </label>
+                                    </>
+                                  )}
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -812,10 +985,7 @@ export function DisputaFormModal({
                     {!colapsado && (
                       <div className="space-y-3">
                         {bloco.linhas.map((linha) => {
-                          const valores = valoresPorLinha[linha.chave] ?? {
-                            posicaoTexto: '',
-                            valorOfertadoTexto: '',
-                          };
+                          const valores = valoresPorLinha[linha.chave] ?? VALORES_VAZIOS;
                           const descricaoExpandida = descricoesExpandidas.has(linha.chave);
 
                           return (
@@ -939,6 +1109,82 @@ export function DisputaFormModal({
                                       </span>
                                     )}
                                   </label>
+
+                                  {/* Resultado do item (migração 036) — alimenta os
+                                      relatórios. Em "Por grupo" os itens ficam
+                                      travados e não têm resultado próprio. */}
+                                  {!itensTravados && (
+                                    <>
+                                      <label className="flex flex-col gap-1">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                                          Resultado do item
+                                        </span>
+                                        <select
+                                          value={valores.resultadoItem}
+                                          onChange={(e) =>
+                                            atualizarValorLinha(
+                                              linha.chave,
+                                              'resultadoItem',
+                                              e.target.value as ResultadoItemDisputa | ''
+                                            )
+                                          }
+                                          className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm font-semibold text-ink focus:border-forest focus:outline-none"
+                                        >
+                                          <option value="">—</option>
+                                          {Object.entries(RESULTADO_ITEM_DISPUTA_LABEL).map(([valor, rotulo]) => (
+                                            <option key={valor} value={valor}>
+                                              {rotulo}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+
+                                      {valores.resultadoItem === 'perdido' && (
+                                        <>
+                                          <label className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                                              Valor do vencedor <span className="normal-case font-normal text-ink-soft/70">(unit.)</span>
+                                            </span>
+                                            <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
+                                              <span className="text-xs text-ink-soft">R$</span>
+                                              <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={valores.valorVencedorTexto}
+                                                onChange={(e) =>
+                                                  atualizarValorLinha(linha.chave, 'valorVencedorTexto', e.target.value)
+                                                }
+                                                onBlur={() =>
+                                                  atualizarValorLinha(
+                                                    linha.chave,
+                                                    'valorVencedorTexto',
+                                                    numeroParaCampoDecimal(
+                                                      campoParaNumeroDecimal(valores.valorVencedorTexto, 2),
+                                                      2
+                                                    )
+                                                  )
+                                                }
+                                                placeholder="0,00"
+                                                className="w-20 text-sm font-semibold text-ink focus:outline-none"
+                                              />
+                                            </span>
+                                          </label>
+                                          <label className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                                              Vencedor
+                                            </span>
+                                            <input
+                                              type="text"
+                                              value={valores.nomeVencedor}
+                                              onChange={(e) => atualizarValorLinha(linha.chave, 'nomeVencedor', e.target.value)}
+                                              placeholder="Nome da empresa"
+                                              className="w-48 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none"
+                                            />
+                                          </label>
+                                        </>
+                                      )}
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>

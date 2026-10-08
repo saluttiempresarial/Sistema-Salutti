@@ -24,6 +24,7 @@ import {
   DisputaResultadoLinha,
   DisputaResultadoLinhaFormData,
   ResultadoDisputa,
+  ResultadoItemDisputa,
 } from '../types/disputa'
 import { licitacaoService } from './licitacaoService'
 
@@ -48,6 +49,10 @@ interface DisputaItemRow {
   posicao: number | null
   valor_fechado: number | null
   total_fechado: number | null
+  resultado_item: ResultadoItemDisputa | null
+  valor_vencedor: number | null
+  nome_vencedor: string | null
+  observacao: string | null
   criado_em: string
   atualizado_em: string
 }
@@ -61,6 +66,10 @@ function paraDisputaResultadoLinha(row: DisputaItemRow): DisputaResultadoLinha {
     posicao: row.posicao ?? undefined,
     valorFechado: row.valor_fechado ?? undefined,
     totalFechado: row.total_fechado ?? undefined,
+    resultadoItem: row.resultado_item ?? undefined,
+    valorVencedor: row.valor_vencedor ?? undefined,
+    nomeVencedor: row.nome_vencedor ?? undefined,
+    observacao: row.observacao ?? undefined,
   }
 }
 
@@ -99,6 +108,10 @@ function paraColunasItem(linha: DisputaResultadoLinhaFormData, disputaId: string
     posicao: linha.posicao ?? null,
     valor_fechado: linha.valorFechado ?? null,
     total_fechado: linha.totalFechado ?? null,
+    resultado_item: linha.resultadoItem ?? null,
+    valor_vencedor: linha.valorVencedor ?? null,
+    nome_vencedor: linha.nomeVencedor ?? null,
+    observacao: linha.observacao ?? null,
   }
 }
 

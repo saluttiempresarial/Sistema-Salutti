@@ -80,6 +80,8 @@ import { numeroParaCampoDecimal, campoParaNumeroDecimal, aplicarMascaraAoDigitar
 // formulário a partir do PDF do edital; nunca grava sozinha, sempre fica
 // como rascunho para o Admin/Analista revisar e confirmar antes de salvar.
 import { editalIaService } from '../../../services/editalIaService';
+import { familiaProdutoService, FamiliaProduto } from '../../../services/familiaProdutoService';
+import { ESTADOS_BRASIL, ibgeService, normalizarNomeLocal } from '../../../services/ibgeService';
 import type { ExtracaoEditalIA, ItemChecklistExtraidoIA } from '../../../types/extracaoEditalIA';
 
 // Balão "ⓘ" com a explicação de cada exigência dos checklists (texto do
@@ -339,6 +341,87 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [erroImportacaoEdital, setErroImportacaoEdital] = useState<string | null>(null);
   const [camposComBaixaConfianca, setCamposComBaixaConfianca] = useState<string[]>([]);
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
+
+  // Municípios do estado selecionado (API do IBGE, ver ibgeService.ts). Se a
+  // API estiver fora do ar, o campo Município volta a ser texto livre para
+  // não travar o cadastro.
+  const [municipios, setMunicipios] = useState<string[]>([]);
+  const [carregandoMunicipios, setCarregandoMunicipios] = useState(false);
+  const [erroMunicipios, setErroMunicipios] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !form.estado) {
+      setMunicipios([]);
+      setErroMunicipios(false);
+      return;
+    }
+    let cancelado = false;
+    setCarregandoMunicipios(true);
+    setErroMunicipios(false);
+    ibgeService
+      .listarMunicipios(form.estado)
+      .then((lista) => {
+        if (cancelado) return;
+        setMunicipios(lista);
+        // Valor vindo do banco ou da IA pode estar com caixa/acento diferente
+        // ("sp", "SAO PAULO"): padroniza para o nome oficial quando achar.
+        setForm((atual) => {
+          if (!atual.municipio) return atual;
+          const oficial = lista.find((m) => normalizarNomeLocal(m) === normalizarNomeLocal(atual.municipio));
+          return oficial && oficial !== atual.municipio ? { ...atual, municipio: oficial } : atual;
+        });
+      })
+      .catch(() => {
+        if (cancelado) return;
+        setMunicipios([]);
+        setErroMunicipios(true);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoMunicipios(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [isOpen, form.estado]);
+
+  // Famílias de produto do cliente selecionado (usadas nos relatórios). A
+  // lista é sempre a do cliente da licitação: se o cliente muda, recarrega.
+  const [familias, setFamilias] = useState<FamiliaProduto[]>([]);
+  const [erroFamilias, setErroFamilias] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !form.clienteId) {
+      setFamilias([]);
+      setErroFamilias(null);
+      return;
+    }
+    let cancelado = false;
+    familiaProdutoService
+      .listarAtivasPorCliente(form.clienteId)
+      .then((lista) => {
+        if (cancelado) return;
+        setFamilias(lista);
+        setErroFamilias(null);
+      })
+      .catch((e) => {
+        if (cancelado) return;
+        setFamilias([]);
+        setErroFamilias(e instanceof Error ? e.message : 'Não foi possível carregar as famílias.');
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [isOpen, form.clienteId]);
+
+  async function criarFamilia(nome: string): Promise<FamiliaProduto> {
+    const nova = await familiaProdutoService.criar(form.clienteId, nome);
+    setFamilias((atual) =>
+      atual.some((f) => f.id === nova.id)
+        ? atual
+        : [...atual, nova].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    );
+    return nova;
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -884,20 +967,47 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   onChange={(e) => atualizarCampo('orgao', e.target.value)}
                 />
               </div>
-              <TextField
+              <SelectField
                 label="Estado (UF) *"
                 required
-                maxLength={2}
                 value={form.estado}
-                onChange={(e) => atualizarCampo('estado', e.target.value.toUpperCase())}
-                placeholder="SP"
+                onChange={(e) => {
+                  // O município pertence ao estado: ao trocar a UF, limpa.
+                  const novaUf = e.target.value;
+                  setForm((atual) => (novaUf === atual.estado ? atual : { ...atual, estado: novaUf, municipio: '' }));
+                }}
+                placeholder="Selecione o estado"
+                options={ESTADOS_BRASIL}
               />
-              <TextField
-                label="Município *"
-                required
-                value={form.municipio}
-                onChange={(e) => atualizarCampo('municipio', e.target.value)}
-              />
+              {erroMunicipios ? (
+                <TextField
+                  label="Município *"
+                  required
+                  value={form.municipio}
+                  onChange={(e) => atualizarCampo('municipio', e.target.value)}
+                  placeholder="Lista indisponível — digite o município"
+                />
+              ) : (
+                <SelectField
+                  label="Município *"
+                  required
+                  value={form.municipio}
+                  onChange={(e) => atualizarCampo('municipio', e.target.value)}
+                  disabled={!form.estado || carregandoMunicipios}
+                  placeholder={
+                    !form.estado
+                      ? 'Selecione o estado primeiro'
+                      : carregandoMunicipios
+                        ? 'Carregando municípios...'
+                        : 'Selecione o município'
+                  }
+                  options={
+                    form.municipio && !municipios.includes(form.municipio)
+                      ? [{ value: form.municipio, label: form.municipio }, ...municipios.map((m) => ({ value: m, label: m }))]
+                      : municipios.map((m) => ({ value: m, label: m }))
+                  }
+                />
+              )}
               <TextField
                 label="Distância da matriz"
                 value={form.distanciaMatriz}
@@ -1052,7 +1162,19 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 label="Cliente vinculado *"
                 required
                 value={form.clienteId}
-                onChange={(e) => atualizarCampo('clienteId', e.target.value)}
+                onChange={(e) => {
+                  // A família pertence a um cliente: ao trocar o cliente, as
+                  // famílias já escolhidas nos itens deixam de valer.
+                  const novoCliente = e.target.value;
+                  setForm((atual) => ({
+                    ...atual,
+                    clienteId: novoCliente,
+                    itens:
+                      novoCliente === atual.clienteId
+                        ? atual.itens
+                        : atual.itens.map((i) => (i.familiaId ? { ...i, familiaId: undefined } : i)),
+                  }));
+                }}
                 placeholder="Selecione um cliente"
                 options={clientes}
               />
@@ -1397,7 +1519,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
 
                   <div className="space-y-3">
                     {itensDoGrupo.map((item) => (
-                      <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} />
+                      <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} />
                     ))}
                     {itensDoGrupo.length === 0 && (
                       <p className="font-body text-xs italic text-ink-soft">Nenhum item neste grupo ainda.</p>
@@ -1416,7 +1538,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 <p className="mb-3 font-body text-sm font-semibold text-ink">Itens individuais</p>
                 <div className="space-y-3">
                   {itensIndividuais.map((item) => (
-                    <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} />
+                    <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} />
                   ))}
                   {itensIndividuais.length === 0 && (
                     <p className="font-body text-xs italic text-ink-soft">Nenhum item individual ainda.</p>
@@ -1539,6 +1661,10 @@ function ItemLicitacaoRow({
   onChange,
   onRemover,
   clienteEhDemais,
+  familias,
+  erroFamilias,
+  temCliente,
+  onCriarFamilia,
 }: {
   item: ItemLicitacao;
   onChange: <K extends keyof ItemLicitacao>(id: string, campo: K, valor: ItemLicitacao[K]) => void;
@@ -1549,7 +1675,34 @@ function ItemLicitacaoRow({
    *  proposta nele). Não impede o cadastro — o dado pode estar certo
    *  mesmo assim, é uma informação real do edital. */
   clienteEhDemais?: boolean;
+  /** Famílias ativas do cliente da licitação (relatórios). */
+  familias: FamiliaProduto[];
+  erroFamilias: string | null;
+  /** false enquanto nenhum cliente foi escolhido na aba Vinculação. */
+  temCliente: boolean;
+  onCriarFamilia: (nome: string) => Promise<FamiliaProduto>;
 }) {
+  const [criandoFamilia, setCriandoFamilia] = useState(false);
+  const [nomeNovaFamilia, setNomeNovaFamilia] = useState('');
+  const [salvandoFamilia, setSalvandoFamilia] = useState(false);
+  const [erroNovaFamilia, setErroNovaFamilia] = useState<string | null>(null);
+
+  async function salvarNovaFamilia() {
+    if (!nomeNovaFamilia.trim()) return;
+    setSalvandoFamilia(true);
+    setErroNovaFamilia(null);
+    try {
+      const nova = await onCriarFamilia(nomeNovaFamilia);
+      onChange(item.id, 'familiaId', nova.id);
+      setNomeNovaFamilia('');
+      setCriandoFamilia(false);
+    } catch (e) {
+      setErroNovaFamilia(e instanceof Error ? e.message : 'Não foi possível criar a família.');
+    } finally {
+      setSalvandoFamilia(false);
+    }
+  }
+
   // Mesmo problema do "Valor total da licitação" (ver numeroParaCampoDecimal
   // no topo do arquivo): um <input type="number"> nativo não entende
   // separador de milhar nem vírgula decimal. Preço unitário de referência
@@ -1631,6 +1784,67 @@ function ItemLicitacaoRow({
           onChange={(e) => onChange(item.id, 'descricao', e.target.value)}
           rows={3}
         />
+      </div>
+
+      {/* Família de produto — alimenta os relatórios por família. Lista
+          limitada às famílias ativas do cliente da licitação; nova família
+          só pode ser criada aqui, nunca digitada solta no item. */}
+      <div className="mt-2">
+        {!temCliente ? (
+          <p className="font-body text-xs italic text-ink-soft">
+            Selecione o cliente na aba Vinculação para escolher a família do item.
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-64 max-w-full">
+              <SelectField
+                label="Família do produto"
+                value={item.familiaId ?? ''}
+                onChange={(e) => onChange(item.id, 'familiaId', e.target.value || undefined)}
+                options={[{ value: '', label: 'Sem família' }, ...familias.map((f) => ({ value: f.id, label: f.nome }))]}
+              />
+            </div>
+            {!criandoFamilia && (
+              <Button variant="ghost" onClick={() => setCriandoFamilia(true)} className="text-xs">
+                + Nova família
+              </Button>
+            )}
+            {criandoFamilia && (
+              <>
+                <div className="w-56 max-w-full">
+                  <TextField
+                    label="Nome da nova família"
+                    value={nomeNovaFamilia}
+                    onChange={(e) => setNomeNovaFamilia(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void salvarNovaFamilia();
+                      }
+                    }}
+                  />
+                </div>
+                <Button variant="ghost" onClick={() => void salvarNovaFamilia()} disabled={salvandoFamilia} className="text-xs">
+                  {salvandoFamilia ? 'Salvando...' : 'Salvar'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setCriandoFamilia(false);
+                    setNomeNovaFamilia('');
+                    setErroNovaFamilia(null);
+                  }}
+                  className="text-xs"
+                >
+                  Cancelar
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+        {(erroNovaFamilia || erroFamilias) && (
+          <p className="mt-1 text-xs text-red-600">{erroNovaFamilia ?? erroFamilias}</p>
+        )}
       </div>
 
       {/* "Exclusivo para ME/EPP" só se aplica a item individual — a pedido
