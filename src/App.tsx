@@ -15,6 +15,7 @@ import { LicitacoesPage } from '@/pages/admin/licitacoes/LicitacoesPage'
 import { PropostaComercialPage as AdminPropostaComercialPage } from '@/pages/admin/licitacoes/PropostaComercialPage'
 import { DisputasPage } from '@/pages/admin/disputas/DisputasPage'
 import { RelatoriosPage } from '@/pages/admin/relatorios/RelatoriosPage'
+import { IndicadoresPage } from '@/pages/admin/indicadores/IndicadoresPage'
 import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
 import { CalendarioPage as AdminCalendarioPage } from '@/pages/admin/CalendarioPage'
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
@@ -149,6 +150,17 @@ export default function App() {
           />
 
           <Route
+            path="/admin/indicadores"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="relatorios">
+                <AdminLayout>
+                  <IndicadoresPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/admin/configuracoes"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
@@ -209,6 +221,17 @@ export default function App() {
               <ProtectedRoute allowedRoles={['cliente']}>
                 <ClienteLayout>
                   <ClienteCalendarioPage />
+                </ClienteLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cliente/indicadores"
+            element={
+              <ProtectedRoute allowedRoles={['cliente']}>
+                <ClienteLayout>
+                  <IndicadoresPage />
                 </ClienteLayout>
               </ProtectedRoute>
             }

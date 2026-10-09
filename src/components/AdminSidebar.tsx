@@ -115,6 +115,9 @@ export function AdminSidebar() {
     ...(isAdmin || podeAcessarModulo('relatorios')
       ? [{ label: 'Relatórios', to: '/admin/relatorios', icon: <IconGrafico /> }]
       : []),
+    ...(isAdmin || podeAcessarModulo('relatorios')
+      ? [{ label: 'Indicadores', to: '/admin/indicadores', icon: <IconGrafico /> }]
+      : []),
     ...(isAdmin || podeAcessarModulo('licitacoes')
       ? [{ label: 'Calendário', to: '/admin/calendario', icon: <IconCalendario /> }]
       : []),

@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { TextField } from '../../components/TextField';
 import { Button } from '../../components/Button';
+import { LiberacaoIndicadoresSecao } from '../../components/indicadores/LiberacaoIndicadoresSecao';
 import { configuracaoService } from '../../services/configuracaoService';
 import { ConfiguracoesSistema, DadosEmpresa, RegraPrazoInterno, LinkRapido } from '../../types/configuracoes';
 
@@ -228,6 +229,9 @@ export function ConfiguracoesPage() {
             </Button>
           </div>
         </section>
+
+        {/* Liberação de Indicadores (nível 1) */}
+        <LiberacaoIndicadoresSecao />
       </div>
     </div>
   );

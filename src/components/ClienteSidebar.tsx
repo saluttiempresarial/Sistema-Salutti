@@ -56,6 +56,7 @@ const ITENS: ItemMenu[] = [
   { label: 'Licitações', to: '/cliente', icon: <IconDocumento /> },
   { label: 'Calendário', to: '/cliente/calendario', icon: <IconCalendario /> },
   { label: 'Relatórios', to: '/cliente/relatorios', icon: <IconGrafico /> },
+  { label: 'Indicadores', to: '/cliente/indicadores', icon: <IconGrafico /> },
 ]
 
 export function ClienteSidebar() {

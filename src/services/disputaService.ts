@@ -159,6 +159,27 @@ export const disputaService = {
     return paraDisputa(row, itensRows)
   },
 
+  /** Disputas da empresa do cliente logado, pela função
+   *  `relatorio_disputas_cliente` (migração 038). Devolve só os campos que o
+   *  painel de Indicadores usa — sem observações nem link da ata — e os
+   *  dados do vencedor apenas se a liberação permitir. `null` = sem acesso
+   *  (por exemplo, usuário com perfil Operador). */
+  async listarDoCliente(): Promise<Disputa[] | null> {
+    const { data, error } = await supabase.rpc('relatorio_disputas_cliente')
+    if (error) throw new Error(error.message)
+    if (data === null) return null
+
+    type LinhaItemCliente = Omit<DisputaItemRow, 'observacao'>
+    type LinhaCliente = Omit<DisputaRow, 'observacoes' | 'link_ata_siga_pregao'> & { itens: LinhaItemCliente[] }
+
+    return ((data as LinhaCliente[]) ?? []).map(({ itens, ...linha }) =>
+      paraDisputa(
+        { ...linha, observacoes: null, link_ata_siga_pregao: null },
+        itens.map((i) => ({ ...i, observacao: null })),
+      ),
+    )
+  },
+
   async listarTodas(): Promise<Disputa[]> {
     const { data, error } = await supabase
       .from('disputas')

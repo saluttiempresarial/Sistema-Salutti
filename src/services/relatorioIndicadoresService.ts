@@ -30,4 +30,24 @@ async function carregarDadosBase(restricao: { clienteIds?: string[]; licitacaoId
   }
 }
 
-export const relatorioIndicadoresService = { carregarDadosBase }
+/** Dados base do painel do CLIENTE: licitações, itens e famílias pelas regras
+ *  normais (cada cliente só recebe os próprios) e as disputas pela função da
+ *  migração 038. `null` = o usuário não tem acesso ao painel. */
+async function carregarDadosBaseCliente(): Promise<DadosBaseIndicadores | null> {
+  const [licitacoes, disputas, familias] = await Promise.all([
+    licitacaoService.listarCompletas(),
+    disputaService.listarDoCliente(),
+    familiaProdutoService.listarTodas(),
+  ])
+  if (disputas === null) return null
+
+  const idsClientes = Array.from(new Set(licitacoes.map((l) => l.clienteId)))
+  return {
+    licitacoes,
+    disputas,
+    familias,
+    clientes: idsClientes.map((id) => ({ id, nome: 'Sua empresa' })),
+  }
+}
+
+export const relatorioIndicadoresService = { carregarDadosBase, carregarDadosBaseCliente }
