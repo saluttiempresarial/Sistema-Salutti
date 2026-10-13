@@ -89,6 +89,24 @@ export function UsuariosClienteTab({ clienteId }: UsuariosClienteTabProps) {
       setErro('E-mail inválido.')
       return
     }
+    // Senha temporária: obrigatória ao criar (sem ela não existe login); ao
+    // editar, só é validada se o Administrador preencher algum dos campos.
+    const senhaPreenchida = formData.senhaTemporaria !== '' || formData.confirmarSenha !== ''
+    if (!usuarioEmEdicao || senhaPreenchida) {
+      if (!formData.senhaTemporaria) {
+        setErro('Informe a senha temporária do usuário.')
+        return
+      }
+      if (formData.senhaTemporaria.length < 6) {
+        setErro('A senha precisa ter no mínimo 6 caracteres.')
+        return
+      }
+      if (formData.confirmarSenha !== formData.senhaTemporaria) {
+        setErro('A confirmação da senha não confere.')
+        return
+      }
+    }
+
     const duplicado = await usuarioClienteService.emailJaCadastrado(
       formData.email,
       usuarioEmEdicao?.id
@@ -247,10 +265,26 @@ export function UsuariosClienteTab({ clienteId }: UsuariosClienteTabProps) {
             />
           </div>
 
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <TextField
+              label={usuarioEmEdicao ? 'Nova senha (deixe em branco para manter a atual)' : 'Senha temporária *'}
+              type="password"
+              autoComplete="new-password"
+              value={formData.senhaTemporaria}
+              onChange={(e) => setFormData((p) => ({ ...p, senhaTemporaria: e.target.value }))}
+            />
+            <TextField
+              label={usuarioEmEdicao ? 'Confirmar nova senha' : 'Confirmar senha *'}
+              type="password"
+              autoComplete="new-password"
+              value={formData.confirmarSenha}
+              onChange={(e) => setFormData((p) => ({ ...p, confirmarSenha: e.target.value }))}
+            />
+          </div>
+
           <p className="mt-3 font-body text-xs text-ink-soft">
-            O convite de acesso por e-mail (definição de senha) ainda será implementado — por
-            enquanto, o cadastro fica pronto no sistema, mas o login em si precisa ser
-            configurado à parte.
+            O usuário entra com o e-mail acima e esta senha. Informe a senha a ele por um canal
+            seguro. Mínimo de 6 caracteres.
           </p>
 
           <div className="mt-4 flex justify-end gap-2">

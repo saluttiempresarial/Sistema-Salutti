@@ -1,7 +1,9 @@
 // src/utils/indicadoresCalculos.ts
 //
-// Cálculo dos 8 indicadores do painel do Administrador (Especificação de
-// 07/10/2026, seções 5 e 8). Funções puras: recebem os dados já carregados
+// Cálculo dos indicadores do painel (Especificação de 07/10/2026, seções 3, 5
+// e 8): os 8 da primeira entrega e os de preço e competitividade (valor
+// adjudicado, ticket médio, fora de mercado, distância da derrota e desconto
+// médio). Funções puras: recebem os dados já carregados
 // (ver relatorioIndicadoresService.ts) e os filtros, e devolvem os números.
 //
 // REGRAS ADOTADAS (aprovadas pelo Márcio em 08/10):
@@ -32,15 +34,20 @@ import {
   type DadosBaseIndicadores,
   type EtapaFunil,
   type FiltrosIndicadores,
+  type ForaDeMercado,
   type GanhoSobreMinimo,
   type IndicadoresAdmin,
+  type IndicadorPercentual,
+  type ItemForaDeMercado,
   type PerdaEvitavel,
   type PerdasEvitaveis,
   type TaxaVitoria,
   type UnidadeResultado,
+  type ValorAdjudicado,
+  type ValorAdjudicadoMes,
   type VolumeMes,
 } from '../types/indicadores';
-import { calcularAnaliseItem, totalReferenciaOportunidade } from './licitacaoCalculos';
+import { calcularAnaliseItem, totalReferenciaItem, totalReferenciaOportunidade } from './licitacaoCalculos';
 
 const LIMITE_TOP = 10;
 
@@ -183,6 +190,7 @@ export function montarUnidades(
           resultado: linha.resultadoItem,
           valorOfertado: linha.valorFechado != null ? linha.valorFechado * item.quantidade : null,
           valorMinimoComFrete: minimoUnitario != null ? minimoUnitario * item.quantidade : null,
+          valorReferencia: totalReferenciaItem(item) > 0 ? totalReferenciaItem(item) : null,
           valorVencedor: linha.valorVencedor != null ? linha.valorVencedor * item.quantidade : null,
           nomeVencedor: linha.nomeVencedor,
         });
@@ -202,6 +210,7 @@ export function montarUnidades(
           itensDoGrupo.length > 0 && minimos.every((m) => m != null)
             ? (minimos as number[]).reduce((soma, m) => soma + m, 0)
             : null;
+        const referenciaGrupo = itensDoGrupo.reduce((soma, i) => soma + totalReferenciaItem(i), 0);
         unidades.push({
           licitacaoId: licitacao.id,
           clienteId: licitacao.clienteId,
@@ -210,6 +219,7 @@ export function montarUnidades(
           resultado: linha.resultadoItem,
           valorOfertado: linha.valorFechado ?? null,
           valorMinimoComFrete: minimoGrupo,
+          valorReferencia: referenciaGrupo > 0 ? referenciaGrupo : null,
           valorVencedor: linha.valorVencedor ?? null,
           nomeVencedor: linha.nomeVencedor,
         });
@@ -419,6 +429,174 @@ export function calcularPerdasEvitaveis(
 }
 
 // ---------------------------------------------------------------------------
+// Preço e competitividade (Especificação, seções 3.3 e 3.5)
+// ---------------------------------------------------------------------------
+
+/** Agrupa unidades por família (grupos numa barra própria) e calcula um
+ *  percentual para o conjunto todo e para cada família. */
+function percentualPorFamilia(
+  base: UnidadeResultado[],
+  nomeDaFamilia: (id: string) => string,
+  percentual: (lista: UnidadeResultado[]) => number | null
+): IndicadorPercentual {
+  const grupos = new Map<string, { nome: string; lista: UnidadeResultado[] }>();
+  base.forEach((u) => {
+    const chave = u.tipo === 'grupo' ? CHAVE_GRUPOS : (u.familiaId ?? CHAVE_SEM_FAMILIA);
+    const nome = u.tipo === 'grupo' ? 'Grupos' : u.familiaId ? nomeDaFamilia(u.familiaId) : 'Sem família';
+    const atual = grupos.get(chave) ?? { nome, lista: [] };
+    atual.lista.push(u);
+    grupos.set(chave, atual);
+  });
+  return {
+    geral: percentual(base),
+    quantidade: base.length,
+    porFamilia: [...grupos.entries()]
+      .map(([chave, { nome, lista }]) => ({ chave, nome, percentual: percentual(lista), quantidade: lista.length }))
+      .sort((a, b) => (b.percentual ?? -Infinity) - (a.percentual ?? -Infinity))
+      .slice(0, LIMITE_TOP),
+  };
+}
+
+// Valor adjudicado por mês (mês da licitação) e ticket médio por licitação
+// ganha. "Ganha" = ao menos um item/grupo ganho, igual ao funil. O valor é o
+// valor OFERTADO dos itens/grupos ganhos, o mesmo da taxa de vitória.
+export function calcularValorAdjudicado(licitacoes: Licitacao[], unidades: UnidadeResultado[]): ValorAdjudicado {
+  const licitacaoPorId = new Map(licitacoes.map((l) => [l.id, l]));
+  const ganhos = unidades.filter((u) => u.resultado === 'ganho');
+  const comGanho = new Set(ganhos.map((u) => u.licitacaoId));
+
+  const meses = new Map<string, ValorAdjudicadoMes>();
+  function mesDe(licitacaoId: string): ValorAdjudicadoMes | null {
+    const l = licitacaoPorId.get(licitacaoId);
+    if (!l) return null;
+    const mes = diaLocal(dataDaLicitacao(l)).slice(0, 7);
+    const existente = meses.get(mes);
+    if (existente) return existente;
+    const nova: ValorAdjudicadoMes = {
+      mes,
+      rotulo: `${MESES_ABREVIADOS[Number(mes.slice(5, 7)) - 1]}/${mes.slice(0, 4)}`,
+      valor: 0,
+      licitacoesGanhas: 0,
+    };
+    meses.set(mes, nova);
+    return nova;
+  }
+
+  comGanho.forEach((id) => {
+    const m = mesDe(id);
+    if (m) m.licitacoesGanhas += 1;
+  });
+  let total = 0;
+  ganhos.forEach((u) => {
+    const valor = u.valorOfertado ?? 0;
+    total += valor;
+    const m = mesDe(u.licitacaoId);
+    if (m) m.valor += valor;
+  });
+
+  return {
+    total,
+    licitacoesGanhas: comGanho.size,
+    ticketMedio: comGanho.size > 0 ? total / comGanho.size : null,
+    porMes: [...meses.values()].sort((a, b) => a.mes.localeCompare(b.mes)),
+  };
+}
+
+// Fora de mercado: perdemos e o vencedor ficou ABAIXO do nosso mínimo c/ frete
+// (estritamente menor). É o complemento das perdas evitáveis, que usam vencedor
+// maior ou igual ao mínimo, então um item nunca aparece nos dois.
+export function calcularForaDeMercado(
+  licitacoes: Licitacao[],
+  unidades: UnidadeResultado[],
+  nomeDoCliente: (id: string) => string
+): ForaDeMercado {
+  const licitacaoPorId = new Map(licitacoes.map((l) => [l.id, l]));
+  const perdidosComBase = unidades.filter(
+    (u) =>
+      u.resultado === 'perdido' &&
+      u.valorVencedor != null &&
+      u.valorVencedor > 0 &&
+      u.valorMinimoComFrete != null &&
+      u.valorMinimoComFrete > 0
+  );
+  const fora = perdidosComBase.filter((u) => (u.valorVencedor as number) < (u.valorMinimoComFrete as number));
+
+  const linhas: ItemForaDeMercado[] = fora
+    .map((u) => {
+      const minimo = u.valorMinimoComFrete as number;
+      const vencedor = u.valorVencedor as number;
+      return {
+        licitacaoId: u.licitacaoId,
+        numeroPregao: licitacaoPorId.get(u.licitacaoId)?.numeroPregao ?? '—',
+        cliente: nomeDoCliente(u.clienteId),
+        rotulo: u.rotulo,
+        ehGrupo: u.tipo === 'grupo',
+        valorNosso: u.valorOfertado,
+        valorVencedor: vencedor,
+        valorMinimo: minimo,
+        percentualAbaixo: ((minimo - vencedor) / minimo) * 100,
+      };
+    })
+    .sort((a, b) => b.percentualAbaixo - a.percentualAbaixo);
+
+  const somaMinimo = linhas.reduce((s, l) => s + l.valorMinimo, 0);
+  const somaVencedor = linhas.reduce((s, l) => s + l.valorVencedor, 0);
+  return {
+    quantidade: linhas.length,
+    baseComVencedor: perdidosComBase.length,
+    percentual: perdidosComBase.length > 0 ? (linhas.length / perdidosComBase.length) * 100 : null,
+    distanciaMedia: somaMinimo > 0 ? ((somaMinimo - somaVencedor) / somaMinimo) * 100 : null,
+    linhas,
+  };
+}
+
+// Distância da derrota: nas perdas por preço, quanto o nosso valor final ficou
+// acima do vencedor. Ponderada por valor: soma ofertada ÷ soma dos vencedores
+// − 1. Só entram perdidos com os dois valores preenchidos e com a nossa oferta
+// maior ou igual à do vencedor (perder com oferta menor não foi por preço).
+export function calcularDistanciaDerrota(
+  unidades: UnidadeResultado[],
+  nomeDaFamilia: (id: string) => string
+): IndicadorPercentual {
+  const base = unidades.filter(
+    (u) =>
+      u.resultado === 'perdido' &&
+      u.valorOfertado != null &&
+      u.valorOfertado > 0 &&
+      u.valorVencedor != null &&
+      u.valorVencedor > 0 &&
+      u.valorOfertado >= u.valorVencedor
+  );
+  return percentualPorFamilia(base, nomeDaFamilia, (lista) => {
+    const ofertado = lista.reduce((s, u) => s + (u.valorOfertado ?? 0), 0);
+    const vencedor = lista.reduce((s, u) => s + (u.valorVencedor ?? 0), 0);
+    return vencedor > 0 ? (ofertado / vencedor - 1) * 100 : null;
+  });
+}
+
+// Desconto médio sobre o valor de referência do edital: nos ganhos,
+// 1 − (soma ofertada ÷ soma das referências), ponderado por valor. Um valor
+// negativo significa que, em média, o ganho ficou acima da referência.
+export function calcularDescontoMedio(
+  unidades: UnidadeResultado[],
+  nomeDaFamilia: (id: string) => string
+): IndicadorPercentual {
+  const base = unidades.filter(
+    (u) =>
+      u.resultado === 'ganho' &&
+      u.valorOfertado != null &&
+      u.valorOfertado > 0 &&
+      u.valorReferencia != null &&
+      u.valorReferencia > 0
+  );
+  return percentualPorFamilia(base, nomeDaFamilia, (lista) => {
+    const ofertado = lista.reduce((s, u) => s + (u.valorOfertado ?? 0), 0);
+    const referencia = lista.reduce((s, u) => s + (u.valorReferencia ?? 0), 0);
+    return referencia > 0 ? (1 - ofertado / referencia) * 100 : null;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 7 — Órgãos (top 10 por participação e vitórias)
 // ---------------------------------------------------------------------------
 export function calcularOrgaos(licitacoes: Licitacao[], unidades: UnidadeResultado[]): BarraOrgao[] {
@@ -486,6 +664,10 @@ export function calcularIndicadoresAdmin(dados: DadosBaseIndicadores, filtros: F
     ),
     ganhoSobreMinimo: calcularGanhoSobreMinimo(unidades, nomeDaFamilia),
     perdasEvitaveis: calcularPerdasEvitaveis(licitacoes, unidades, nomeDoCliente),
+    valorAdjudicado: calcularValorAdjudicado(licitacoes, unidades),
+    foraDeMercado: calcularForaDeMercado(licitacoes, unidades, nomeDoCliente),
+    distanciaDerrota: calcularDistanciaDerrota(unidades, nomeDaFamilia),
+    descontoMedio: calcularDescontoMedio(unidades, nomeDaFamilia),
     orgaos: calcularOrgaos(licitacoes, unidades),
     concorrentes: calcularConcorrentes(unidades),
     totalLicitacoes: licitacoes.length,

@@ -129,6 +129,16 @@ function paraColunas(formData: FuncionarioFormData) {
   }
 }
 
+/** Colunas do cadastro, com uma regra a mais: sempre que o Administrador
+ *  define uma senha temporária (cadastro novo ou redefinição), a pessoa
+ *  precisa trocá-la no próximo acesso, mesmo que a caixa "Obrigar troca de
+ *  senha no primeiro acesso" esteja desmarcada. Sem senha nova, vale o que
+ *  estiver marcado na caixa. */
+function comTrocaDeSenhaObrigatoria(formData: FuncionarioFormData) {
+  const colunas = paraColunas(formData)
+  return formData.senhaTemporaria ? { ...colunas, forcar_troca_senha: true } : colunas
+}
+
 async function buscarHistorico(funcionarioId: string): Promise<HistoricoRow[]> {
   const { data, error } = await supabase
     .from('historico_acoes')
@@ -196,7 +206,7 @@ export const funcionarioService = {
   async create(formData: FuncionarioFormData, autor: string): Promise<Funcionario> {
     const { data, error } = await supabase
       .from('funcionarios')
-      .insert(paraColunas(formData))
+      .insert(comTrocaDeSenhaObrigatoria(formData))
       .select()
       .single()
     if (error) throw new Error(error.message)
@@ -223,7 +233,7 @@ export const funcionarioService = {
   async update(id: string, formData: FuncionarioFormData, autor: string): Promise<Funcionario> {
     const { data, error } = await supabase
       .from('funcionarios')
-      .update(paraColunas(formData))
+      .update(comTrocaDeSenhaObrigatoria(formData))
       .eq('id', id)
       .select()
       .single()

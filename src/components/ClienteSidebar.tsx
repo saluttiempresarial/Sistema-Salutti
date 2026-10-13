@@ -55,7 +55,9 @@ function IconGrafico() {
 const ITENS: ItemMenu[] = [
   { label: 'Licitações', to: '/cliente', icon: <IconDocumento /> },
   { label: 'Calendário', to: '/cliente/calendario', icon: <IconCalendario /> },
-  { label: 'Relatórios', to: '/cliente/relatorios', icon: <IconGrafico /> },
+  // Item "Relatórios" ocultado por enquanto: a página ainda está em construção.
+  // A rota /cliente/relatorios continua existindo; basta voltar a incluir o
+  // item aqui quando a fase de Relatórios do cliente for entregue.
   { label: 'Indicadores', to: '/cliente/indicadores', icon: <IconGrafico /> },
 ]
 

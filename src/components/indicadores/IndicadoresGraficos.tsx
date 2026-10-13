@@ -406,13 +406,13 @@ export function IndicadoresGraficos({ indicadores, visiveis }: IndicadoresGrafic
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       {ver('funil') && (
-        <Cartao titulo="Funil de licitações" subtitulo="Analisadas → participou → ganhou">
+        <Cartao titulo="Funil de licitações" subtitulo="Contagem por licitação: analisadas → participou → ganhou (ao menos 1 item ganho)">
           <Funil etapas={indicadores.funil} />
         </Cartao>
       )}
 
       {ver('taxa_vitoria') && (
-        <Cartao titulo="Taxa de vitória" subtitulo="Só itens e grupos ganhos ou perdidos">
+        <Cartao titulo="Taxa de vitória" subtitulo="Contagem por item: só itens e grupos ganhos ou perdidos">
           <TaxaVitoriaBloco atual={indicadores.taxaVitoria.atual} anterior={indicadores.taxaVitoria.anterior} />
         </Cartao>
       )}
@@ -459,3 +459,4 @@ export function IndicadoresGraficos({ indicadores, visiveis }: IndicadoresGrafic
     </div>
   )
 }
+ 

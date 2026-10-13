@@ -5,18 +5,22 @@
 // - Administrador: todos os clientes e todos os indicadores.
 // - Analista (funcionário): só os clientes da sua carteira e só os indicadores
 //   liberados para o perfil Analista (Configurações > Liberação de Indicadores).
-// - Cliente (Responsável): só a própria empresa e só os indicadores liberados
-//   ao perfil Cliente. Os resultados das disputas vêm da função do banco
-//   `relatorio_disputas_cliente` (migração 038); o Operador não tem acesso.
+// - Cliente (Responsável ou Operador): só a própria empresa e só os
+//   indicadores liberados nos dois níveis (Administrador ao perfil Cliente e,
+//   para o Operador, o Responsável). Os resultados das disputas vêm da função
+//   do banco `relatorio_disputas_cliente` (migrações 038 e 039). O Responsável
+//   também vê, ao final da página, a liberação dos seus Operadores.
 // Carrega os dados uma vez e recalcula os números no navegador a cada mudança
 // de filtro, para ficarem idênticos aos da tela de Disputa.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiltrosIndicadoresBar } from '../../../components/indicadores/FiltrosIndicadoresBar'
 import { IndicadoresGraficos } from '../../../components/indicadores/IndicadoresGraficos'
+import { LiberacaoOperadoresSecao } from '../../../components/indicadores/LiberacaoOperadoresSecao'
 import { useAuth } from '../../../context/AuthContext'
 import { usePermissoes } from '../../../hooks/usePermissoes'
 import { liberacaoIndicadoresService } from '../../../services/liberacaoIndicadoresService'
+import { liberacaoOperadorService } from '../../../services/liberacaoOperadorService'
 import { relatorioIndicadoresService } from '../../../services/relatorioIndicadoresService'
 import { calcularIndicadoresAdmin } from '../../../utils/indicadoresCalculos'
 import type { DadosBaseIndicadores, FiltrosIndicadores } from '../../../types/indicadores'
@@ -41,22 +45,18 @@ export function IndicadoresPage() {
     setSemAcesso(false)
     try {
       if (ehCliente) {
-        const [base, liberacao] = await Promise.all([
+        // Lista efetiva: cruza a liberação do Administrador (nível 1) com a do
+        // Responsável para o Operador (nível 2), calculada no banco.
+        const [base, chaves] = await Promise.all([
           relatorioIndicadoresService.carregarDadosBaseCliente(),
-          liberacaoIndicadoresService.listar(),
+          liberacaoOperadorService.indicadoresDoUsuarioLogado(),
         ])
-        if (base === null) {
+        if (base === null || chaves === null) {
           setSemAcesso(true)
           setDados(null)
         } else {
           setDados(base)
-          setVisiveis(
-            new Set(
-              Object.entries(liberacao)
-                .filter(([, perfis]) => perfis.cliente)
-                .map(([chave]) => chave),
-            ),
-          )
+          setVisiveis(new Set(chaves))
         }
         return
       }
@@ -121,7 +121,7 @@ export function IndicadoresPage() {
 
       {semAcesso && !carregando && (
         <p className="rounded-xl border border-ink-soft/15 bg-white p-8 text-center font-body text-sm text-ink-soft shadow-soft">
-          Os indicadores estão disponíveis apenas para o Responsável da empresa.
+          Os indicadores não estão disponíveis para o seu usuário.
         </p>
       )}
 
@@ -150,6 +150,9 @@ export function IndicadoresPage() {
           <IndicadoresGraficos indicadores={indicadores} visiveis={visiveis} />
         </>
       )}
+
+      {ehCliente && !carregando && <LiberacaoOperadoresSecao />}
     </div>
   )
 }
+  

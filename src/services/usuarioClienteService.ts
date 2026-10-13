@@ -75,7 +75,9 @@ export const usuarioClienteService = {
   async create(clienteId: string, formData: UsuarioClienteFormData): Promise<UsuarioCliente> {
     const { data, error } = await supabase
       .from('usuarios_cliente')
-      .insert(paraColunas(clienteId, formData))
+      // Senha temporária definida pelo Administrador: a pessoa será levada à
+      // tela de troca de senha no primeiro acesso (migração 041).
+      .insert({ ...paraColunas(clienteId, formData), forcar_troca_senha: Boolean(formData.senhaTemporaria) })
       .select()
       .single()
     if (error) throw new Error(error.message)
@@ -108,6 +110,8 @@ export const usuarioClienteService = {
         telefone: formData.telefone,
         perfil: formData.perfil,
         status: formData.status,
+        // Nova senha temporária: exige nova troca no próximo acesso.
+        ...(formData.senhaTemporaria ? { forcar_troca_senha: true } : {}),
       })
       .eq('id', id)
       .select()
@@ -115,7 +119,14 @@ export const usuarioClienteService = {
     if (error) throw new Error(error.message)
 
     if (formData.senhaTemporaria) {
-      await loginUsuarioService.redefinirSenha('usuarios_cliente', id, formData.email, formData.senhaTemporaria)
+      // Cadastro sem login ainda (auth_user_id vazio): cria o login. Se já
+      // existe, só redefine a senha.
+      const jaTemLogin = Boolean((data as { auth_user_id?: string | null }).auth_user_id)
+      if (jaTemLogin) {
+        await loginUsuarioService.redefinirSenha('usuarios_cliente', id, formData.email, formData.senhaTemporaria)
+      } else {
+        await loginUsuarioService.criar('usuarios_cliente', id, formData.email, formData.senhaTemporaria)
+      }
     }
 
     return paraUsuarioCliente(data as UsuarioClienteRow)

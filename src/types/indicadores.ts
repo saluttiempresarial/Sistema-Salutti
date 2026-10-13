@@ -124,6 +124,70 @@ export interface PerdasEvitaveis {
 }
 
 // ---------------------------------------------------------------------------
+// Preço e competitividade — Valor adjudicado, Ticket médio, Fora de mercado,
+// Distância da derrota e Desconto médio (Especificação, seções 3.3 e 3.5)
+// ---------------------------------------------------------------------------
+export interface ValorAdjudicadoMes {
+  mes: string; // YYYY-MM
+  rotulo: string; // ex.: "out/2026"
+  /** Valor ofertado dos itens/grupos ganhos nas licitações do mês. */
+  valor: number;
+  licitacoesGanhas: number;
+}
+
+/** Valor adjudicado NÃO é faturamento: em registro de preços só vira receita
+ *  com empenho. A tela deve sempre dizer "valor adjudicado". */
+export interface ValorAdjudicado {
+  total: number;
+  /** Licitações com ao menos um item/grupo ganho (mesma regra do funil). */
+  licitacoesGanhas: number;
+  /** total ÷ licitacoesGanhas; null = nenhuma licitação ganha. */
+  ticketMedio: number | null;
+  porMes: ValorAdjudicadoMes[];
+}
+
+/** Percentual geral e por família (cálculo ponderado por valor). */
+export interface PercentualPorFamilia {
+  chave: string; // id da família, CHAVE_SEM_FAMILIA ou CHAVE_GRUPOS
+  nome: string;
+  percentual: number | null;
+  quantidade: number; // itens (ou grupos) que entraram no cálculo
+}
+
+export interface IndicadorPercentual {
+  geral: number | null;
+  /** Quantidade de itens/grupos que entraram no cálculo geral. */
+  quantidade: number;
+  porFamilia: PercentualPorFamilia[];
+}
+
+export interface ItemForaDeMercado {
+  licitacaoId: string;
+  numeroPregao: string;
+  cliente: string;
+  rotulo: string; // "3 — Café..." ou "Grupo 2"
+  ehGrupo: boolean;
+  valorNosso: number | null; // nosso valor ofertado (total)
+  valorVencedor: number; // valor do vencedor (total)
+  valorMinimo: number; // mínimo c/ frete (total)
+  /** (mínimo − vencedor) ÷ mínimo, em %: quanto o vencedor ficou abaixo. */
+  percentualAbaixo: number;
+}
+
+/** Perdidos em que o vencedor ficou ABAIXO do mínimo c/ frete do cliente: o
+ *  preço dele não compete naquele produto. Não traz o nome do vencedor. */
+export interface ForaDeMercado {
+  quantidade: number;
+  /** Perdidos com valor do vencedor e mínimo informados (base do percentual). */
+  baseComVencedor: number;
+  /** quantidade ÷ baseComVencedor, em %; null = sem base. */
+  percentual: number | null;
+  /** Distância média abaixo do mínimo, ponderada por valor; null = sem itens. */
+  distanciaMedia: number | null;
+  linhas: ItemForaDeMercado[];
+}
+
+// ---------------------------------------------------------------------------
 // Indicadores 7 e 8 — Órgãos e concorrentes
 // ---------------------------------------------------------------------------
 export interface BarraOrgao {
@@ -145,6 +209,12 @@ export interface IndicadoresAdmin {
   familias: BarraFamilia[]; // top 10 já ordenado
   ganhoSobreMinimo: GanhoSobreMinimo;
   perdasEvitaveis: PerdasEvitaveis;
+  valorAdjudicado: ValorAdjudicado;
+  foraDeMercado: ForaDeMercado;
+  /** (nosso valor ÷ valor do vencedor) − 1, só nas perdas por preço. */
+  distanciaDerrota: IndicadorPercentual;
+  /** 1 − (ofertado ÷ referência do edital), só nos ganhos. */
+  descontoMedio: IndicadorPercentual;
   orgaos: BarraOrgao[]; // top 10
   concorrentes: Concorrente[]; // top 10
   /** Quantidade de licitações consideradas após os filtros. */
@@ -162,6 +232,9 @@ export interface UnidadeResultado {
   resultado?: ResultadoItemDisputa;
   valorOfertado: number | null;
   valorMinimoComFrete: number | null;
+  /** Valor de referência do edital (preço de referência × quantidade; no
+   *  grupo, a soma dos itens). null = sem referência informada. */
+  valorReferencia: number | null;
   valorVencedor: number | null;
   nomeVencedor?: string;
 }

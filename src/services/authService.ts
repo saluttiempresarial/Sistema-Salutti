@@ -32,7 +32,7 @@ async function montarAuthUser(supabaseUserId: string, email: string): Promise<Au
 
   const { data: usuarioCliente } = await supabase
     .from('usuarios_cliente')
-    .select('id, nome, cliente_id, status')
+    .select('id, nome, cliente_id, status, forcar_troca_senha')
     .eq('auth_user_id', supabaseUserId)
     .maybeSingle()
 
@@ -45,6 +45,7 @@ async function montarAuthUser(supabaseUserId: string, email: string): Promise<Au
       role: 'cliente',
       clienteId: usuarioCliente.cliente_id,
       usuarioClienteId: usuarioCliente.id,
+      forcarTrocaSenha: usuarioCliente.forcar_troca_senha,
     }
   }
 
@@ -102,12 +103,29 @@ export const authService = {
     return { success: true }
   },
 
-  /** Zera forcar_troca_senha do funcionário logado, via função no banco
-   *  (security definer) — ver desativar_troca_senha_obrigatoria() no
-   *  Supabase. Necessário porque a RLS de UPDATE em `funcionarios` só
-   *  libera para admin; esta função é a única exceção controlada. */
+  /** Zera forcar_troca_senha de quem está logado, via função no banco
+   *  (security definer). Necessário porque a RLS de UPDATE em `funcionarios`
+   *  e em `usuarios_cliente` não libera a própria pessoa; a função é a única
+   *  exceção controlada e só mexe na linha do usuário logado.
+   *  - Funcionário/Admin: desativar_troca_senha_obrigatoria()
+   *  - Usuário de cliente: desativar_troca_senha_obrigatoria_cliente()
+   *    (migração 041). */
   async limparForcarTrocaSenha(): Promise<void> {
-    const { error } = await supabase.rpc('desativar_troca_senha_obrigatoria')
+    const { data: sessao } = await supabase.auth.getSession()
+    const authUserId = sessao.session?.user.id
+    if (!authUserId) throw new Error('Sessão expirada. Entre novamente.')
+
+    const { data: funcionario } = await supabase
+      .from('funcionarios')
+      .select('id')
+      .eq('auth_user_id', authUserId)
+      .maybeSingle()
+
+    const funcao = funcionario
+      ? 'desativar_troca_senha_obrigatoria'
+      : 'desativar_troca_senha_obrigatoria_cliente'
+
+    const { error } = await supabase.rpc(funcao)
     if (error) throw new Error(error.message)
   },
 }
