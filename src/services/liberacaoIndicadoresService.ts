@@ -15,16 +15,27 @@ export const PERFIS_LIBERACAO: { chave: PerfilLiberacao; rotulo: string }[] = [
   { chave: 'cliente', rotulo: 'Cliente' },
 ]
 
-/** Catálogo da primeira entrega. As chaves devem ser as mesmas da migração 037. */
+/** Catálogo de indicadores. As chaves devem ser as mesmas das migrações 037 (primeira entrega), 042 (preço e competitividade), 043 (pipeline e prazos) e 044 (produtos e marcas). */
 export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: string }[] = [
+  { chave: 'pipeline', nome: 'Pipeline', descricao: 'Uso interno: licitações por fase, da decisão do cliente ao resultado' },
+  { chave: 'prazos_proximos', nome: 'Prazos dos próximos 7 dias', descricao: 'Uso interno: prazos internos vencidos ou vencendo' },
   { chave: 'funil', nome: 'Funil de licitações', descricao: 'Analisadas, participou e ganhou' },
   { chave: 'taxa_vitoria', nome: 'Taxa de vitória', descricao: 'Por quantidade e por valor, com comparação com o período anterior' },
   { chave: 'volume_periodo', nome: 'Volume por período', descricao: 'Licitações e valor de referência por mês' },
   { chave: 'familias', nome: 'Famílias de produtos', descricao: 'Itens cotados e itens ganhos por família' },
   { chave: 'ganho_sobre_minimo', nome: 'Ganho sobre o mínimo', descricao: 'Quanto se vendeu acima do preço mínimo do cliente' },
   { chave: 'perdas_evitaveis', nome: 'Perdas evitáveis', descricao: 'Uso interno: vencedor com preço ainda acima do mínimo do cliente' },
+  { chave: 'valor_adjudicado', nome: 'Valor adjudicado por mês', descricao: 'Valor dos itens ganhos por mês (não é faturamento)' },
+  { chave: 'ticket_medio', nome: 'Ticket médio', descricao: 'Valor adjudicado por licitação ganha' },
+  { chave: 'desconto_medio', nome: 'Desconto médio sobre a referência', descricao: 'Quanto se ganhou abaixo do valor de referência do edital' },
+  { chave: 'fora_de_mercado', nome: 'Fora de mercado', descricao: 'Perdas em que o vencedor ficou abaixo do mínimo do cliente' },
+  { chave: 'distancia_derrota', nome: 'Distância da derrota', descricao: 'Nas perdas por preço, quanto o cliente ficou acima do vencedor' },
   { chave: 'orgaos', nome: 'Órgãos', descricao: 'Participações e vitórias por órgão' },
   { chave: 'concorrentes', nome: 'Concorrentes que mais vencem', descricao: 'Quem mais ganhou do cliente' },
+  { chave: 'taxa_vitoria_familia', nome: 'Taxa de vitória por família', descricao: 'Itens ganhos sobre itens disputados em cada família de produtos' },
+  { chave: 'marcas', nome: 'Marcas', descricao: 'Itens cotados e ganhos por marca' },
+  { chave: 'produtos_nunca_ganhos', nome: 'Produtos nunca ganhos', descricao: 'Produtos disputados que só perderam' },
+  { chave: 'concorrentes_familia', nome: 'Contra quem perdemos por família', descricao: 'Uso interno: principais vencedores nas famílias com mais perdas' },
 ]
 
 /** indicador -> perfil -> liberado. Sempre traz todos os indicadores do catálogo. */

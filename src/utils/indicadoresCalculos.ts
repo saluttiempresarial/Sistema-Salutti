@@ -18,6 +18,24 @@
 //     contados de novo (evita contar em dobro no modo "Grupo e item").
 //   - Nomes de órgão e de concorrente são agrupados ignorando maiúsculas,
 //     minúsculas, acentos e espaços repetidos.
+//   - Produtos e marcas: marca e produto vêm da proposta do cliente por item.
+//     Marcas: cotadas e ganhas contam só itens soltos (itens de grupo têm
+//     resultado de grupo). Produto = código interno, ou marca e modelo, ou a
+//     descrição do produto. "Nunca ganhos" = produtos já disputados (ganho ou
+//     perdido) com nenhuma vitória. Concorrentes por família: só perdas com o
+//     nome do vencedor informado.
+//   - Pipeline: a fase sai da decisão do cliente, da proposta e do resultado
+//     da disputa (sem campo novo no banco). "Em análise" da Salutti ainda não
+//     é distinguível de "aguardando cliente": falta a data de envio da análise.
+//   - Prazos: licitação em aberto (não finalizada nem recusada) com sessão
+//     futura cujo prazo interno (regra de Configurações) já passou ou vence
+//     nos próximos 7 dias.
+//   - Filtros: órgão e marca comparam o nome normalizado (como no
+//     agrupamento). Marca é de item: a licitação entra se tiver ao menos um
+//     item da marca e os resultados passam a considerar só esses itens (grupos
+//     ficam de fora, como no filtro de família). Resultado = ganho, perdido,
+//     em andamento ou não participou (recusa, ou sessão passada sem decisão).
+//     Status = fase do pipeline.
 //   - "Participou" no funil = o cliente confirmou participação
 //     (decisaoCliente = 'participar'). "Ganhou" = ao menos um item/grupo
 //     ganho.
@@ -27,27 +45,42 @@ import type { Disputa } from '../types/disputa';
 import {
   CHAVE_GRUPOS,
   CHAVE_SEM_FAMILIA,
+  CHAVE_SEM_MARCA,
   FILTRO_SEM_FAMILIA,
   type BarraFamilia,
+  type BarraMarca,
   type BarraOrgao,
   type Concorrente,
+  type ConcorrentesFamilia,
   type DadosBaseIndicadores,
   type EtapaFunil,
+  type EtapaPipeline,
+  type FasePipeline,
   type FiltrosIndicadores,
   type ForaDeMercado,
   type GanhoSobreMinimo,
   type IndicadoresAdmin,
   type IndicadorPercentual,
   type ItemForaDeMercado,
+  type OpcaoFiltro,
+  type ResultadoLicitacaoFiltro,
   type PerdaEvitavel,
   type PerdasEvitaveis,
+  type ProdutoNuncaGanho,
+  type ProdutosNuncaGanhos,
+  type Pipeline,
+  type PrazoProximo,
+  type PrazosProximos,
+  type TaxaFamilia,
   type TaxaVitoria,
+  type TaxaVitoriaFamilia,
   type UnidadeResultado,
   type ValorAdjudicado,
   type ValorAdjudicadoMes,
   type VolumeMes,
 } from '../types/indicadores';
 import { calcularAnaliseItem, totalReferenciaItem, totalReferenciaOportunidade } from './licitacaoCalculos';
+import { calcularPrazoInterno, classificarUrgenciaPrazo } from './prazoUtils';
 
 const LIMITE_TOP = 10;
 
@@ -124,10 +157,56 @@ function itemTemProposta(item: ItemLicitacao): boolean {
 // Filtros
 // ---------------------------------------------------------------------------
 
-/** Licitações que passam nos filtros de período, cliente, modalidade e família.
- *  Com filtro de família, só entram licitações que têm ao menos um item da
- *  família (ou, para "sem família", ao menos um item sem família). */
-export function filtrarLicitacoes(licitacoes: Licitacao[], filtros: FiltrosIndicadores): Licitacao[] {
+function marcaDoItem(item: ItemLicitacao): string {
+  return normalizarNome(item.propostaCliente?.marca ?? '');
+}
+
+/** Produto ofertado pelo cliente: código interno, marca e modelo, ou a
+ *  descrição do produto, nessa ordem de preferência. null = nada informado. */
+function produtoDoItem(item: ItemLicitacao): { chave: string; nome: string } | null {
+  const p = item.propostaCliente;
+  if (!p) return null;
+  const codigo = (p.codigoInterno ?? '').trim();
+  const marcaModelo = [p.marca, p.modelo]
+    .map((t) => (t ?? '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const descricao = (p.descricaoProduto ?? '').trim();
+  if (codigo) return { chave: normalizarNome(codigo), nome: `${codigo} — ${descricao || marcaModelo || 'sem descrição'}` };
+  if (marcaModelo) return { chave: normalizarNome(marcaModelo), nome: marcaModelo };
+  if (descricao) return { chave: normalizarNome(descricao), nome: descricao };
+  return null;
+}
+
+/** Resultado da licitação para o filtro "Resultado": o desfecho da disputa
+ *  manda; sem desfecho, recusa ou sessão passada sem decisão = não
+ *  participou; o resto está em andamento. */
+export function resultadoDaLicitacao(
+  l: Licitacao,
+  disputa: Disputa | undefined,
+  agora: Date = new Date()
+): ResultadoLicitacaoFiltro {
+  const desfecho = desfechoFinal(l, disputa);
+  if (desfecho === 'ganha') return 'ganho';
+  if (desfecho === 'perdida') return 'perdido';
+  if (l.decisaoCliente === 'recusar') return 'nao_participou';
+  if (l.decisaoCliente === 'pendente' && new Date(dataDaLicitacao(l)) < agora) return 'nao_participou';
+  return 'em_andamento';
+}
+
+/** Licitações que passam nos filtros de período, cliente, modalidade, família,
+ *  órgão, marca, resultado e fase (status). Com filtro de família, só entram
+ *  licitações que têm ao menos um item da família (ou, para "sem família", ao
+ *  menos um item sem família); o filtro de marca funciona igual. As disputas
+ *  só são necessárias para os filtros de resultado e de fase. */
+export function filtrarLicitacoes(
+  licitacoes: Licitacao[],
+  filtros: FiltrosIndicadores,
+  disputas: Disputa[] = [],
+  agora: Date = new Date()
+): Licitacao[] {
+  const disputaPorLicitacao =
+    filtros.resultado || filtros.fase ? new Map(disputas.map((d) => [d.licitacaoId, d])) : null;
   return licitacoes.filter((l) => {
     if (!dentroDoPeriodo(dataDaLicitacao(l), filtros.dataDe, filtros.dataAte)) return false;
     if (filtros.clienteId && l.clienteId !== filtros.clienteId) return false;
@@ -137,8 +216,37 @@ export function filtrarLicitacoes(licitacoes: Licitacao[], filtros: FiltrosIndic
       const temItem = l.itens.some((i) => (alvo === FILTRO_SEM_FAMILIA ? !i.familiaId : i.familiaId === alvo));
       if (!temItem) return false;
     }
+    if (filtros.orgao && normalizarNome(l.orgao) !== filtros.orgao) return false;
+    if (filtros.marca && !l.itens.some((i) => marcaDoItem(i) === filtros.marca)) return false;
+    if (disputaPorLicitacao) {
+      const disputa = disputaPorLicitacao.get(l.id);
+      if (filtros.resultado && resultadoDaLicitacao(l, disputa, agora) !== filtros.resultado) return false;
+      if (filtros.fase && faseDaLicitacao(l, disputa, agora) !== filtros.fase) return false;
+    }
     return true;
   });
+}
+
+function opcoesDistintas(textos: string[]): OpcaoFiltro[] {
+  const mapa = new Map<string, string>();
+  textos.forEach((texto) => {
+    const rotulo = texto.trim().replace(/\s+/g, ' ');
+    const chave = normalizarNome(rotulo);
+    if (chave && !mapa.has(chave)) mapa.set(chave, rotulo);
+  });
+  return [...mapa.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+}
+
+/** Órgãos distintos (agrupados ignorando maiúsculas, acentos e espaços). */
+export function listarOpcoesOrgaos(licitacoes: Licitacao[]): OpcaoFiltro[] {
+  return opcoesDistintas(licitacoes.map((l) => l.orgao ?? ''));
+}
+
+/** Marcas distintas informadas nas propostas dos clientes. */
+export function listarOpcoesMarcas(licitacoes: Licitacao[]): OpcaoFiltro[] {
+  return opcoesDistintas(licitacoes.flatMap((l) => l.itens.map((i) => i.propostaCliente?.marca ?? '')));
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +264,8 @@ function rotuloDoGrupo(l: Licitacao, grupoId: string): string {
 export function montarUnidades(
   licitacoes: Licitacao[],
   disputas: Disputa[],
-  filtroFamilia?: string
+  filtroFamilia?: string,
+  filtroMarca?: string
 ): UnidadeResultado[] {
   const licitacaoPorId = new Map(licitacoes.map((l) => [l.id, l]));
   const unidades: UnidadeResultado[] = [];
@@ -180,6 +289,7 @@ export function montarUnidades(
           const combina = filtroFamilia === FILTRO_SEM_FAMILIA ? !item.familiaId : item.familiaId === filtroFamilia;
           if (!combina) return;
         }
+        if (filtroMarca && marcaDoItem(item) !== filtroMarca) return;
         const minimoUnitario = calcularAnaliseItem(item, taxaFrete, true).precoComFrete;
         unidades.push({
           licitacaoId: licitacao.id,
@@ -187,6 +297,9 @@ export function montarUnidades(
           tipo: 'item',
           rotulo: `${item.numero} — ${item.descricao}`,
           familiaId: item.familiaId,
+          marca: item.propostaCliente?.marca?.trim() || undefined,
+          produtoChave: produtoDoItem(item)?.chave,
+          produtoNome: produtoDoItem(item)?.nome,
           resultado: linha.resultadoItem,
           valorOfertado: linha.valorFechado != null ? linha.valorFechado * item.quantidade : null,
           valorMinimoComFrete: minimoUnitario != null ? minimoUnitario * item.quantidade : null,
@@ -198,8 +311,9 @@ export function montarUnidades(
       }
 
       if (linha.grupoId) {
-        // Grupo não tem família: com filtro de família ativo, fica de fora.
-        if (filtroFamilia) return;
+        // Grupo não tem família nem marca: com filtro de família ou de marca
+        // ativo, fica de fora.
+        if (filtroFamilia || filtroMarca) return;
         const itensDoGrupo = licitacao.itens.filter((i) => i.grupoId === linha.grupoId);
         const minimos = itensDoGrupo.map((i) => {
           const unit = calcularAnaliseItem(i, taxaFrete, true).precoComFrete;
@@ -300,7 +414,8 @@ export function calcularVolumePorMes(licitacoes: Licitacao[]): VolumeMes[] {
 export function calcularFamilias(
   licitacoes: Licitacao[],
   unidades: UnidadeResultado[],
-  nomeDaFamilia: (id: string) => string
+  nomeDaFamilia: (id: string) => string,
+  filtroMarca?: string
 ): BarraFamilia[] {
   const mapa = new Map<string, BarraFamilia>();
   function barra(chave: string, nome: string): BarraFamilia {
@@ -320,11 +435,12 @@ export function calcularFamilias(
   // menos um item cotado entram na barra "Grupos" (1 por grupo).
   licitacoes.forEach((l) => {
     l.itens
-      .filter((i) => !i.grupoId && itemTemProposta(i))
+      .filter((i) => !i.grupoId && itemTemProposta(i) && (!filtroMarca || marcaDoItem(i) === filtroMarca))
       .forEach((i) => {
         const { chave, nome } = chaveDoItem(i);
         barra(chave, nome).cotadas += 1;
       });
+    if (filtroMarca) return; // grupo não tem marca
     l.grupos.forEach((g) => {
       if (l.itens.some((i) => i.grupoId === g.id && itemTemProposta(i))) {
         barra(CHAVE_GRUPOS, 'Grupos').cotadas += 1;
@@ -637,21 +753,267 @@ export function calcularConcorrentes(unidades: UnidadeResultado[]): Concorrente[
 }
 
 // ---------------------------------------------------------------------------
+// Produtos e marcas
+// ---------------------------------------------------------------------------
+/** Taxa de vitória por família (por quantidade): só itens e grupos ganhos ou
+ *  perdidos, a mesma base da taxa de vitória geral. */
+export function calcularTaxaVitoriaFamilia(
+  unidades: UnidadeResultado[],
+  nomeDaFamilia: (id: string) => string
+): TaxaVitoriaFamilia {
+  const base = unidades.filter((u) => u.resultado === 'ganho' || u.resultado === 'perdido');
+  const taxa = (lista: UnidadeResultado[]) => {
+    const ganhos = lista.filter((u) => u.resultado === 'ganho').length;
+    return { ganhos, disputados: lista.length, percentual: lista.length > 0 ? (ganhos / lista.length) * 100 : null };
+  };
+  const mapa = new Map<string, { nome: string; lista: UnidadeResultado[] }>();
+  base.forEach((u) => {
+    const chave = u.tipo === 'grupo' ? CHAVE_GRUPOS : (u.familiaId ?? CHAVE_SEM_FAMILIA);
+    const nome = u.tipo === 'grupo' ? 'Grupos' : u.familiaId ? nomeDaFamilia(u.familiaId) : 'Sem família';
+    const atual = mapa.get(chave) ?? { nome, lista: [] };
+    atual.lista.push(u);
+    mapa.set(chave, atual);
+  });
+  const geral = taxa(base);
+  const porFamilia: TaxaFamilia[] = [...mapa.entries()]
+    .map(([chave, { nome, lista }]) => ({ chave, nome, ...taxa(lista) }))
+    .sort((a, b) => b.disputados - a.disputados || (b.percentual ?? 0) - (a.percentual ?? 0))
+    .slice(0, LIMITE_TOP);
+  return { geral: geral.percentual, ganhos: geral.ganhos, disputados: geral.disputados, porFamilia };
+}
+
+/** Marcas mais cotadas e mais ganhas (top 10). Cotadas = itens soltos com
+ *  preço mínimo informado pelo cliente; ganhas = itens soltos ganhos. Itens de
+ *  grupo não entram, porque o resultado é do grupo. Com filtro de família ou
+ *  de marca, só os itens correspondentes. */
+export function calcularMarcas(
+  licitacoes: Licitacao[],
+  unidades: UnidadeResultado[],
+  filtroFamilia?: string,
+  filtroMarca?: string
+): BarraMarca[] {
+  const mapa = new Map<string, BarraMarca>();
+  function barra(marcaTexto: string | undefined): BarraMarca {
+    const nome = (marcaTexto ?? '').trim().replace(/\s+/g, ' ');
+    const chave = nome ? normalizarNome(nome) : CHAVE_SEM_MARCA;
+    const existente = mapa.get(chave);
+    if (existente) return existente;
+    const nova = { chave, nome: nome || 'Sem marca', cotadas: 0, ganhas: 0 };
+    mapa.set(chave, nova);
+    return nova;
+  }
+  const familiaCombina = (i: ItemLicitacao) =>
+    !filtroFamilia || (filtroFamilia === FILTRO_SEM_FAMILIA ? !i.familiaId : i.familiaId === filtroFamilia);
+
+  licitacoes.forEach((l) => {
+    l.itens
+      .filter((i) => !i.grupoId && itemTemProposta(i) && familiaCombina(i) && (!filtroMarca || marcaDoItem(i) === filtroMarca))
+      .forEach((i) => {
+        barra(i.propostaCliente?.marca).cotadas += 1;
+      });
+  });
+  unidades
+    .filter((u) => u.tipo === 'item' && u.resultado === 'ganho')
+    .forEach((u) => {
+      barra(u.marca).ganhas += 1;
+    });
+
+  return [...mapa.values()]
+    .sort((a, b) => b.cotadas - a.cotadas || b.ganhas - a.ganhas || a.nome.localeCompare(b.nome, 'pt-BR'))
+    .slice(0, LIMITE_TOP);
+}
+
+/** Produtos disputados (ganho ou perdido) que nunca ganharam. Só entram itens
+ *  com produto identificado (código interno, marca e modelo ou descrição). */
+export function calcularProdutosNuncaGanhos(unidades: UnidadeResultado[]): ProdutosNuncaGanhos {
+  const mapa = new Map<string, { nome: string; ganhos: number; perdas: number }>();
+  unidades
+    .filter((u) => u.tipo === 'item' && u.produtoChave && (u.resultado === 'ganho' || u.resultado === 'perdido'))
+    .forEach((u) => {
+      const atual = mapa.get(u.produtoChave as string) ?? { nome: u.produtoNome ?? '', ganhos: 0, perdas: 0 };
+      if (u.resultado === 'ganho') atual.ganhos += 1;
+      else atual.perdas += 1;
+      mapa.set(u.produtoChave as string, atual);
+    });
+  const nunca: ProdutoNuncaGanho[] = [...mapa.entries()]
+    .filter(([, v]) => v.ganhos === 0 && v.perdas > 0)
+    .map(([chave, v]) => ({ chave, nome: v.nome, perdas: v.perdas }))
+    .sort((a, b) => b.perdas - a.perdas || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return { totalProdutos: mapa.size, quantidade: nunca.length, linhas: nunca.slice(0, LIMITE_TOP) };
+}
+
+const LIMITE_FAMILIAS_CONCORRENCIA = 5;
+const LIMITE_CONCORRENTES_POR_FAMILIA = 3;
+
+/** Contra quem perdemos em cada família: até 5 famílias com mais perdas e, em
+ *  cada uma, os 3 concorrentes que mais ganharam de nós. Só perdas com o nome
+ *  do vencedor informado. */
+export function calcularConcorrentesFamilia(
+  unidades: UnidadeResultado[],
+  nomeDaFamilia: (id: string) => string
+): ConcorrentesFamilia[] {
+  const familias = new Map<string, { nome: string; perdas: number; concorrentes: Map<string, { nome: string; vitorias: number }> }>();
+  unidades
+    .filter((u) => u.resultado === 'perdido' && u.nomeVencedor?.trim())
+    .forEach((u) => {
+      const chave = u.tipo === 'grupo' ? CHAVE_GRUPOS : (u.familiaId ?? CHAVE_SEM_FAMILIA);
+      const nome = u.tipo === 'grupo' ? 'Grupos' : u.familiaId ? nomeDaFamilia(u.familiaId) : 'Sem família';
+      const fam = familias.get(chave) ?? { nome, perdas: 0, concorrentes: new Map() };
+      fam.perdas += 1;
+      const nomeConcorrente = (u.nomeVencedor as string).trim();
+      const chaveConcorrente = normalizarNome(nomeConcorrente);
+      const conc = fam.concorrentes.get(chaveConcorrente) ?? { nome: nomeConcorrente, vitorias: 0 };
+      conc.vitorias += 1;
+      fam.concorrentes.set(chaveConcorrente, conc);
+      familias.set(chave, fam);
+    });
+  return [...familias.entries()]
+    .map(([chave, fam]) => ({
+      chave,
+      nome: fam.nome,
+      perdas: fam.perdas,
+      concorrentes: [...fam.concorrentes.values()]
+        .sort((a, b) => b.vitorias - a.vitorias || a.nome.localeCompare(b.nome, 'pt-BR'))
+        .slice(0, LIMITE_CONCORRENTES_POR_FAMILIA),
+    }))
+    .sort((a, b) => b.perdas - a.perdas || a.nome.localeCompare(b.nome, 'pt-BR'))
+    .slice(0, LIMITE_FAMILIAS_CONCORRENCIA);
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline e prazos (gestão da carteira e da operação — uso interno)
+// ---------------------------------------------------------------------------
+const ROTULO_FASE: Record<FasePipeline, string> = {
+  aguardando_cliente: 'Aguardando o cliente',
+  sem_decisao: 'Sessão passou sem decisão',
+  proposta: 'Proposta em preparo',
+  em_disputa: 'Em disputa',
+  finalizada: 'Finalizadas',
+  recusada: 'Recusadas pelo cliente',
+};
+
+const ORDEM_FASES: FasePipeline[] = [
+  'aguardando_cliente',
+  'sem_decisao',
+  'proposta',
+  'em_disputa',
+  'finalizada',
+  'recusada',
+];
+
+type DesfechoFinal = 'ganha' | 'perdida' | null;
+
+/** Desfecho final da licitação: o resultado da disputa manda; sem disputa,
+ *  vale o status (que a própria disputa sincroniza). */
+function desfechoFinal(l: Licitacao, disputa: Disputa | undefined): DesfechoFinal {
+  if (disputa) {
+    if (disputa.resultado === 'ganho' || disputa.resultado === 'homologado') return 'ganha';
+    if (disputa.resultado === 'perdido') return 'perdida';
+  }
+  if (l.status === 'ganho') return 'ganha';
+  if (l.status === 'perdido') return 'perdida';
+  return null;
+}
+
+function faseDaLicitacao(l: Licitacao, disputa: Disputa | undefined, agora: Date): FasePipeline {
+  if (desfechoFinal(l, disputa) !== null) return 'finalizada';
+  if (l.decisaoCliente === 'recusar') return 'recusada';
+  if (l.decisaoCliente === 'participar') return l.statusProposta === 'enviada' ? 'em_disputa' : 'proposta';
+  // Decisão pendente.
+  return new Date(dataDaLicitacao(l)) < agora ? 'sem_decisao' : 'aguardando_cliente';
+}
+
+export function calcularPipeline(licitacoes: Licitacao[], disputas: Disputa[], agora: Date = new Date()): Pipeline {
+  const disputaPorLicitacao = new Map(disputas.map((d) => [d.licitacaoId, d]));
+  const etapas: EtapaPipeline[] = ORDEM_FASES.map((chave) => ({
+    chave,
+    rotulo: ROTULO_FASE[chave],
+    quantidade: 0,
+    valorReferencia: 0,
+    ...(chave === 'finalizada' ? { ganhas: 0, perdidas: 0 } : {}),
+  }));
+  const porChave = new Map(etapas.map((e) => [e.chave, e]));
+  let resultadoALancar = 0;
+
+  licitacoes.forEach((l) => {
+    const disputa = disputaPorLicitacao.get(l.id);
+    const fase = faseDaLicitacao(l, disputa, agora);
+    const etapa = porChave.get(fase) as EtapaPipeline;
+    etapa.quantidade += 1;
+    etapa.valorReferencia += valorReferenciaLicitacao(l);
+    if (fase === 'finalizada') {
+      if (desfechoFinal(l, disputa) === 'ganha') etapa.ganhas = (etapa.ganhas ?? 0) + 1;
+      else etapa.perdidas = (etapa.perdidas ?? 0) + 1;
+    }
+    if (fase === 'em_disputa' && new Date(dataDaLicitacao(l)) < agora) resultadoALancar += 1;
+  });
+
+  return { etapas, total: licitacoes.length, resultadoALancar };
+}
+
+const JANELA_PRAZOS_DIAS = 7;
+
+export function calcularPrazosProximos(
+  licitacoes: Licitacao[],
+  disputas: Disputa[],
+  nomeDoCliente: (id: string) => string,
+  agora: Date = new Date()
+): PrazosProximos {
+  const disputaPorLicitacao = new Map(disputas.map((d) => [d.licitacaoId, d]));
+  const limite = new Date(agora.getTime() + JANELA_PRAZOS_DIAS * 86_400_000);
+
+  const linhas: PrazoProximo[] = [];
+  licitacoes.forEach((l) => {
+    const sessao = dataDaLicitacao(l);
+    if (new Date(sessao) < agora) return; // sessão já passou
+    const fase = faseDaLicitacao(l, disputaPorLicitacao.get(l.id), agora);
+    if (fase === 'finalizada' || fase === 'recusada') return;
+    const prazo = calcularPrazoInterno(sessao);
+    if (prazo > limite) return; // prazo interno ainda longe
+    linhas.push({
+      licitacaoId: l.id,
+      clienteNome: nomeDoCliente(l.clienteId),
+      numeroPregao: l.numeroPregao,
+      orgao: l.orgao,
+      dataSessao: sessao,
+      prazoInterno: prazo.toISOString(),
+      urgencia: classificarUrgenciaPrazo(sessao, agora),
+      decisaoCliente: l.decisaoCliente,
+    });
+  });
+
+  linhas.sort((a, b) => a.prazoInterno.localeCompare(b.prazoInterno));
+  return {
+    janelaDias: JANELA_PRAZOS_DIAS,
+    linhas,
+    vencidos: linhas.filter((x) => x.urgencia === 'vencido').length,
+    vencendoEm24h: linhas.filter((x) => x.urgencia === 'atencao').length,
+    semDecisaoDoCliente: linhas.filter((x) => x.decisaoCliente === 'pendente').length,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Conjunto completo (painel do Administrador)
 // ---------------------------------------------------------------------------
-export function calcularIndicadoresAdmin(dados: DadosBaseIndicadores, filtros: FiltrosIndicadores): IndicadoresAdmin {
+export function calcularIndicadoresAdmin(
+  dados: DadosBaseIndicadores,
+  filtros: FiltrosIndicadores,
+  agora: Date = new Date()
+): IndicadoresAdmin {
   const nomeDaFamilia = (id: string) => dados.familias.find((f) => f.id === id)?.nome ?? 'Família removida';
   const nomeDoCliente = (id: string) => dados.clientes.find((c) => c.id === id)?.nome ?? '—';
 
-  const licitacoes = filtrarLicitacoes(dados.licitacoes, filtros);
-  const unidades = montarUnidades(licitacoes, dados.disputas, filtros.familiaId);
+  const licitacoes = filtrarLicitacoes(dados.licitacoes, filtros, dados.disputas, agora);
+  const unidades = montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca);
 
   // Período anterior (mesmos demais filtros) para a variação da taxa de vitória.
   const anterior = periodoAnterior(filtros);
   let taxaAnterior: TaxaVitoria | null = null;
   if (anterior) {
-    const licitacoesAnteriores = filtrarLicitacoes(dados.licitacoes, { ...filtros, ...anterior });
-    taxaAnterior = calcularTaxaVitoria(montarUnidades(licitacoesAnteriores, dados.disputas, filtros.familiaId));
+    const licitacoesAnteriores = filtrarLicitacoes(dados.licitacoes, { ...filtros, ...anterior }, dados.disputas, agora);
+    taxaAnterior = calcularTaxaVitoria(
+      montarUnidades(licitacoesAnteriores, dados.disputas, filtros.familiaId, filtros.marca)
+    );
   }
 
   return {
@@ -659,7 +1021,7 @@ export function calcularIndicadoresAdmin(dados: DadosBaseIndicadores, filtros: F
     taxaVitoria: { atual: calcularTaxaVitoria(unidades), anterior: taxaAnterior },
     volumePorMes: calcularVolumePorMes(licitacoes),
     // Com filtro de família, o gráfico mostra só a família escolhida.
-    familias: calcularFamilias(licitacoes, unidades, nomeDaFamilia).filter(
+    familias: calcularFamilias(licitacoes, unidades, nomeDaFamilia, filtros.marca).filter(
       (barra) => !filtros.familiaId || barra.chave === filtros.familiaId
     ),
     ganhoSobreMinimo: calcularGanhoSobreMinimo(unidades, nomeDaFamilia),
@@ -670,6 +1032,18 @@ export function calcularIndicadoresAdmin(dados: DadosBaseIndicadores, filtros: F
     descontoMedio: calcularDescontoMedio(unidades, nomeDaFamilia),
     orgaos: calcularOrgaos(licitacoes, unidades),
     concorrentes: calcularConcorrentes(unidades),
+    taxaVitoriaFamilia: calcularTaxaVitoriaFamilia(unidades, nomeDaFamilia),
+    marcas: calcularMarcas(licitacoes, unidades, filtros.familiaId, filtros.marca),
+    produtosNuncaGanhos: calcularProdutosNuncaGanhos(unidades),
+    concorrentesFamilia: calcularConcorrentesFamilia(unidades, nomeDaFamilia),
+    pipeline: calcularPipeline(licitacoes, dados.disputas, agora),
+    // Os prazos olham sempre a partir de agora: ignoram o filtro de período.
+    prazosProximos: calcularPrazosProximos(
+      filtrarLicitacoes(dados.licitacoes, { ...filtros, dataDe: undefined, dataAte: undefined }, dados.disputas, agora),
+      dados.disputas,
+      nomeDoCliente,
+      agora
+    ),
     totalLicitacoes: licitacoes.length,
   };
 }

@@ -7,17 +7,26 @@
 // Márcio (01/10), o "Sair" fica no canto direito do título da página
 // (ex.: "Bem-vindo, JOANA"), não dentro da sidebar.
 
+import { createContext, useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+
+/** true dentro do ClienteLayout, que já mostra um "Sair" fixo no topo de todas
+ *  as telas (14/10, a pedido do Márcio). Nesse caso o "Sair" que as páginas
+ *  colocam no título deixa de aparecer, para não ficar duplicado. */
+export const SairFixoContext = createContext(false)
 
 export function BotaoSair() {
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const jaTemSairFixo = useContext(SairFixoContext)
 
   function handleLogout() {
     logout()
     navigate('/login', { replace: true })
   }
+
+  if (jaTemSairFixo) return null
 
   return (
     <button

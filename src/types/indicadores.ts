@@ -20,6 +20,32 @@ export interface FiltrosIndicadores {
   clienteId?: string;
   modalidade?: string;
   familiaId?: string; // id da família, ou FILTRO_SEM_FAMILIA
+  /** Nome do órgão já normalizado (sem acento, maiúsculas nem espaços extras). */
+  orgao?: string;
+  /** Marca da proposta do cliente, já normalizada: só licitações com ao menos
+   *  um item dessa marca; os resultados passam a considerar só esses itens. */
+  marca?: string;
+  /** Resultado da licitação (ver ResultadoLicitacaoFiltro). */
+  resultado?: ResultadoLicitacaoFiltro;
+  /** Fase no pipeline — filtro "Status", só para Administrador e Analista. */
+  fase?: FasePipeline;
+}
+
+/** Resultado de uma licitação para o filtro "Resultado". "Não participou" =
+ *  o cliente recusou ou a sessão passou sem ele decidir. */
+export type ResultadoLicitacaoFiltro = 'ganho' | 'perdido' | 'em_andamento' | 'nao_participou';
+
+export const ROTULO_RESULTADO_LICITACAO: Record<ResultadoLicitacaoFiltro, string> = {
+  ganho: 'Ganho',
+  perdido: 'Perdido',
+  em_andamento: 'Em andamento',
+  nao_participou: 'Não participou',
+};
+
+/** Opção de lista suspensa dos filtros (valor normalizado + nome para exibir). */
+export interface OpcaoFiltro {
+  value: string;
+  label: string;
 }
 
 export interface ClienteResumo {
@@ -202,6 +228,122 @@ export interface Concorrente {
   valorTotal: number; // soma dos valores dele nesses itens/grupos
 }
 
+// ---------------------------------------------------------------------------
+// Produtos e marcas (taxa por família, marcas, produtos nunca ganhos e
+// concorrentes por família)
+// ---------------------------------------------------------------------------
+/** Chave da barra "Sem marca" (itens cotados sem marca informada). */
+export const CHAVE_SEM_MARCA = 'sem-marca';
+
+export interface TaxaFamilia {
+  chave: string; // id da família, CHAVE_SEM_FAMILIA ou CHAVE_GRUPOS
+  nome: string;
+  ganhos: number;
+  disputados: number; // ganhos + perdidos
+  percentual: number | null; // ganhos ÷ disputados
+}
+
+/** Taxa de vitória por quantidade, por família: só itens e grupos ganhos ou
+ *  perdidos (a mesma base da taxa de vitória geral). */
+export interface TaxaVitoriaFamilia {
+  geral: number | null;
+  ganhos: number;
+  disputados: number;
+  porFamilia: TaxaFamilia[]; // até 10, das mais disputadas para as menos
+}
+
+export interface BarraMarca {
+  chave: string; // marca normalizada ou CHAVE_SEM_MARCA
+  nome: string; // como foi digitada pela primeira vez
+  cotadas: number; // itens soltos com preço mínimo informado pelo cliente
+  ganhas: number; // itens soltos ganhos
+}
+
+export interface ProdutoNuncaGanho {
+  chave: string;
+  nome: string;
+  perdas: number; // vezes em que foi disputado e perdido
+}
+
+/** Produtos disputados (ganho ou perdido) que nunca ganharam: base para a
+ *  revisão de portfólio do cliente. */
+export interface ProdutosNuncaGanhos {
+  totalProdutos: number; // produtos distintos já disputados
+  quantidade: number; // quantos deles nunca ganharam
+  linhas: ProdutoNuncaGanho[]; // até 10, dos mais perdidos
+}
+
+export interface ConcorrenteNaFamilia {
+  nome: string;
+  vitorias: number;
+}
+
+export interface ConcorrentesFamilia {
+  chave: string; // id da família, CHAVE_SEM_FAMILIA ou CHAVE_GRUPOS
+  nome: string;
+  perdas: number; // itens/grupos perdidos com o vencedor identificado
+  concorrentes: ConcorrenteNaFamilia[]; // até 3, os que mais ganharam de nós
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline — licitações por fase (gestão da carteira, uso interno)
+// ---------------------------------------------------------------------------
+/** Fases calculadas a partir da decisão do cliente, da proposta e do
+ *  resultado da disputa (nenhum campo novo no banco). */
+export type FasePipeline =
+  | 'aguardando_cliente' // cliente ainda não decidiu e a sessão não passou
+  | 'sem_decisao' // a sessão já passou e o cliente não decidiu
+  | 'proposta' // cliente confirmou participação, proposta ainda não enviada
+  | 'em_disputa' // proposta enviada, sem resultado final da disputa
+  | 'finalizada' // ganha ou perdida
+  | 'recusada'; // cliente recusou participar
+
+export interface EtapaPipeline {
+  chave: FasePipeline;
+  rotulo: string;
+  quantidade: number;
+  valorReferencia: number; // soma do valor de referência das licitações da fase
+  /** Só na fase "finalizada": quantas foram ganhas e quantas perdidas. */
+  ganhas?: number;
+  perdidas?: number;
+}
+
+export interface Pipeline {
+  etapas: EtapaPipeline[];
+  total: number;
+  /** Sessão já ocorreu e o resultado ainda não foi lançado (fase em_disputa
+   *  com a sessão no passado) — pendência de trabalho para o analista. */
+  resultadoALancar: number;
+}
+
+// ---------------------------------------------------------------------------
+// Prazos dos próximos 7 dias (gestão da operação, uso interno)
+// ---------------------------------------------------------------------------
+export type UrgenciaPrazoIndicador = 'vencido' | 'atencao' | 'ok';
+
+export interface PrazoProximo {
+  licitacaoId: string;
+  clienteNome: string;
+  numeroPregao: string;
+  orgao: string;
+  dataSessao: string; // ISO
+  prazoInterno: string; // ISO — prazo interno da Salutti (regra de Configurações)
+  urgencia: UrgenciaPrazoIndicador;
+  decisaoCliente: 'pendente' | 'participar' | 'recusar';
+}
+
+export interface PrazosProximos {
+  /** Janela olhada, em dias (7). */
+  janelaDias: number;
+  /** Licitações em aberto com sessão futura cujo prazo interno já passou ou
+   *  vence na janela, da mais urgente para a menos urgente. */
+  linhas: PrazoProximo[];
+  vencidos: number;
+  vencendoEm24h: number;
+  /** Quantas dessas ainda estão sem decisão do cliente. */
+  semDecisaoDoCliente: number;
+}
+
 export interface IndicadoresAdmin {
   funil: EtapaFunil[];
   taxaVitoria: TaxaVitoriaComparada;
@@ -217,6 +359,19 @@ export interface IndicadoresAdmin {
   descontoMedio: IndicadorPercentual;
   orgaos: BarraOrgao[]; // top 10
   concorrentes: Concorrente[]; // top 10
+  /** Taxa de vitória por família (por quantidade). */
+  taxaVitoriaFamilia: TaxaVitoriaFamilia;
+  /** Marcas mais cotadas e mais ganhas (top 10). */
+  marcas: BarraMarca[];
+  /** Produtos disputados que nunca ganharam. */
+  produtosNuncaGanhos: ProdutosNuncaGanhos;
+  /** Contra quem perdemos em cada família (até 5 famílias). */
+  concorrentesFamilia: ConcorrentesFamilia[];
+  /** Licitações por fase (respeita todos os filtros). */
+  pipeline: Pipeline;
+  /** Prazos internos dos próximos 7 dias (respeita cliente, modalidade e
+   *  família; ignora o período, porque olha sempre a partir de agora). */
+  prazosProximos: PrazosProximos;
   /** Quantidade de licitações consideradas após os filtros. */
   totalLicitacoes: number;
 }
@@ -229,6 +384,12 @@ export interface UnidadeResultado {
   tipo: 'item' | 'grupo';
   rotulo: string;
   familiaId?: string; // só itens
+  /** Marca informada pelo cliente na proposta (só itens). */
+  marca?: string;
+  /** Produto ofertado pelo cliente (só itens): código interno, marca e modelo
+   *  ou descrição, nessa ordem de preferência. */
+  produtoChave?: string;
+  produtoNome?: string;
   resultado?: ResultadoItemDisputa;
   valorOfertado: number | null;
   valorMinimoComFrete: number | null;

@@ -1,7 +1,8 @@
 // src/components/indicadores/FiltrosIndicadoresBar.tsx
 //
 // Barra de filtros globais do painel de Indicadores: Período (atalhos ou
-// datas livres), Cliente, Modalidade e Família. Os filtros valem para todos
+// datas livres), Cliente, Modalidade, Família, Órgão, Marca, Resultado e
+// Status (fase do pipeline, só para a equipe da Salutti). Os filtros valem para todos
 // os gráficos da página. O componente é controlado: quem o usa guarda os
 // filtros no estado e recalcula os indicadores a cada mudança.
 
@@ -9,8 +10,12 @@ import { useMemo, useState } from 'react'
 import { SelectField } from '../SelectField'
 import {
   FILTRO_SEM_FAMILIA,
+  ROTULO_RESULTADO_LICITACAO,
   type ClienteResumo,
+  type FasePipeline,
   type FiltrosIndicadores,
+  type OpcaoFiltro,
+  type ResultadoLicitacaoFiltro,
 } from '../../types/indicadores'
 import { MODALIDADE_LICITACAO_LABEL, type ModalidadeLicitacao } from '../../types/licitacao'
 import type { FamiliaProduto } from '../../services/familiaProdutoService'
@@ -24,6 +29,16 @@ const ATALHOS: { id: AtalhoPeriodo; rotulo: string }[] = [
   { id: 'ano', rotulo: 'Este ano' },
   { id: 'personalizado', rotulo: 'Personalizado' },
 ]
+
+// Mesmos rótulos das fases do card Pipeline (utils/indicadoresCalculos.ts).
+const ROTULO_FASE: Record<FasePipeline, string> = {
+  aguardando_cliente: 'Aguardando o cliente',
+  sem_decisao: 'Sessão passou sem decisão',
+  proposta: 'Proposta em preparo',
+  em_disputa: 'Em disputa',
+  finalizada: 'Finalizadas',
+  recusada: 'Recusadas pelo cliente',
+}
 
 function paraISO(data: Date): string {
   const mes = String(data.getMonth() + 1).padStart(2, '0')
@@ -53,8 +68,14 @@ interface FiltrosIndicadoresBarProps {
   onChange: (filtros: FiltrosIndicadores) => void
   clientes: ClienteResumo[]
   familias: FamiliaProduto[]
+  /** Órgãos e marcas existentes nos dados carregados (ver listarOpcoesOrgaos
+   *  e listarOpcoesMarcas em utils/indicadoresCalculos.ts). */
+  orgaos?: OpcaoFiltro[]
+  marcas?: OpcaoFiltro[]
   /** Falso no painel do cliente (só existe a própria empresa). */
   mostrarCliente?: boolean
+  /** Falso no painel do cliente: o status (fase do pipeline) é interno. */
+  mostrarStatus?: boolean
 }
 
 export function FiltrosIndicadoresBar({
@@ -62,7 +83,10 @@ export function FiltrosIndicadoresBar({
   onChange,
   clientes,
   familias,
+  orgaos = [],
+  marcas = [],
   mostrarCliente = true,
+  mostrarStatus = true,
 }: FiltrosIndicadoresBarProps) {
   const [atalho, setAtalho] = useState<AtalhoPeriodo>('todo')
 
@@ -104,6 +128,28 @@ export function FiltrosIndicadoresBar({
     ]
   }, [familias, clientes, filtros.clienteId])
 
+  const opcoesOrgaos = useMemo(() => [{ value: '', label: 'Todos os órgãos' }, ...orgaos], [orgaos])
+  const opcoesMarcas = useMemo(() => [{ value: '', label: 'Todas as marcas' }, ...marcas], [marcas])
+
+  const opcoesResultados = useMemo(
+    () => [
+      { value: '', label: 'Todos os resultados' },
+      ...(Object.keys(ROTULO_RESULTADO_LICITACAO) as ResultadoLicitacaoFiltro[]).map((r) => ({
+        value: r,
+        label: ROTULO_RESULTADO_LICITACAO[r],
+      })),
+    ],
+    [],
+  )
+
+  const opcoesStatus = useMemo(
+    () => [
+      { value: '', label: 'Todos os status' },
+      ...(Object.keys(ROTULO_FASE) as FasePipeline[]).map((f) => ({ value: f, label: ROTULO_FASE[f] })),
+    ],
+    [],
+  )
+
   function escolherAtalho(novo: AtalhoPeriodo) {
     setAtalho(novo)
     if (novo === 'personalizado') return
@@ -122,7 +168,15 @@ export function FiltrosIndicadoresBar({
   }
 
   const temFiltro = Boolean(
-    filtros.dataDe || filtros.dataAte || filtros.clienteId || filtros.modalidade || filtros.familiaId,
+    filtros.dataDe ||
+      filtros.dataAte ||
+      filtros.clienteId ||
+      filtros.modalidade ||
+      filtros.familiaId ||
+      filtros.orgao ||
+      filtros.marca ||
+      filtros.resultado ||
+      filtros.fase,
   )
 
   return (
@@ -200,6 +254,34 @@ export function FiltrosIndicadoresBar({
           options={opcoesFamilias}
           onChange={(e) => onChange({ ...filtros, familiaId: e.target.value || undefined })}
         />
+        <SelectField
+          label="Órgão"
+          value={filtros.orgao ?? ''}
+          options={opcoesOrgaos}
+          onChange={(e) => onChange({ ...filtros, orgao: e.target.value || undefined })}
+        />
+        <SelectField
+          label="Marca"
+          value={filtros.marca ?? ''}
+          options={opcoesMarcas}
+          onChange={(e) => onChange({ ...filtros, marca: e.target.value || undefined })}
+        />
+        <SelectField
+          label="Resultado"
+          value={filtros.resultado ?? ''}
+          options={opcoesResultados}
+          onChange={(e) =>
+            onChange({ ...filtros, resultado: (e.target.value || undefined) as ResultadoLicitacaoFiltro | undefined })
+          }
+        />
+        {mostrarStatus && (
+          <SelectField
+            label="Status"
+            value={filtros.fase ?? ''}
+            options={opcoesStatus}
+            onChange={(e) => onChange({ ...filtros, fase: (e.target.value || undefined) as FasePipeline | undefined })}
+          />
+        )}
       </div>
 
       {temFiltro && (

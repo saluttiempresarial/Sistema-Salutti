@@ -10,6 +10,8 @@
 //   para o Operador, o Responsável). Os resultados das disputas vêm da função
 //   do banco `relatorio_disputas_cliente` (migrações 038 e 039). O Responsável
 //   também vê, ao final da página, a liberação dos seus Operadores.
+// Filtros: período, cliente, modalidade, família, órgão, marca, resultado e,
+// só para a equipe da Salutti, status (fase do pipeline).
 // Carrega os dados uma vez e recalcula os números no navegador a cada mudança
 // de filtro, para ficarem idênticos aos da tela de Disputa.
 
@@ -22,7 +24,11 @@ import { usePermissoes } from '../../../hooks/usePermissoes'
 import { liberacaoIndicadoresService } from '../../../services/liberacaoIndicadoresService'
 import { liberacaoOperadorService } from '../../../services/liberacaoOperadorService'
 import { relatorioIndicadoresService } from '../../../services/relatorioIndicadoresService'
-import { calcularIndicadoresAdmin } from '../../../utils/indicadoresCalculos'
+import {
+  calcularIndicadoresAdmin,
+  listarOpcoesMarcas,
+  listarOpcoesOrgaos,
+} from '../../../utils/indicadoresCalculos'
 import type { DadosBaseIndicadores, FiltrosIndicadores } from '../../../types/indicadores'
 import { formatarNumero } from '../../../utils/prazoUtils'
 
@@ -104,6 +110,11 @@ export function IndicadoresPage() {
     [dados, filtros],
   )
 
+  // Opções dos filtros de órgão e marca: só o que existe nos dados que este
+  // perfil enxerga (a carteira do Analista ou a própria empresa do Cliente).
+  const opcoesOrgaos = useMemo(() => (dados ? listarOpcoesOrgaos(dados.licitacoes) : []), [dados])
+  const opcoesMarcas = useMemo(() => (dados ? listarOpcoesMarcas(dados.licitacoes) : []), [dados])
+
   return (
     <div className="min-h-screen space-y-5 bg-paper p-8">
       <header>
@@ -142,6 +153,9 @@ export function IndicadoresPage() {
             clientes={dados.clientes}
             familias={dados.familias}
             mostrarCliente={!ehCliente}
+            mostrarStatus={!ehCliente}
+            orgaos={opcoesOrgaos}
+            marcas={opcoesMarcas}
           />
           <p className="font-body text-sm text-ink-soft">
             {formatarNumero(indicadores.totalLicitacoes)}{' '}
@@ -155,4 +169,3 @@ export function IndicadoresPage() {
     </div>
   )
 }
-  
