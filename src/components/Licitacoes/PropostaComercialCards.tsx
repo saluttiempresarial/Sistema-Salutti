@@ -41,6 +41,11 @@ import {
   totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
 import { formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
+import {
+  ROTULO_FALTA_IDENTIFICACAO,
+  faltaIdentificacaoDoItem,
+  pendenciaIdentificacaoDaLicitacao,
+} from '@/utils/propostaPendencias'
 
 // Mesmo contrato que PropostaComercialTable.tsx já usa — mantido aqui com o
 // mesmo nome e formato para a troca de componente (Etapa 5) não exigir
@@ -296,6 +301,15 @@ export function PropostaComercialCards({
     ? itensAoVivo.filter((item) => itemIndividualAcimaDaReferencia(item) && !item.decisaoAcimaReferencia).length
     : 0
 
+  // Marca/Fabricante e Modelo/Versão são obrigatórios (15/10, Márcio). Itens com
+  // valor preenchido e sem marca e/ou modelo geram o alerta "Falta marca/modelo"
+  // (utils/propostaPendencias.ts). Considera o que está digitado na tela, mesmo
+  // antes de salvar, e ignora itens exclusivos ME/EPP bloqueados para o Cliente.
+  const pendenciaIdentificacao = pendenciaIdentificacaoDaLicitacao({
+    ...licitacao,
+    itens: itensAoVivo.filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais')),
+  })
+
   async function decidirItem(itemId: string, decisao: DecisaoAcimaReferencia | null) {
     if (!onDecidirAcimaReferencia) return
     setDecidindoItemId(itemId)
@@ -422,6 +436,26 @@ export function PropostaComercialCards({
       return
     }
 
+    // Cliente: marca/fabricante e modelo/versão são obrigatórios nos itens que
+    // ele vai cotar (os que têm valor). Equipe (Admin/Analista) pode salvar
+    // rascunho: o alerta "Falta marca/modelo" cobre o acompanhamento.
+    if (!visaoEquipe) {
+      const semIdentificacao = itensAoVivo.filter(
+        (item) => !(item.exclusivoMeEpp && porteCliente === 'demais') && faltaIdentificacaoDoItem(item) !== null
+      )
+      if (semIdentificacao.length > 0) {
+        const lista = semIdentificacao
+          .slice(0, 5)
+          .map((item) => `${item.numero} (${ROTULO_FALTA_IDENTIFICACAO[faltaIdentificacaoDoItem(item) as keyof typeof ROTULO_FALTA_IDENTIFICACAO].toLowerCase()})`)
+          .join(', ')
+        const resto = semIdentificacao.length > 5 ? ` e mais ${semIdentificacao.length - 5}` : ''
+        setErro(
+          `Informe a marca/fabricante e o modelo/versão de todos os itens com valor preenchido. Itens pendentes: ${lista}${resto}.`
+        )
+        return
+      }
+    }
+
     try {
       const propostaPorItem = itensAoVivo.map((item) => ({
         id: item.id,
@@ -539,6 +573,27 @@ export function PropostaComercialCards({
           ⏳ {quantidadePendentesDecisao} {quantidadePendentesDecisao === 1 ? 'item individual está' : 'itens individuais estão'}{' '}
           acima da referência, aguardando decisão. Abra o item e escolha <strong>Liberar para disputa</strong> ou{' '}
           <strong>Não participar</strong>. Sem liberação, o item não aparece na Disputa.
+        </div>
+      )}
+      {pendenciaIdentificacao && (
+        <div
+          role="alert"
+          className={`rounded-lg border px-3 py-2 font-body text-xs ${
+            pendenciaIdentificacao.urgencia === 'normal'
+              ? 'border-brass/40 bg-brass-pale text-brass'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          ⚠ <strong>{pendenciaIdentificacao.mensagem}.</strong>{' '}
+          {!visaoEquipe
+            ? podeEditarPropostaComercial
+              ? 'Informe a marca/fabricante e o modelo/versão de todos os itens que você vai cotar. Sem isso, a proposta não pode ser salva.'
+              : 'Fale com a Salutti para completar a marca e o modelo dos itens cotados.'
+            : pendenciaIdentificacao.urgencia === 'normal'
+              ? 'Marca/fabricante e modelo/versão são obrigatórios. Acompanhe com o cliente antes do prazo dele.'
+              : pendenciaIdentificacao.urgencia === 'urgente'
+                ? 'O prazo do cliente está encerrando (4 dias úteis antes da sessão). Confira com o cliente ou complete direto na proposta.'
+                : 'O prazo definitivo já encerrou: só o Administrador consegue completar.'}
         </div>
       )}
       {erroDecisao && (
@@ -670,6 +725,7 @@ export function PropostaComercialCards({
                   const itemAbertoAgora = itemAberto === itemVivo.id
                   const formProposta = formPorItem[itemVivo.id] ?? { marca: '', modelo: '', precoMinimo: '' }
                   const formReferencia = formReferenciaPorItem[itemVivo.id]
+                  const faltaIdentificacao = bloqueadoMeEpp ? null : faltaIdentificacaoDoItem(itemVivo)
 
                   return (
                     <div key={itemVivo.id} className="rounded-xl border border-ink-soft/10 bg-paper-2/30">
@@ -694,6 +750,11 @@ export function PropostaComercialCards({
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
+                          {faltaIdentificacao && (
+                            <span className="whitespace-nowrap rounded-full bg-red-50 px-2.5 py-1 font-body text-[11px] font-semibold text-red-700">
+                              ⚠ {ROTULO_FALTA_IDENTIFICACAO[faltaIdentificacao]}
+                            </span>
+                          )}
                           <span className={`whitespace-nowrap rounded-full px-2.5 py-1 font-body text-[11px] font-semibold ${status.classe}`}>
                             {status.label}
                           </span>

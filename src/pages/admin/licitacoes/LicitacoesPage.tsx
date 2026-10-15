@@ -15,6 +15,8 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { Button } from '../../../components/Button';
 import { LicitacaoFormModal } from './LicitacaoFormModal';
 import { licitacaoService } from '../../../services/licitacaoService';
+import { propostaPendenciasService } from '../../../services/propostaPendenciasService';
+import { pendenciaDeFaltas, type PendenciaIdentificacao } from '../../../utils/propostaPendencias';
 import {
   Licitacao,
   LicitacaoFormData,
@@ -63,6 +65,10 @@ export function LicitacoesPage() {
   // (ex.: a coluna "Cliente" ficava em branco para qualquer cliente real).
   const [nomesClientes, setNomesClientes] = useState<Record<string, string>>({});
 
+  // Alerta "Falta marca/modelo" por licitação (15/10, Márcio): itens com valor
+  // preenchido e sem marca e/ou modelo. Falha na consulta não bloqueia a lista.
+  const [pendencias, setPendencias] = useState<Record<string, PendenciaIdentificacao>>({});
+
   const carregar = useCallback(async () => {
     if (carregandoPermissoes) return;
     setCarregando(true);
@@ -76,6 +82,18 @@ export function LicitacoesPage() {
     setItens(resultado.itens);
     setTotal(resultado.total);
     setCarregando(false);
+
+    try {
+      const faltas = await propostaPendenciasService.faltasPorLicitacao(resultado.itens.map((l) => l.id));
+      const mapa: Record<string, PendenciaIdentificacao> = {};
+      resultado.itens.forEach((l) => {
+        const pendencia = pendenciaDeFaltas(l, faltas[l.id] ?? []);
+        if (pendencia) mapa[l.id] = pendencia;
+      });
+      setPendencias(mapa);
+    } catch {
+      setPendencias({});
+    }
   }, [busca, statusFiltro, page, carregandoPermissoes, restricaoDados]);
 
   useEffect(() => {
@@ -321,6 +339,24 @@ export function LicitacoesPage() {
                         `${licitacao.totalItens} ${licitacao.totalItens === 1 ? 'item' : 'itens'}`
                       ) : (
                         <span className="text-brass">Sem itens</span>
+                      )}
+                      {pendencias[licitacao.id] && (
+                        <span
+                          title={
+                            pendencias[licitacao.id].urgencia === 'travada'
+                              ? 'Prazo definitivo encerrado: só o Administrador consegue completar.'
+                              : pendencias[licitacao.id].urgencia === 'urgente'
+                                ? 'O prazo do cliente está encerrando. Confira com o cliente ou complete direto na proposta.'
+                                : 'Marca/fabricante e modelo/versão são obrigatórios.'
+                          }
+                          className={`mt-1 block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            pendencias[licitacao.id].urgencia === 'normal'
+                              ? 'bg-brass-pale text-brass'
+                              : 'bg-red-50 text-red-700'
+                          }`}
+                        >
+                          ⚠ {pendencias[licitacao.id].mensagem}
+                        </span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">

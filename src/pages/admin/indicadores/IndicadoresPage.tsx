@@ -21,7 +21,7 @@ import { IndicadoresGraficos } from '../../../components/indicadores/Indicadores
 import { LiberacaoOperadoresSecao } from '../../../components/indicadores/LiberacaoOperadoresSecao'
 import { useAuth } from '../../../context/AuthContext'
 import { usePermissoes } from '../../../hooks/usePermissoes'
-import { liberacaoIndicadoresService } from '../../../services/liberacaoIndicadoresService'
+import { liberacaoAnalistaService } from '../../../services/liberacaoAnalistaService'
 import { liberacaoOperadorService } from '../../../services/liberacaoOperadorService'
 import { relatorioIndicadoresService } from '../../../services/relatorioIndicadoresService'
 import {
@@ -67,9 +67,10 @@ export function IndicadoresPage() {
         return
       }
 
-      const [base, liberacao] = await Promise.all([
+      const [base, chavesAnalista] = await Promise.all([
         relatorioIndicadoresService.carregarDadosBase(restricaoDados ?? {}),
-        ehAdmin ? Promise.resolve(null) : liberacaoIndicadoresService.listar(),
+        // Analista: padrão da coluna "Analista" + exceções dele (migração 046).
+        ehAdmin ? Promise.resolve(null) : liberacaoAnalistaService.indicadoresDoAnalistaLogado(),
       ])
 
       if (ehAdmin) {
@@ -86,13 +87,7 @@ export function IndicadoresPage() {
           familias: base.familias.filter((f) => idsClientes.has(f.clienteId)),
           clientes: base.clientes.filter((c) => idsClientes.has(c.id)),
         })
-        setVisiveis(
-          new Set(
-            Object.entries(liberacao ?? {})
-              .filter(([, perfis]) => perfis.analista)
-              .map(([chave]) => chave),
-          ),
-        )
+        setVisiveis(new Set(chavesAnalista ?? []))
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível carregar os indicadores.')

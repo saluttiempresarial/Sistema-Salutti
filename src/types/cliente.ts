@@ -112,14 +112,12 @@ export function clienteParaFormData(cliente: Cliente): ClienteFormData {
 }
 
 export const SEGMENTOS_DISPONIVEIS = [
-  'Administração Pública',
-  'Construção Civil',
-  'Saúde',
-  'Educação',
-  'Tecnologia da Informação',
-  'Alimentação',
   'Serviços Gerais',
-  'Outro',
+  'Higiene e Sanitizantes',
+  'Máquinas e Ferramentas',
+  'Materiais de Construção',
+  'Alimentos',
+  'Outros',
 ]
 
 export const ESTADOS_BRASILEIROS = [

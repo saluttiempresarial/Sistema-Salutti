@@ -1,7 +1,7 @@
 // src/components/indicadores/FiltrosIndicadoresBar.tsx
 //
 // Barra de filtros globais do painel de Indicadores: Período (atalhos ou
-// datas livres), Cliente, Modalidade, Família, Órgão, Marca, Resultado e
+// datas livres), Cliente, Modalidade, Família, Órgão, Marca, Resultado da licitação e
 // Status (fase do pipeline, só para a equipe da Salutti). Os filtros valem para todos
 // os gráficos da página. O componente é controlado: quem o usa guarda os
 // filtros no estado e recalcula os indicadores a cada mudança.
@@ -150,6 +150,16 @@ export function FiltrosIndicadoresBar({
     [],
   )
 
+  // Aviso sob os filtros: o Resultado escolhe LICITAÇÕES; os itens dentro
+  // delas continuam contados nos indicadores por item (taxa de vitória etc.).
+  const avisoResultado: string | null = !filtros.resultado
+    ? null
+    : filtros.resultado === 'ganho'
+      ? 'Filtrando licitações ganhas: os itens dentro delas continuam contados, inclusive os perdidos.'
+      : filtros.resultado === 'perdido'
+        ? 'Filtrando licitações perdidas: os itens dentro delas continuam contados, inclusive os ganhos.'
+        : `Filtrando licitações com resultado "${ROTULO_RESULTADO_LICITACAO[filtros.resultado].toLowerCase()}": os indicadores por item consideram só os itens dessas licitações.`
+
   function escolherAtalho(novo: AtalhoPeriodo) {
     setAtalho(novo)
     if (novo === 'personalizado') return
@@ -267,7 +277,7 @@ export function FiltrosIndicadoresBar({
           onChange={(e) => onChange({ ...filtros, marca: e.target.value || undefined })}
         />
         <SelectField
-          label="Resultado"
+          label="Resultado da licitação"
           value={filtros.resultado ?? ''}
           options={opcoesResultados}
           onChange={(e) =>
@@ -283,6 +293,12 @@ export function FiltrosIndicadoresBar({
           />
         )}
       </div>
+
+      {avisoResultado && (
+        <p className="mt-3 rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft" role="status">
+          {avisoResultado}
+        </p>
+      )}
 
       {temFiltro && (
         <button

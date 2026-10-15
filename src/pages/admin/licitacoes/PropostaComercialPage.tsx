@@ -48,7 +48,6 @@ import {
   classificarStatusProposta,
   totalReferenciaItem,
   podeEditarPropostaCliente,
-  podeAdminPreencherPropostaDiretamente,
   propostaComercialTravadaDeVez,
   DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE,
   DIAS_UTEIS_LIMITE_ABSOLUTO_PROPOSTA,
@@ -425,17 +424,18 @@ export function PropostaComercialPage() {
               Márcio). Quem libera escolhe a data/hora até quando vale —
               não é mais um número fixo de dias. Trava ABSOLUTA (mesmo dia,
               novo pedido): a partir de 1 dia útil antes da sessão, 18h30,
-              ninguém mais preenche a Proposta Comercial — nem Cliente, nem
-              Admin, nem Analista preenchendo direto — então some tudo (o
-              formulário de edição também fica bloqueado, via
-              podeAdminPreencherPropostaDiretamente). */}
+              Cliente e Analista não preenchem mais a Proposta Comercial.
+              Desde 15/10 (pedido do Márcio, migração 045) SOMENTE o
+              Administrador continua podendo editar depois dessa trava. */}
           {podeGerenciarPrazoCliente && licitacao.decisaoCliente !== 'recusar' && (
             propostaComercialTravadaDeVez(licitacao) ? (
               <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">
                 <p className="font-body text-xs text-red-700">
                   🔒 Prazo encerrado definitivamente ({DIAS_UTEIS_LIMITE_ABSOLUTO_PROPOSTA} dia útil antes da sessão,
-                  18h30). Ninguém pode mais preencher ou editar a Proposta Comercial desta licitação — nem o
-                  Cliente, nem o Admin, nem o Analista.
+                  18h30).{' '}
+                  {isAdmin
+                    ? 'Somente o Administrador pode preencher ou editar a Proposta Comercial desta licitação. O Cliente e o Analista não podem mais.'
+                    : 'Somente o Administrador pode preencher ou editar a Proposta Comercial desta licitação. Para qualquer alteração, fale com ele.'}
                 </p>
               </div>
             ) : licitacao.prazoPropostaLiberado && licitacao.prazoPropostaLiberadoAte ? (
@@ -535,7 +535,7 @@ export function PropostaComercialPage() {
           <PropostaComercialCards
             licitacao={licitacao}
             podeEditarItens={isAdmin}
-            podeEditarPropostaComercial={isAdmin && podeAdminPreencherPropostaDiretamente(licitacao)}
+            podeEditarPropostaComercial={isAdmin}
             salvando={salvando}
             onSalvar={handleSalvar}
             textoBotaoSalvar="Salvar alterações"

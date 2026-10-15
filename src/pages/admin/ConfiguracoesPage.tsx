@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { TextField } from '../../components/TextField';
 import { Button } from '../../components/Button';
 import { LiberacaoIndicadoresSecao } from '../../components/indicadores/LiberacaoIndicadoresSecao';
+import { LiberacaoAnalistasSecao } from '../../components/indicadores/LiberacaoAnalistasSecao';
 import { configuracaoService } from '../../services/configuracaoService';
 import { ConfiguracoesSistema, DadosEmpresa, RegraPrazoInterno, LinkRapido } from '../../types/configuracoes';
 
@@ -232,6 +233,9 @@ export function ConfiguracoesPage() {
 
         {/* Liberação de Indicadores (nível 1) */}
         <LiberacaoIndicadoresSecao />
+
+        {/* Liberação por analista (exceções ao padrão da coluna "Analista") */}
+        <LiberacaoAnalistasSecao />
       </div>
     </div>
   );
