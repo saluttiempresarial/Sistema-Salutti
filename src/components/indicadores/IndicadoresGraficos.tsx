@@ -22,6 +22,13 @@ import {
   YAxis,
 } from 'recharts'
 import type {
+  Aproveitamento,
+  ClientesSemAtividade,
+  ConcentracaoCarteira,
+  DesempenhoModalidade,
+  FatiaCarteira,
+  TempoResposta,
+  ValorCliente,
   BarraFamilia,
   BarraOrgao,
   Concorrente,
@@ -804,6 +811,249 @@ function Concorrentes({ lista }: { lista: Concorrente[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Gestão da carteira e da operação (lote 1)
+// ---------------------------------------------------------------------------
+function AproveitamentoBloco({ dados }: { dados: Aproveitamento }) {
+  if (dados.analisadas === 0) return <SemDados />
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+        <div>
+          <p className="font-display text-4xl text-forest">{formatarPercentual(dados.percentual)}</p>
+          <p className="font-body text-sm text-ink-soft">das licitações analisadas tiveram participação confirmada</p>
+        </div>
+        <ul className="font-body text-sm text-ink-soft">
+          <li><strong className="text-ink">{formatarNumero(dados.analisadas)}</strong> analisadas</li>
+          <li><strong className="text-ink">{formatarNumero(dados.participou)}</strong> participou</li>
+          <li><strong className="text-ink">{formatarNumero(dados.recusou)}</strong> recusou</li>
+          <li><strong className="text-ink">{formatarNumero(dados.semDecisao)}</strong> sem decisão</li>
+        </ul>
+      </div>
+      {dados.porCliente.length > 1 && (
+        <BarrasDuplas
+          dados={dados.porCliente.map((c) => ({ cliente: c.nome, analisadas: c.analisadas, participou: c.participou }))}
+          chaveRotulo="cliente"
+          chaveTotal="analisadas"
+          chaveGanho="participou"
+          rotuloTotal="Analisadas"
+          rotuloGanho="Participou"
+        />
+      )}
+    </div>
+  )
+}
+
+function formatarDias(valor: number | null): string {
+  if (valor === null) return '—'
+  return `${formatarNumero(valor, 1)} ${valor === 1 ? 'dia' : 'dias'}`
+}
+
+function TempoRespostaBloco({ dados }: { dados: TempoResposta }) {
+  if (dados.quantidade === 0) {
+    return (
+      <SemDados
+        texto={
+          dados.aguardando > 0
+            ? `Nenhuma decisão registrada ainda. ${formatarNumero(dados.aguardando)} aguardando o cliente.`
+            : undefined
+        }
+      />
+    )
+  }
+  const altura = Math.max(dados.porCliente.length * 40 + 40, 120)
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
+        <div>
+          <p className="font-display text-4xl text-forest">{formatarDias(dados.mediaDias)}</p>
+          <p className="font-body text-sm text-ink-soft">em média, do cadastro à decisão</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl text-ink">{formatarDias(dados.medianaDias)}</p>
+          <p className="font-body text-sm text-ink-soft">mediana (metade decide mais rápido)</p>
+        </div>
+        <p className="font-body text-sm text-ink-soft">
+          {formatarNumero(dados.quantidade)} {dados.quantidade === 1 ? 'decisão' : 'decisões'} · {formatarNumero(dados.aguardando)} aguardando
+        </p>
+      </div>
+      {dados.porCliente.length > 1 && (
+        <div style={{ height: altura }} className="w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dados.porCliente} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid horizontal={false} stroke={COR_GRADE} />
+              <XAxis type="number" tick={{ fill: COR_TEXTO, fontSize: 12 }} tickLine={false} axisLine={false} />
+              <YAxis
+                type="category"
+                dataKey="nome"
+                width={190}
+                tick={{ fill: COR_TEXTO, fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: string) => (v.length > 30 ? `${v.slice(0, 29)}…` : v)}
+              />
+              <Tooltip contentStyle={ESTILO_DICA} cursor={{ fill: '#E7F0EA' }} formatter={(v) => [formatarDias(Number(v)), 'Média']} />
+              <Bar dataKey="mediaDias" name="Média em dias" fill={COR_ALERTA} radius={[0, 4, 4, 0]} maxBarSize={16} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Faixas de alerta da última atividade do cliente. */
+function faixaAtividade(dias: number): { rotulo: string; classe: string } {
+  if (dias >= 90) return { rotulo: `${formatarNumero(dias)} dias`, classe: 'bg-red-50 text-red-800 ring-red-200' }
+  if (dias >= 30) return { rotulo: `${formatarNumero(dias)} dias`, classe: 'bg-brass-pale text-brass ring-brass/30' }
+  return { rotulo: dias === 0 ? 'hoje' : `${formatarNumero(dias)} ${dias === 1 ? 'dia' : 'dias'}`, classe: 'bg-forest-mist text-forest ring-forest/20' }
+}
+
+function ClientesSemAtividadeBloco({ dados }: { dados: ClientesSemAtividade }) {
+  // Do mais parado para o mais ativo; quem nunca teve licitação vai para o fim.
+  const comLicitacao = dados.linhas.filter((l) => l.dias !== null)
+  const semLicitacao = dados.linhas.filter((l) => l.dias === null)
+  const mostradas = comLicitacao.slice(0, 10)
+
+  if (dados.linhas.length === 0) return <SemDados />
+
+  return (
+    <div className="space-y-3">
+      {mostradas.length > 0 && (
+        <ul className="divide-y divide-ink-soft/10">
+          {mostradas.map((l) => {
+            const faixa = faixaAtividade(l.dias ?? 0)
+            return (
+              <li key={l.clienteId} className="flex items-center justify-between gap-3 py-2 font-body text-sm">
+                <span className="min-w-0 truncate text-ink">{l.nome}</span>
+                <span className="flex shrink-0 items-center gap-3">
+                  <span className="text-xs text-ink-soft">
+                    última atividade em {l.ultimaAtividade ? formatarDataHora(l.ultimaAtividade).slice(0, 10) : '—'}
+                  </span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${faixa.classe}`}>
+                    {faixa.rotulo}
+                  </span>
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {comLicitacao.length > mostradas.length && (
+        <p className="font-body text-xs text-ink-soft">e mais {formatarNumero(comLicitacao.length - mostradas.length)} clientes.</p>
+      )}
+
+      {semLicitacao.length > 0 && (
+        <div className="border-t border-ink-soft/10 pt-3">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+            Sem nenhuma licitação cadastrada ({formatarNumero(semLicitacao.length)})
+          </p>
+          <p className="mt-1 font-body text-sm text-ink">{semLicitacao.map((l) => l.nome).join(' · ')}</p>
+        </div>
+      )}
+
+      <p className="font-body text-xs text-ink-soft">
+        Dias desde o último cadastro de licitação ou decisão do cliente. Verde: menos de 30 dias · dourado: 30 a 89 · vermelho: 90 ou mais.
+        Este quadro ignora os filtros.
+      </p>
+    </div>
+  )
+}
+
+function FatiasBarras({ fatias }: { fatias: FatiaCarteira[] }) {
+  return (
+    <ul className="space-y-2">
+      {fatias.map((f) => (
+        <li key={f.chave} className="font-body text-sm">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="min-w-0 truncate text-ink">{f.nome}</span>
+            <span className="shrink-0 text-ink-soft">
+              {formatarPercentual(f.percentual)} · {formatarMoeda(f.valor)}
+            </span>
+          </div>
+          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-forest-mist">
+            <div
+              className="h-full rounded-full bg-forest"
+              style={{ width: `${Math.min(100, Math.max(f.percentual, 0.5))}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function ConcentracaoBloco({ dados }: { dados: ConcentracaoCarteira }) {
+  if (dados.total <= 0) return <SemDados />
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      <div>
+        <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Por cliente</p>
+        <FatiasBarras fatias={dados.porCliente} />
+      </div>
+      <div>
+        <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Por segmento</p>
+        <FatiasBarras fatias={dados.porSegmento} />
+      </div>
+    </div>
+  )
+}
+
+function ValorPorClienteBloco({ dados }: { dados: ValorCliente[] }) {
+  if (dados.length === 0) return <SemDados />
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[420px] font-body text-sm">
+        <thead>
+          <tr className="border-b border-ink-soft/15 text-left font-mono text-[11px] uppercase tracking-wide text-ink-soft">
+            <th className="py-2 pr-3 font-semibold">Cliente</th>
+            <th className="py-2 pr-3 text-right font-semibold">Em disputa</th>
+            <th className="py-2 pr-3 text-right font-semibold">Adjudicado</th>
+            <th className="py-2 text-right font-semibold">Ganhas</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-ink-soft/10">
+          {dados.map((c) => (
+            <tr key={c.chave}>
+              <td className="max-w-[220px] truncate py-2 pr-3 text-ink">{c.nome}</td>
+              <td className="py-2 pr-3 text-right text-ink-soft">{formatarMoeda(c.valorEmDisputa)}</td>
+              <td className="py-2 pr-3 text-right font-semibold text-forest">{formatarMoeda(c.valorAdjudicado)}</td>
+              <td className="py-2 text-right text-ink-soft">{formatarNumero(c.licitacoesGanhas)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-2 font-body text-xs text-ink-soft">
+        Em disputa = valor de referência das licitações com participação confirmada e sem resultado. Adjudicado não é faturamento.
+      </p>
+    </div>
+  )
+}
+
+function ModalidadeBloco({ dados }: { dados: DesempenhoModalidade[] }) {
+  if (dados.length === 0) return <SemDados />
+  return (
+    <div className="space-y-4">
+      <BarrasDuplas
+        dados={dados.map((m) => ({ modalidade: m.nome, participou: m.participou, ganhou: m.ganhou }))}
+        chaveRotulo="modalidade"
+        chaveTotal="participou"
+        chaveGanho="ganhou"
+        rotuloTotal="Participou"
+        rotuloGanho="Com vitória"
+      />
+      <ul className="font-body text-sm text-ink-soft">
+        {dados.map((m) => (
+          <li key={m.chave}>
+            <strong className="text-ink">{m.nome}:</strong> {formatarNumero(m.licitacoes)}{' '}
+            {m.licitacoes === 1 ? 'licitação' : 'licitações'} · taxa de vitória {formatarPercentual(m.taxa)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Painel completo
 // ---------------------------------------------------------------------------
 /** Chaves dos indicadores (as mesmas da liberação — migrações 037, 042, 043 e 044). */
@@ -827,6 +1077,12 @@ export type ChaveIndicador =
   | 'marcas'
   | 'produtos_nunca_ganhos'
   | 'concorrentes_familia'
+  | 'aproveitamento'
+  | 'tempo_resposta'
+  | 'clientes_sem_atividade'
+  | 'concentracao_carteira'
+  | 'valor_por_cliente'
+  | 'desempenho_modalidade'
 
 interface IndicadoresGraficosProps {
   indicadores: IndicadoresAdmin
@@ -860,6 +1116,46 @@ export function IndicadoresGraficos({ indicadores, visiveis }: IndicadoresGrafic
           subtitulo="Licitações em aberto com prazo interno vencido ou vencendo (ignora o filtro de período)"
         >
           <PrazosBloco dados={indicadores.prazosProximos} />
+        </Cartao>
+      )}
+
+      {ver('aproveitamento') && (
+        <Cartao titulo="Aproveitamento" subtitulo="Licitações analisadas x licitações em que o cliente participou">
+          <AproveitamentoBloco dados={indicadores.aproveitamento} />
+        </Cartao>
+      )}
+
+      {ver('tempo_resposta') && (
+        <Cartao titulo="Tempo de resposta do cliente" subtitulo="Dias entre o cadastro da licitação e a decisão (clientes mais lentos primeiro)">
+          <TempoRespostaBloco dados={indicadores.tempoResposta} />
+        </Cartao>
+      )}
+
+      {ver('clientes_sem_atividade') && (
+        <Cartao titulo="Clientes sem atividade" subtitulo="Risco de perder o cliente: do mais parado para o mais ativo">
+          <ClientesSemAtividadeBloco dados={indicadores.clientesSemAtividade} />
+        </Cartao>
+      )}
+
+      {ver('valor_por_cliente') && (
+        <Cartao titulo="Valor por cliente" subtitulo="Valor em disputa e valor adjudicado (10 maiores)">
+          <ValorPorClienteBloco dados={indicadores.valorPorCliente} />
+        </Cartao>
+      )}
+
+      {ver('concentracao_carteira') && (
+        <Cartao
+          titulo="Concentração da carteira"
+          subtitulo="Peso de cada cliente e de cada segmento no valor de referência das licitações"
+          className="lg:col-span-2"
+        >
+          <ConcentracaoBloco dados={indicadores.concentracaoCarteira} />
+        </Cartao>
+      )}
+
+      {ver('desempenho_modalidade') && (
+        <Cartao titulo="Desempenho por modalidade" subtitulo="Participações x licitações com vitória">
+          <ModalidadeBloco dados={indicadores.desempenhoModalidade} />
         </Cartao>
       )}
 

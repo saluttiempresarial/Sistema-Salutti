@@ -51,6 +51,8 @@ export interface OpcaoFiltro {
 export interface ClienteResumo {
   id: string;
   nome: string;
+  /** Segmento do cadastro do cliente (só no painel interno). */
+  segmento?: string;
 }
 
 /** Tudo o que os cálculos precisam, carregado de uma vez. */
@@ -344,6 +346,97 @@ export interface PrazosProximos {
   semDecisaoDoCliente: number;
 }
 
+// ---------------------------------------------------------------------------
+// Gestão da carteira e da operação (lote 1 — Especificação, seções 3.1 a 3.3 e 3.6)
+// ---------------------------------------------------------------------------
+export interface AproveitamentoCliente {
+  chave: string;
+  nome: string;
+  analisadas: number;
+  participou: number;
+}
+
+/** Analisadas × participadas: de todas as licitações apresentadas, em quantas
+ *  o cliente decidiu participar. */
+export interface Aproveitamento {
+  analisadas: number;
+  participou: number;
+  recusou: number;
+  semDecisao: number;
+  /** participou ÷ analisadas, em %; null = sem licitações. */
+  percentual: number | null;
+  /** Até 10 clientes, os que mais tiveram licitações. */
+  porCliente: AproveitamentoCliente[];
+}
+
+export interface TempoRespostaCliente {
+  chave: string;
+  nome: string;
+  mediaDias: number;
+  quantidade: number;
+}
+
+/** Tempo entre o cadastro da licitação e a decisão do cliente (participar ou
+ *  recusar). Ainda não existe a data de envio da análise: usa-se a data de
+ *  cadastro, que é quando a licitação fica visível para o cliente. */
+export interface TempoResposta {
+  quantidade: number; // licitações com decisão e data da decisão
+  mediaDias: number | null;
+  medianaDias: number | null;
+  aguardando: number; // ainda sem decisão
+  /** Até 10 clientes, dos mais lentos para os mais rápidos. */
+  porCliente: TempoRespostaCliente[];
+}
+
+export interface ClienteSemAtividade {
+  clienteId: string;
+  nome: string;
+  /** ISO da última atividade (cadastro de licitação ou decisão); undefined = nunca teve licitação. */
+  ultimaAtividade?: string;
+  /** Dias desde a última atividade; null = nunca teve licitação. */
+  dias: number | null;
+}
+
+export interface ClientesSemAtividade {
+  /** Todos os clientes visíveis, dos mais parados para os mais ativos. O filtro
+   *  de "X dias" é feito na tela. */
+  linhas: ClienteSemAtividade[];
+}
+
+export interface FatiaCarteira {
+  chave: string;
+  nome: string;
+  valor: number; // valor de referência
+  percentual: number; // do total da carteira
+  licitacoes: number;
+}
+
+export interface ConcentracaoCarteira {
+  total: number;
+  porCliente: FatiaCarteira[]; // 8 maiores + "Outros"
+  porSegmento: FatiaCarteira[];
+}
+
+export interface ValorCliente {
+  chave: string;
+  nome: string;
+  /** Valor de referência das licitações com participação confirmada e ainda sem resultado. */
+  valorEmDisputa: number;
+  /** Valor dos itens e grupos ganhos (não é faturamento). */
+  valorAdjudicado: number;
+  licitacoesGanhas: number;
+}
+
+export interface DesempenhoModalidade {
+  chave: string;
+  nome: string;
+  licitacoes: number;
+  participou: number;
+  ganhou: number;
+  /** ganhou ÷ participou, em %; null = sem participação. */
+  taxa: number | null;
+}
+
 export interface IndicadoresAdmin {
   funil: EtapaFunil[];
   taxaVitoria: TaxaVitoriaComparada;
@@ -372,6 +465,13 @@ export interface IndicadoresAdmin {
   /** Prazos internos dos próximos 7 dias (respeita cliente, modalidade e
    *  família; ignora o período, porque olha sempre a partir de agora). */
   prazosProximos: PrazosProximos;
+  aproveitamento: Aproveitamento;
+  tempoResposta: TempoResposta;
+  /** Ignora os filtros (olha sempre a atividade mais recente de cada cliente). */
+  clientesSemAtividade: ClientesSemAtividade;
+  concentracaoCarteira: ConcentracaoCarteira;
+  valorPorCliente: ValorCliente[]; // 10 maiores por valor adjudicado
+  desempenhoModalidade: DesempenhoModalidade[];
   /** Quantidade de licitações consideradas após os filtros. */
   totalLicitacoes: number;
 }

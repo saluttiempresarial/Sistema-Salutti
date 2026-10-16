@@ -40,7 +40,8 @@
 //     (decisaoCliente = 'participar'). "Ganhou" = ao menos um item/grupo
 //     ganho.
 
-import type { Licitacao, ItemLicitacao } from '../types/licitacao';
+import { MODALIDADE_LICITACAO_LABEL } from '../types/licitacao';
+import type { Licitacao, ItemLicitacao, ModalidadeLicitacao } from '../types/licitacao';
 import type { Disputa } from '../types/disputa';
 import {
   CHAVE_GRUPOS,
@@ -72,6 +73,13 @@ import {
   type PrazoProximo,
   type PrazosProximos,
   type TaxaFamilia,
+  type Aproveitamento,
+  type ClientesSemAtividade,
+  type ConcentracaoCarteira,
+  type DesempenhoModalidade,
+  type FatiaCarteira,
+  type TempoResposta,
+  type ValorCliente,
   type TaxaVitoria,
   type TaxaVitoriaFamilia,
   type UnidadeResultado,
@@ -993,6 +1001,287 @@ export function calcularPrazosProximos(
 }
 
 // ---------------------------------------------------------------------------
+// Gestão da carteira e da operação (lote 1)
+//
+// REGRAS ADOTADAS:
+//   - Aproveitamento: "analisadas" = todas as licitações apresentadas ao cliente
+//     (já com os filtros); "participou" = decisão "participar"; "recusou" =
+//     decisão "recusar"; o resto está sem decisão.
+//   - Tempo de resposta: da data de cadastro da licitação até a data da decisão
+//     do cliente (participar ou recusar). Decisões sem data, ou com data
+//     anterior ao cadastro, ficam de fora. Substitui "envio da análise", que
+//     ainda não é registrado.
+//   - Clientes sem atividade: última atividade = o que for mais recente entre o
+//     cadastro de uma licitação e uma decisão do cliente. Ignora os filtros.
+//   - Concentração: pelo valor de referência das licitações; mostra os 8
+//     maiores clientes e agrupa o restante em "Outros".
+//   - Valor por cliente: "em disputa" = valor de referência das licitações em
+//     que o cliente confirmou participação e ainda não há resultado final;
+//     "adjudicado" = soma dos itens e grupos ganhos (não é faturamento).
+//   - Modalidade: taxa = licitações com vitória ÷ licitações em que o cliente
+//     participou.
+// ---------------------------------------------------------------------------
+const MS_DIA = 86_400_000;
+const LIMITE_LISTA_GESTAO = 10;
+
+function arredondar(valor: number, casas = 1): number {
+  const f = 10 ** casas;
+  return Math.round(valor * f) / f;
+}
+
+export function calcularAproveitamento(
+  licitacoes: Licitacao[],
+  nomeDoCliente: (id: string) => string
+): Aproveitamento {
+  let participou = 0;
+  let recusou = 0;
+  const porCliente = new Map<string, { chave: string; nome: string; analisadas: number; participou: number }>();
+
+  licitacoes.forEach((l) => {
+    if (l.decisaoCliente === 'participar') participou += 1;
+    else if (l.decisaoCliente === 'recusar') recusou += 1;
+    const atual = porCliente.get(l.clienteId) ?? {
+      chave: l.clienteId,
+      nome: nomeDoCliente(l.clienteId),
+      analisadas: 0,
+      participou: 0,
+    };
+    atual.analisadas += 1;
+    if (l.decisaoCliente === 'participar') atual.participou += 1;
+    porCliente.set(l.clienteId, atual);
+  });
+
+  const analisadas = licitacoes.length;
+  return {
+    analisadas,
+    participou,
+    recusou,
+    semDecisao: analisadas - participou - recusou,
+    percentual: analisadas > 0 ? (participou / analisadas) * 100 : null,
+    porCliente: [...porCliente.values()]
+      .sort((a, b) => b.analisadas - a.analisadas || a.nome.localeCompare(b.nome, 'pt-BR'))
+      .slice(0, LIMITE_LISTA_GESTAO),
+  };
+}
+
+function mediana(valores: number[]): number | null {
+  if (valores.length === 0) return null;
+  const ordenados = [...valores].sort((a, b) => a - b);
+  const meio = Math.floor(ordenados.length / 2);
+  return ordenados.length % 2 === 1 ? ordenados[meio] : (ordenados[meio - 1] + ordenados[meio]) / 2;
+}
+
+export function calcularTempoResposta(
+  licitacoes: Licitacao[],
+  nomeDoCliente: (id: string) => string
+): TempoResposta {
+  const todos: number[] = [];
+  const porCliente = new Map<string, number[]>();
+  let aguardando = 0;
+
+  licitacoes.forEach((l) => {
+    if (l.decisaoCliente === 'pendente') {
+      aguardando += 1;
+      return;
+    }
+    if (!l.decisaoClienteEm || !l.criadoEm) return;
+    const dias = (new Date(l.decisaoClienteEm).getTime() - new Date(l.criadoEm).getTime()) / MS_DIA;
+    if (!Number.isFinite(dias) || dias < 0) return;
+    todos.push(dias);
+    const lista = porCliente.get(l.clienteId) ?? [];
+    lista.push(dias);
+    porCliente.set(l.clienteId, lista);
+  });
+
+  const media = (v: number[]) => v.reduce((soma, x) => soma + x, 0) / v.length;
+  const mediana1 = mediana(todos);
+  return {
+    quantidade: todos.length,
+    mediaDias: todos.length > 0 ? arredondar(media(todos)) : null,
+    medianaDias: mediana1 === null ? null : arredondar(mediana1),
+    aguardando,
+    porCliente: [...porCliente.entries()]
+      .map(([id, lista]) => ({
+        chave: id,
+        nome: nomeDoCliente(id),
+        mediaDias: arredondar(media(lista)),
+        quantidade: lista.length,
+      }))
+      .sort((a, b) => b.mediaDias - a.mediaDias || a.nome.localeCompare(b.nome, 'pt-BR'))
+      .slice(0, LIMITE_LISTA_GESTAO),
+  };
+}
+
+export function calcularClientesSemAtividade(
+  licitacoes: Licitacao[],
+  clientes: DadosBaseIndicadores['clientes'],
+  agora: Date = new Date()
+): ClientesSemAtividade {
+  const ultima = new Map<string, number>();
+  licitacoes.forEach((l) => {
+    [l.criadoEm, l.decisaoClienteEm].forEach((iso) => {
+      if (!iso) return;
+      const t = new Date(iso).getTime();
+      if (!Number.isFinite(t)) return;
+      if (t > (ultima.get(l.clienteId) ?? 0)) ultima.set(l.clienteId, t);
+    });
+  });
+
+  const linhas = clientes.map((c) => {
+    const t = ultima.get(c.id);
+    return {
+      clienteId: c.id,
+      nome: c.nome,
+      ultimaAtividade: t === undefined ? undefined : new Date(t).toISOString(),
+      dias: t === undefined ? null : Math.max(0, Math.floor((agora.getTime() - t) / MS_DIA)),
+    };
+  });
+
+  // Nunca teve licitação primeiro, depois do mais parado para o mais ativo.
+  linhas.sort((a, b) => {
+    if (a.dias === null && b.dias === null) return a.nome.localeCompare(b.nome, 'pt-BR');
+    if (a.dias === null) return -1;
+    if (b.dias === null) return 1;
+    return b.dias - a.dias || a.nome.localeCompare(b.nome, 'pt-BR');
+  });
+  return { linhas };
+}
+
+function montarFatias(
+  mapa: Map<string, { nome: string; valor: number; licitacoes: number }>,
+  total: number,
+  limite?: number
+): FatiaCarteira[] {
+  const ordenadas = [...mapa.entries()]
+    .map(([chave, v]) => ({
+      chave,
+      nome: v.nome,
+      valor: v.valor,
+      licitacoes: v.licitacoes,
+      percentual: total > 0 ? (v.valor / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.valor - a.valor || a.nome.localeCompare(b.nome, 'pt-BR'));
+  if (!limite || ordenadas.length <= limite) return ordenadas;
+  const principais = ordenadas.slice(0, limite);
+  const resto = ordenadas.slice(limite);
+  const valor = resto.reduce((soma, f) => soma + f.valor, 0);
+  principais.push({
+    chave: 'outros',
+    nome: `Outros (${resto.length})`,
+    valor,
+    licitacoes: resto.reduce((soma, f) => soma + f.licitacoes, 0),
+    percentual: total > 0 ? (valor / total) * 100 : 0,
+  });
+  return principais;
+}
+
+export function calcularConcentracaoCarteira(
+  licitacoes: Licitacao[],
+  clientes: DadosBaseIndicadores['clientes']
+): ConcentracaoCarteira {
+  const clientePorId = new Map(clientes.map((c) => [c.id, c]));
+  const porCliente = new Map<string, { nome: string; valor: number; licitacoes: number }>();
+  const porSegmento = new Map<string, { nome: string; valor: number; licitacoes: number }>();
+  let total = 0;
+
+  licitacoes.forEach((l) => {
+    const valor = valorReferenciaLicitacao(l);
+    total += valor;
+    const cliente = clientePorId.get(l.clienteId);
+
+    const c = porCliente.get(l.clienteId) ?? { nome: cliente?.nome ?? '—', valor: 0, licitacoes: 0 };
+    c.valor += valor;
+    c.licitacoes += 1;
+    porCliente.set(l.clienteId, c);
+
+    const nomeSegmento = (cliente?.segmento ?? '').trim() || 'Sem segmento';
+    const chaveSegmento = normalizarNome(nomeSegmento);
+    const sg = porSegmento.get(chaveSegmento) ?? { nome: nomeSegmento, valor: 0, licitacoes: 0 };
+    sg.valor += valor;
+    sg.licitacoes += 1;
+    porSegmento.set(chaveSegmento, sg);
+  });
+
+  return {
+    total,
+    porCliente: montarFatias(porCliente, total, 8),
+    porSegmento: montarFatias(porSegmento, total),
+  };
+}
+
+export function calcularValorPorCliente(
+  licitacoes: Licitacao[],
+  unidades: UnidadeResultado[],
+  disputas: Disputa[],
+  nomeDoCliente: (id: string) => string
+): ValorCliente[] {
+  const disputaPorLicitacao = new Map(disputas.map((d) => [d.licitacaoId, d]));
+  const mapa = new Map<string, ValorCliente>();
+  const garantir = (id: string): ValorCliente => {
+    const existente = mapa.get(id);
+    if (existente) return existente;
+    const novo: ValorCliente = {
+      chave: id,
+      nome: nomeDoCliente(id),
+      valorEmDisputa: 0,
+      valorAdjudicado: 0,
+      licitacoesGanhas: 0,
+    };
+    mapa.set(id, novo);
+    return novo;
+  };
+
+  licitacoes.forEach((l) => {
+    if (l.decisaoCliente !== 'participar') return;
+    if (desfechoFinal(l, disputaPorLicitacao.get(l.id)) !== null) return;
+    garantir(l.clienteId).valorEmDisputa += valorReferenciaLicitacao(l);
+  });
+
+  const ganhasPorCliente = new Map<string, Set<string>>();
+  unidades.forEach((u) => {
+    if (u.resultado !== 'ganho') return;
+    garantir(u.clienteId).valorAdjudicado += u.valorOfertado ?? 0;
+    const conjunto = ganhasPorCliente.get(u.clienteId) ?? new Set<string>();
+    conjunto.add(u.licitacaoId);
+    ganhasPorCliente.set(u.clienteId, conjunto);
+  });
+  ganhasPorCliente.forEach((conjunto, id) => {
+    garantir(id).licitacoesGanhas = conjunto.size;
+  });
+
+  return [...mapa.values()]
+    .sort(
+      (a, b) =>
+        b.valorAdjudicado - a.valorAdjudicado ||
+        b.valorEmDisputa - a.valorEmDisputa ||
+        a.nome.localeCompare(b.nome, 'pt-BR')
+    )
+    .slice(0, LIMITE_LISTA_GESTAO);
+}
+
+export function calcularDesempenhoModalidade(
+  licitacoes: Licitacao[],
+  unidades: UnidadeResultado[]
+): DesempenhoModalidade[] {
+  const comGanho = new Set(unidades.filter((u) => u.resultado === 'ganho').map((u) => u.licitacaoId));
+  const mapa = new Map<string, DesempenhoModalidade>();
+
+  licitacoes.forEach((l) => {
+    const chave = l.modalidade || 'sem-modalidade';
+    const nome = MODALIDADE_LICITACAO_LABEL[l.modalidade as ModalidadeLicitacao] ?? (l.modalidade || 'Sem modalidade');
+    const atual = mapa.get(chave) ?? { chave, nome, licitacoes: 0, participou: 0, ganhou: 0, taxa: null };
+    atual.licitacoes += 1;
+    if (l.decisaoCliente === 'participar') atual.participou += 1;
+    if (comGanho.has(l.id)) atual.ganhou += 1;
+    mapa.set(chave, atual);
+  });
+
+  return [...mapa.values()]
+    .map((m) => ({ ...m, taxa: m.participou > 0 ? (m.ganhou / m.participou) * 100 : null }))
+    .sort((a, b) => b.licitacoes - a.licitacoes || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+// ---------------------------------------------------------------------------
 // Conjunto completo (painel do Administrador)
 // ---------------------------------------------------------------------------
 export function calcularIndicadoresAdmin(
@@ -1044,6 +1333,13 @@ export function calcularIndicadoresAdmin(
       nomeDoCliente,
       agora
     ),
+    aproveitamento: calcularAproveitamento(licitacoes, nomeDoCliente),
+    tempoResposta: calcularTempoResposta(licitacoes, nomeDoCliente),
+    // Olha sempre a atividade mais recente de cada cliente: ignora os filtros.
+    clientesSemAtividade: calcularClientesSemAtividade(dados.licitacoes, dados.clientes, agora),
+    concentracaoCarteira: calcularConcentracaoCarteira(licitacoes, dados.clientes),
+    valorPorCliente: calcularValorPorCliente(licitacoes, unidades, dados.disputas, nomeDoCliente),
+    desempenhoModalidade: calcularDesempenhoModalidade(licitacoes, unidades),
     totalLicitacoes: licitacoes.length,
   };
 }

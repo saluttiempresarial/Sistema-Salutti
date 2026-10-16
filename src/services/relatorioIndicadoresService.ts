@@ -26,6 +26,7 @@ async function carregarDadosBase(restricao: { clienteIds?: string[]; licitacaoId
     clientes: clientes.data.map((c) => ({
       id: c.id,
       nome: c.empresa.nomeFantasia || c.empresa.razaoSocial,
+      segmento: c.empresa.segmento,
     })),
   }
 }

@@ -15,7 +15,7 @@ export const PERFIS_LIBERACAO: { chave: PerfilLiberacao; rotulo: string }[] = [
   { chave: 'cliente', rotulo: 'Cliente' },
 ]
 
-/** Catálogo de indicadores. As chaves devem ser as mesmas das migrações 037 (primeira entrega), 042 (preço e competitividade), 043 (pipeline e prazos) e 044 (produtos e marcas). */
+/** Catálogo de indicadores. As chaves devem ser as mesmas das migrações 037 (primeira entrega), 042 (preço e competitividade) e 043 (pipeline e prazos) e 049 (gestão da carteira e da operação). */
 export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: string }[] = [
   { chave: 'pipeline', nome: 'Pipeline', descricao: 'Uso interno: licitações por fase, da decisão do cliente ao resultado' },
   { chave: 'prazos_proximos', nome: 'Prazos dos próximos 7 dias', descricao: 'Uso interno: prazos internos vencidos ou vencendo' },
@@ -32,10 +32,12 @@ export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: str
   { chave: 'distancia_derrota', nome: 'Distância da derrota', descricao: 'Nas perdas por preço, quanto o cliente ficou acima do vencedor' },
   { chave: 'orgaos', nome: 'Órgãos', descricao: 'Participações e vitórias por órgão' },
   { chave: 'concorrentes', nome: 'Concorrentes que mais vencem', descricao: 'Quem mais ganhou do cliente' },
-  { chave: 'taxa_vitoria_familia', nome: 'Taxa de vitória por família', descricao: 'Itens ganhos sobre itens disputados em cada família de produtos' },
-  { chave: 'marcas', nome: 'Marcas', descricao: 'Itens cotados e ganhos por marca' },
-  { chave: 'produtos_nunca_ganhos', nome: 'Produtos nunca ganhos', descricao: 'Produtos disputados que só perderam' },
-  { chave: 'concorrentes_familia', nome: 'Contra quem perdemos por família', descricao: 'Uso interno: principais vencedores nas famílias com mais perdas' },
+  { chave: 'aproveitamento', nome: 'Aproveitamento', descricao: 'Uso interno: licitações analisadas x licitações em que o cliente participou' },
+  { chave: 'tempo_resposta', nome: 'Tempo de resposta do cliente', descricao: 'Uso interno: dias entre o cadastro da licitação e a decisão do cliente' },
+  { chave: 'clientes_sem_atividade', nome: 'Clientes sem atividade', descricao: 'Uso interno: clientes parados há 30, 60 ou 90 dias' },
+  { chave: 'concentracao_carteira', nome: 'Concentração da carteira', descricao: 'Uso interno: peso de cada cliente e de cada segmento no valor das licitações' },
+  { chave: 'valor_por_cliente', nome: 'Valor por cliente', descricao: 'Uso interno: valor em disputa e valor adjudicado por cliente' },
+  { chave: 'desempenho_modalidade', nome: 'Desempenho por modalidade', descricao: 'Participações e vitórias por modalidade (pregão, concorrência)' },
 ]
 
 /** indicador -> perfil -> liberado. Sempre traz todos os indicadores do catálogo. */
