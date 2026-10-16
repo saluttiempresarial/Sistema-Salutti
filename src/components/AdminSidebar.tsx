@@ -1,13 +1,15 @@
 // src/components/AdminSidebar.tsx
 //
-// Menu lateral fixo do Admin/Funcionário — visível em todas as telas
-// internas (Dashboard, Clientes, Funcionários, Licitações, Disputas,
-// Relatórios, Calendário, Configurações). Os itens exibidos dependem do
-// perfil: Administrador vê tudo; Funcionário só vê os módulos liberados
-// nas permissões dele (mesma lógica já usada em FuncionarioDashboard).
+// Menu lateral do Admin/Funcionário — visível em todas as telas internas
+// (Início, Clientes, Funcionários, Licitações, Disputas, Relatórios,
+// Indicadores, Calendário, Configurações). Os itens dependem do perfil:
+// Administrador vê tudo; Funcionário só vê os módulos liberados nas
+// permissões dele (mesma lógica já usada no painel do Funcionário).
 //
-// Ícones são SVGs simples desenhados à mão (sem nenhuma biblioteca nova) —
-// evita precisar rodar npm install para esta mudança.
+// Redesenho (15/10, a pedido do Márcio): logotipo no topo, cartão do perfil
+// (com a troca de foto de sempre), ícones padronizados (components/icones.tsx),
+// item "Início", página atual destacada e, no celular e no tablet, o menu vira
+// uma gaveta que abre pelo botão da barra superior (AdminTopBar).
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
@@ -15,114 +17,70 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissoes } from '@/hooks/usePermissoes'
 import { funcionarioService } from '@/services/funcionarioService'
-import { ROLE_LABEL } from '@/types/auth'
+import { ROLE_HOME_ROUTE, ROLE_LABEL } from '@/types/auth'
+import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
+import {
+  IconeCalendario,
+  IconeDocumento,
+  IconeEngrenagem,
+  IconeFechar,
+  IconeGrafico,
+  IconeInicio,
+  IconeMartelo,
+  IconePessoa,
+  IconePessoas,
+  IconeTendencia,
+} from '@/components/icones'
 
 interface ItemMenu {
   label: string
   to: string
   icon: ReactElement
+  /** Só fica ativo quando o endereço é exatamente este (usado no Início). */
+  exato?: boolean
 }
 
-function IconPessoa() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <circle cx="12" cy="8" r="3.5" />
-      <path d="M5 20c0-3.5 3.1-6 7-6s7 2.5 7 6" />
-    </svg>
-  )
+interface AdminSidebarProps {
+  /** Gaveta aberta (só vale no celular e no tablet; no computador o menu é fixo). */
+  aberta?: boolean
+  onFechar?: () => void
 }
 
-function IconPessoas() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <circle cx="9" cy="8" r="3" />
-      <path d="M2.5 20c0-3 2.9-5.5 6.5-5.5s6.5 2.5 6.5 5.5" />
-      <circle cx="17" cy="8.5" r="2.3" />
-      <path d="M15.8 14.8c2.6.5 4.7 2.4 4.7 5.2" />
-    </svg>
-  )
-}
-
-function IconDocumento() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <path d="M6 3h8l4 4v14H6z" />
-      <path d="M14 3v4h4" />
-      <path d="M9 13l2 2 4-4" />
-    </svg>
-  )
-}
-
-function IconMartelo() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <path d="M14 4l6 6" />
-      <path d="M9.5 8.5l6 6" />
-      <path d="M3 21l6-6" />
-      <path d="M11.5 6.5l-7 7 2 2 7-7z" />
-      <path d="M4 21h6" />
-    </svg>
-  )
-}
-
-function IconGrafico() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <path d="M4 20V10" />
-      <path d="M11 20V4" />
-      <path d="M18 20v-7" />
-      <path d="M3 20h18" />
-    </svg>
-  )
-}
-
-function IconCalendario() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <rect x="3.5" y="5" width="17" height="15" rx="2" />
-      <path d="M3.5 10h17" />
-      <path d="M8 3v4M16 3v4" />
-    </svg>
-  )
-}
-
-function IconEngrenagem() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v2.2M12 18.8V21M4.6 6.6l1.6 1.6M17.8 15.8l1.6 1.6M3 12h2.2M18.8 12H21M4.6 17.4l1.6-1.6M17.8 8.2l1.6-1.6" />
-    </svg>
-  )
-}
-
-export function AdminSidebar() {
+export function AdminSidebar({ aberta = false, onFechar }: AdminSidebarProps) {
   const { user } = useAuth()
   const location = useLocation()
   const { podeAcessarModulo } = usePermissoes()
 
   const isAdmin = user?.role === 'admin'
+  const rotaInicio = user ? ROLE_HOME_ROUTE[user.role] : '/'
 
   const itens: ItemMenu[] = [
-    ...(isAdmin ? [{ label: 'Cadastro de Clientes', to: '/admin/clientes', icon: <IconPessoa /> }] : []),
-    ...(isAdmin ? [{ label: 'Cadastro de Funcionários', to: '/admin/funcionarios', icon: <IconPessoas /> }] : []),
+    { label: 'Início', to: rotaInicio, icon: <IconeInicio />, exato: true },
+    ...(isAdmin ? [{ label: 'Cadastro de Clientes', to: '/admin/clientes', icon: <IconePessoa /> }] : []),
+    ...(isAdmin ? [{ label: 'Cadastro de Funcionários', to: '/admin/funcionarios', icon: <IconePessoas /> }] : []),
     ...(isAdmin || podeAcessarModulo('licitacoes')
-      ? [{ label: 'Licitações', to: '/admin/licitacoes', icon: <IconDocumento /> }]
+      ? [{ label: 'Licitações', to: '/admin/licitacoes', icon: <IconeDocumento /> }]
       : []),
     ...(isAdmin || podeAcessarModulo('disputas')
-      ? [{ label: 'Disputas', to: '/admin/disputas', icon: <IconMartelo /> }]
+      ? [{ label: 'Disputas', to: '/admin/disputas', icon: <IconeMartelo /> }]
       : []),
     ...(isAdmin || podeAcessarModulo('relatorios')
-      ? [{ label: 'Relatórios', to: '/admin/relatorios', icon: <IconGrafico /> }]
+      ? [{ label: 'Relatórios', to: '/admin/relatorios', icon: <IconeGrafico /> }]
       : []),
     ...(isAdmin || podeAcessarModulo('relatorios')
-      ? [{ label: 'Indicadores', to: '/admin/indicadores', icon: <IconGrafico /> }]
+      ? [{ label: 'Indicadores', to: '/admin/indicadores', icon: <IconeTendencia /> }]
       : []),
     ...(isAdmin || podeAcessarModulo('licitacoes')
-      ? [{ label: 'Calendário', to: '/admin/calendario', icon: <IconCalendario /> }]
+      ? [{ label: 'Calendário', to: '/admin/calendario', icon: <IconeCalendario /> }]
       : []),
-    ...(isAdmin ? [{ label: 'Configurações', to: '/admin/configuracoes', icon: <IconEngrenagem /> }] : []),
+    ...(isAdmin ? [{ label: 'Configurações', to: '/admin/configuracoes', icon: <IconeEngrenagem /> }] : []),
   ]
+
+  function estaAtivo(item: ItemMenu): boolean {
+    if (item.exato) return location.pathname === item.to
+    return location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+  }
 
   const iniciais = (user?.name ?? '')
     .split(' ')
@@ -171,61 +129,114 @@ export function AdminSidebar() {
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col bg-forest-deep">
-      <div className="flex items-center gap-3 border-b border-white/10 px-5 py-6">
-        <button
-          type="button"
-          onClick={() => inputFotoRef.current?.click()}
-          disabled={enviandoFoto}
-          aria-label={fotoUrl ? 'Trocar foto de perfil' : 'Adicionar foto de perfil'}
-          className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-white/15 disabled:opacity-60"
-        >
-          {fotoUrl ? (
-            <img src={fotoUrl} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center font-body text-sm font-semibold text-white">
-              {iniciais || '—'}
-            </span>
-          )}
-        </button>
-        <input
-          ref={inputFotoRef}
-          type="file"
-          accept="image/*"
-          onChange={handleSelecionarFoto}
-          className="hidden"
+    <>
+      {/* Fundo escurecido atrás da gaveta (celular e tablet) */}
+      {aberta && (
+        <div
+          className="fixed inset-0 z-40 bg-charcoal/50 lg:hidden"
+          onClick={onFechar}
+          aria-hidden="true"
         />
-        <div>
-          <p className="font-body text-sm font-semibold text-white">{user?.name ?? '—'}</p>
-          <p className="font-mono text-[11px] uppercase tracking-wide text-white/60">
-            {user ? ROLE_LABEL[user.role] : ''}
-          </p>
-        </div>
-      </div>
+      )}
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
-        {itens.map((item) => {
-          const ativo = location.pathname === item.to
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 font-body text-sm transition-colors ${
-                ativo ? 'bg-white/15 font-medium text-white' : 'text-white/75 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          )
-        })}
-      </nav>
+      {/* `lg:transform-none` evita que a gaveta vire referência de posição
+          para janelas (modais) abertas de dentro dela. */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto bg-forest-deep transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-64 lg:max-w-none lg:shrink-0 lg:self-start lg:transform-none ${
+          aberta ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-4">
+          <Link
+            to={rotaInicio}
+            className="block flex-1 rounded-2xl bg-paper px-4 py-3 shadow-soft"
+            aria-label="Salutti Empresarial — ir para o início"
+          >
+            <Logo />
+            <p className="mt-1 pl-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.3em] text-brass">
+              Empresarial
+            </p>
+          </Link>
+          <button
+            type="button"
+            onClick={onFechar}
+            aria-label="Fechar o menu"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/80 hover:bg-white/10 lg:hidden"
+          >
+            <IconeFechar className="h-6 w-6" />
+          </button>
+        </div>
+
+        <div className="mx-4 mb-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+          <button
+            type="button"
+            onClick={() => inputFotoRef.current?.click()}
+            disabled={enviandoFoto}
+            aria-label={fotoUrl ? 'Trocar foto de perfil' : 'Adicionar foto de perfil'}
+            className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-forest ring-2 ring-white/20 disabled:opacity-60"
+          >
+            {fotoUrl ? (
+              <img src={fotoUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center font-body text-sm font-semibold text-white">
+                {iniciais || '—'}
+              </span>
+            )}
+          </button>
+          <input
+            ref={inputFotoRef}
+            type="file"
+            accept="image/*"
+            onChange={handleSelecionarFoto}
+            className="hidden"
+          />
+          <div className="min-w-0">
+            <p className="font-body text-sm font-semibold leading-snug text-white">{user?.name ?? '—'}</p>
+            <p className="mt-0.5 font-mono text-[11px] uppercase tracking-wide text-white/60">
+              {user ? ROLE_LABEL[user.role] : ''}
+            </p>
+          </div>
+        </div>
+
+        <nav className="flex-1 space-y-1 px-3 py-3" aria-label="Menu principal">
+          {itens.map((item) => {
+            const ativo = estaAtivo(item)
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={ativo ? 'page' : undefined}
+                className={`flex items-center gap-3 rounded-xl px-3 py-3 font-body text-sm transition-colors ${
+                  ativo
+                    ? 'bg-forest font-semibold text-white shadow-soft ring-1 ring-white/10'
+                    : 'text-white/75 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {item.icon}
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Frase institucional no rodapé do menu (16/10) */}
+        <div className="mx-3 mb-5 mt-2 border-t border-white/10 px-3 pt-5">
+          <div className="border-l-2 border-brass pl-3">
+            <p className="font-body text-sm font-bold uppercase leading-snug tracking-wide text-white">
+              Qualidade que gera <span className="text-brass-light">confiança.</span>
+            </p>
+            <p className="mt-1 font-body text-sm font-bold uppercase leading-snug tracking-wide text-white">
+              Estratégia que entrega <span className="text-brass-light">resultados.</span>
+            </p>
+          </div>
+        </div>
+      </aside>
 
       <FotoPerfilCropModal
         arquivo={arquivoParaRecortar}
         onCancelar={() => setArquivoParaRecortar(null)}
         onConfirmar={handleConfirmarRecorte}
       />
-    </aside>
+    </>
   )
 }

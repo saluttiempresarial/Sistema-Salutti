@@ -3,11 +3,22 @@ interface PaginationProps {
   pageSize: number
   total: number
   onPageChange: (page: number) => void
+  /** Nome do item no rodapé ("Mostrando 1–4 de 4 ..."). Padrão: cliente/clientes,
+   *  para não mudar as telas que já usam este componente. */
+  itemSingular?: string
+  itemPlural?: string
 }
 
 /** Paginação genérica de tabelas — puramente controlada (o dado paginado
  *  vem do service; este componente só calcula/mostra o total de páginas). */
-export function Pagination({ page, pageSize, total, onPageChange }: PaginationProps) {
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  itemSingular = 'cliente',
+  itemPlural = 'clientes',
+}: PaginationProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const inicio = total === 0 ? 0 : (page - 1) * pageSize + 1
   const fim = Math.min(page * pageSize, total)
@@ -17,7 +28,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
       <p className="font-body text-xs text-ink-soft">
         {total === 0
           ? 'Nenhum resultado encontrado.'
-          : `Mostrando ${inicio}–${fim} de ${total} cliente${total === 1 ? '' : 's'}`}
+          : `Mostrando ${inicio}–${fim} de ${total} ${total === 1 ? itemSingular : itemPlural}`}
       </p>
 
       <div className="flex items-center gap-2">

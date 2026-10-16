@@ -5,6 +5,11 @@
 // Administrador define as diferenças de cada analista. A lista mostra, de
 // relance, quem segue o padrão e quem foi personalizado. "Editar" abre os
 // indicadores de um analista por vez, com "Voltar ao padrão" e "Copiar de".
+//
+// Visão "Por indicador" (16/10): o Administrador escolhe UM indicador e marca,
+// numa lista com todos os analistas, quem pode vê-lo — útil quando a pergunta
+// é "quem vê este indicador?" e há muitos analistas. Grava as mesmas exceções
+// da visão "Por analista" (só o que difere do padrão).
 
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../Button'
@@ -21,6 +26,8 @@ import {
 
 /** Acima disto aparece o campo de busca por nome. */
 const LIMITE_SEM_BUSCA = 6
+
+type Visao = 'analista' | 'indicador'
 
 /** Valor efetivo de cada indicador: o padrão, trocado pelas exceções. */
 function efetivosDoAnalista(
@@ -47,6 +54,11 @@ export function LiberacaoAnalistasSecao() {
   const [copiarDe, setCopiarDe] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [mensagem, setMensagem] = useState<string | null>(null)
+
+  // Visão "Por indicador"
+  const [visao, setVisao] = useState<Visao>('analista')
+  const [indicadorSel, setIndicadorSel] = useState('')
+  const [rascunhoInd, setRascunhoInd] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     Promise.all([
@@ -144,7 +156,68 @@ export function LiberacaoAnalistasSecao() {
     }
   }
 
+  function trocarVisao(nova: Visao) {
+    setVisao(nova)
+    setMensagem(null)
+    setErro(null)
+    fecharEdicao()
+  }
+
+  function escolherIndicador(chave: string) {
+    setMensagem(null)
+    setErro(null)
+    setIndicadorSel(chave)
+    if (!chave) {
+      setRascunhoInd({})
+      return
+    }
+    setRascunhoInd(
+      Object.fromEntries(analistas.map((a) => [a.id, efetivosDoAnalista(padrao, excecoes[a.id])[chave]])),
+    )
+  }
+
+  function marcarTodos(liberado: boolean) {
+    setMensagem(null)
+    setRascunhoInd(Object.fromEntries(analistas.map((a) => [a.id, liberado])))
+  }
+
+  function seguirPadraoTodos() {
+    setMensagem(null)
+    setRascunhoInd(Object.fromEntries(analistas.map((a) => [a.id, padrao[indicadorSel] ?? false])))
+  }
+
+  async function salvarIndicador() {
+    if (!indicadorSel) return
+    const valorPadrao = padrao[indicadorSel] ?? false
+    setSalvando(true)
+    setErro(null)
+    try {
+      await liberacaoAnalistaService.salvarExcecoesDoIndicador(indicadorSel, rascunhoInd, valorPadrao)
+      setExcecoes((atual) => {
+        const proximo: ExcecoesPorAnalista = { ...atual }
+        for (const [analistaId, liberado] of Object.entries(rascunhoInd)) {
+          const doAnalista = { ...(proximo[analistaId] ?? {}) }
+          if (liberado !== valorPadrao) doAnalista[indicadorSel] = liberado
+          else delete doAnalista[indicadorSel]
+          if (Object.keys(doAnalista).length === 0) delete proximo[analistaId]
+          else proximo[analistaId] = doAnalista
+        }
+        return proximo
+      })
+      const nome = CATALOGO_INDICADORES.find((i) => i.chave === indicadorSel)?.nome ?? 'Indicador'
+      setMensagem(`Liberação de "${nome}" salva.`)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao salvar a liberação do indicador.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   const totalCatalogo = CATALOGO_INDICADORES.length
+  const opcoesIndicador = [
+    { value: '', label: 'Escolha um indicador...' },
+    ...CATALOGO_INDICADORES.map((i) => ({ value: i.chave, label: i.nome })),
+  ]
   const opcoesCopia = [
     { value: '', label: 'Copiar de outro analista...' },
     ...analistas.filter((a) => a.id !== editandoId).map((a) => ({ value: a.id, label: a.nome })),
@@ -160,6 +233,29 @@ export function LiberacaoAnalistasSecao() {
         vê na tela de Indicadores; o acesso aos dados da carteira dele não muda.
       </p>
 
+      <div
+        role="group"
+        aria-label="Forma de configurar"
+        className="mt-4 inline-flex rounded-lg border border-ink-soft/20 p-0.5"
+      >
+        {([
+          ['analista', 'Por analista'],
+          ['indicador', 'Por indicador'],
+        ] as const).map(([valor, rotulo]) => (
+          <button
+            key={valor}
+            type="button"
+            onClick={() => trocarVisao(valor)}
+            aria-pressed={visao === valor}
+            className={`rounded-md px-3.5 py-1.5 font-body text-sm font-semibold transition-colors ${
+              visao === valor ? 'bg-forest text-white' : 'text-ink-soft hover:bg-forest-mist hover:text-forest-deep'
+            }`}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
       {carregando && <p className="mt-4 font-body text-sm text-ink-soft">Carregando analistas...</p>}
 
       {erro && (
@@ -174,7 +270,7 @@ export function LiberacaoAnalistasSecao() {
         </p>
       )}
 
-      {!carregando && !editando && (
+      {!carregando && visao === 'analista' && !editando && (
         <>
           {analistas.length === 0 && !erro && (
             <p className="mt-4 font-body text-sm text-ink-soft">Nenhum analista ativo cadastrado.</p>
@@ -248,7 +344,7 @@ export function LiberacaoAnalistasSecao() {
         </>
       )}
 
-      {editando && (
+      {visao === 'analista' && editando && (
         <div className="mt-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -320,6 +416,97 @@ export function LiberacaoAnalistasSecao() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+      {!carregando && visao === 'indicador' && (
+        <div className="mt-4">
+          {analistas.length === 0 && !erro && (
+            <p className="font-body text-sm text-ink-soft">Nenhum analista ativo cadastrado.</p>
+          )}
+
+          {analistas.length > 0 && (
+            <>
+              <div className="w-full sm:max-w-md">
+                <SelectField
+                  label="Indicador"
+                  value={indicadorSel}
+                  options={opcoesIndicador}
+                  onChange={(e) => escolherIndicador(e.target.value)}
+                />
+              </div>
+
+              {indicadorSel && (
+                <>
+                  <p className="mt-2 font-body text-xs text-ink-soft">
+                    {CATALOGO_INDICADORES.find((i) => i.chave === indicadorSel)?.descricao}. Padrão (coluna
+                    "Analista"): {padrao[indicadorSel] ? 'liberado' : 'fechado'}. Linhas destacadas diferem do
+                    padrão.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button variant="ghost" onClick={() => marcarTodos(true)} disabled={salvando}>
+                      Liberar para todos
+                    </Button>
+                    <Button variant="ghost" onClick={() => marcarTodos(false)} disabled={salvando}>
+                      Fechar para todos
+                    </Button>
+                    <Button variant="ghost" onClick={seguirPadraoTodos} disabled={salvando}>
+                      Todos no padrão
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-left font-body text-sm">
+                      <thead>
+                        <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
+                          <th className="py-2 pr-3 font-normal">Analista</th>
+                          <th className="w-24 py-2 text-center font-normal">Padrão</th>
+                          <th className="w-28 py-2 text-center font-normal">Vê o indicador</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analistas.map((a) => {
+                          const valorPadrao = padrao[indicadorSel] ?? false
+                          const valor = rascunhoInd[a.id] ?? false
+                          const diferente = valor !== valorPadrao
+                          return (
+                            <tr
+                              key={a.id}
+                              className={`border-b border-ink-soft/10 ${diferente ? 'bg-brass-pale/50' : ''}`}
+                            >
+                              <td className="py-3 pr-3">
+                                <span className="block text-ink">{a.nome}</span>
+                                <span className="block text-xs text-ink-soft">{a.email}</span>
+                              </td>
+                              <td className="py-3 text-center text-ink-soft">{valorPadrao ? 'Sim' : 'Não'}</td>
+                              <td className="py-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={valor}
+                                  onChange={(e) => {
+                                    setMensagem(null)
+                                    setRascunhoInd((atual) => ({ ...atual, [a.id]: e.target.checked }))
+                                  }}
+                                  aria-label={`${a.nome} vê este indicador`}
+                                  className="h-4 w-4 rounded border-ink-soft/40 text-forest focus:ring-forest-mist"
+                                />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <Button onClick={salvarIndicador} disabled={salvando}>
+                      {salvando ? 'Salvando...' : 'Salvar liberação do indicador'}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
     </section>

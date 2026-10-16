@@ -1,10 +1,35 @@
+// src/pages/admin/AdminDashboard.tsx
+//
+// Tela inicial do Administrador: visão geral do sistema. Mesmo painel do
+// Funcionário (cartões, calendário, próximos eventos e licitações ativas),
+// mais dois indicadores só do Administrador: taxa de vitória e valor em
+// disputa.
+//
+// Redesenho (15/10, a pedido do Márcio). A taxa de vitória continua sendo
+// ganhas ÷ (ganhas + perdidas), agora calculada pelo total que o banco
+// informa de cada situação, em vez de baixar até 1000 licitações só para
+// contar. O cartão "Prazos vencendo (7 dias)" passou a se chamar "Prazos
+// vencidos ou próximos": a regra (prazo vencido, ou a menos de 24 h de vencer)
+// sempre foi essa — o "7 dias" do título não correspondia ao cálculo.
+
 import { useEffect, useMemo, useState } from 'react'
-import { DashboardShell, StatCard } from '@/components/DashboardShell'
 import { useAuth } from '@/context/AuthContext'
+import { useLicitacoesInternas } from '@/hooks/useLicitacoesInternas'
 import { licitacaoService } from '@/services/licitacaoService'
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
+import { CabecalhoPainel } from '@/components/dashboard/CabecalhoPainel'
+import { CartaoResumo } from '@/components/dashboard/CartaoResumo'
+import { ProximosEventos } from '@/components/dashboard/ProximosEventos'
+import { PainelLicitacoesAtivas } from '@/components/dashboard/PainelLicitacoesAtivas'
+import {
+  IconeCalendario,
+  IconeCalendarioRelogio,
+  IconeDocumento,
+  IconeMoeda,
+  IconePessoas,
+  IconeTendencia,
+} from '@/components/icones'
 import { classificarUrgenciaPrazo } from '@/utils/prazoUtils'
-import type { Licitacao } from '@/types/licitacao'
 
 function formatarMoedaResumida(valor: number): string {
   if (valor >= 1_000_000) return `R$ ${(valor / 1_000_000).toFixed(1).replace('.', ',')}M`
@@ -14,81 +39,121 @@ function formatarMoedaResumida(valor: number): string {
 
 export function AdminDashboard() {
   const { user } = useAuth()
-  const [licitacoes, setLicitacoes] = useState<Licitacao[]>([])
-  const [carregando, setCarregando] = useState(true)
+  const { licitacoes: ativas, nomesClientes, carregando, podeEditar } = useLicitacoesInternas()
+  const [finalizadas, setFinalizadas] = useState<{ ganhas: number; perdidas: number } | null>(null)
 
   useEffect(() => {
     let ativo = true
-    licitacaoService.listar({ pageSize: 1000 }).then((resLicitacoes) => {
-      if (!ativo) return
-      setLicitacoes(resLicitacoes.itens)
-      setCarregando(false)
-    })
+    Promise.all([
+      licitacaoService.listar({ status: 'ganho', page: 1, pageSize: 1 }),
+      licitacaoService.listar({ status: 'perdido', page: 1, pageSize: 1 }),
+    ])
+      .then(([ganhas, perdidas]) => {
+        if (ativo) setFinalizadas({ ganhas: ganhas.total, perdidas: perdidas.total })
+      })
+      .catch(() => {
+        if (ativo) setFinalizadas(null)
+      })
     return () => {
       ativo = false
     }
   }, [])
 
-  const licitacoesAtivas = useMemo(
-    () => licitacoes.filter((l) => l.status !== 'ganho' && l.status !== 'perdido'),
-    [licitacoes]
-  )
-
   const prazosUrgentes = useMemo(
     () =>
-      licitacoesAtivas.filter((l) => {
+      ativas.filter((l) => {
         const urgencia = classificarUrgenciaPrazo(l.dataEfetivaLicitacao || l.dataLicitacao)
         return urgencia === 'vencido' || urgencia === 'atencao'
       }),
-    [licitacoesAtivas]
+    [ativas]
   )
 
+  const aguardandoCliente = useMemo(() => ativas.filter((l) => l.decisaoCliente === 'pendente'), [ativas])
+
   const taxaVitoria = useMemo(() => {
-    const finalizadas = licitacoes.filter((l) => l.status === 'ganho' || l.status === 'perdido')
-    if (finalizadas.length === 0) return null
-    const ganhas = finalizadas.filter((l) => l.status === 'ganho').length
-    return Math.round((ganhas / finalizadas.length) * 100)
-  }, [licitacoes])
+    if (!finalizadas) return null
+    const total = finalizadas.ganhas + finalizadas.perdidas
+    if (total === 0) return null
+    return Math.round((finalizadas.ganhas / total) * 100)
+  }, [finalizadas])
 
   const valorEmDisputa = useMemo(
-    () => licitacoesAtivas.reduce((soma, l) => soma + (l.valorTotalLicitacao ?? 0), 0),
-    [licitacoesAtivas]
+    () => ativas.reduce((soma, l) => soma + (l.valorTotalLicitacao ?? 0), 0),
+    [ativas]
   )
 
   return (
-    <DashboardShell
-      showHeader={false}
-      title={`Olá, ${user?.name ?? 'Administrador'}`}
-      subtitle="Visão geral do sistema."
-    >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Licitações ativas"
-          value={carregando ? '—' : String(licitacoesAtivas.length)}
+    <div className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <CabecalhoPainel nome={user?.name ?? 'Administrador'} />
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <CartaoResumo
+          titulo="Licitações ativas"
+          valor={carregando ? '—' : String(ativas.length)}
+          legenda="em andamento"
+          icone={<IconeDocumento className="h-8 w-8" />}
+          tom="verde"
+          to="/admin/licitacoes"
         />
-        <StatCard
-          label="Prazos vencendo (7 dias)"
-          value={carregando ? '—' : String(prazosUrgentes.length)}
-          hint={prazosUrgentes.length > 0 ? 'Confira em Licitações' : undefined}
+        <CartaoResumo
+          titulo="Prazos vencidos ou próximos"
+          valor={carregando ? '—' : String(prazosUrgentes.length)}
+          legenda="requerem atenção"
+          icone={<IconeCalendarioRelogio className="h-8 w-8" />}
+          tom="dourado"
+          to="/admin/calendario"
         />
-        <StatCard
-          label="Taxa de vitória"
-          value={carregando ? '—' : taxaVitoria === null ? '—' : `${taxaVitoria}%`}
-          hint={taxaVitoria === null ? 'Sem licitações finalizadas ainda' : undefined}
-        />
-        <StatCard
-          label="Valor em disputa"
-          value={carregando ? '—' : formatarMoedaResumida(valorEmDisputa)}
-          hint="Licitações ativas com valor público"
+        <CartaoResumo
+          titulo="Aguardando decisão do cliente"
+          valor={carregando ? '—' : String(aguardandoCliente.length)}
+          legenda="em análise"
+          icone={<IconePessoas className="h-8 w-8" />}
+          tom="azul"
+          to="/admin/licitacoes"
         />
       </div>
 
-      <div className="mt-8">
-        <h2 className="mb-3 font-display text-lg font-semibold text-forest-deep">Calendário</h2>
-        <div className="w-fit rounded-xl border-2 border-forest bg-white p-5 shadow-soft">
-          <CalendarioLicitacoes licitacoes={licitacoesAtivas} />
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <CartaoResumo
+          compacto
+          titulo="Taxa de vitória"
+          valor={taxaVitoria === null ? '—' : `${taxaVitoria}%`}
+          legenda={taxaVitoria === null ? 'Sem licitações finalizadas ainda' : 'ganhas entre as finalizadas'}
+          icone={<IconeTendencia className="h-6 w-6" />}
+          tom="verde"
+        />
+        <CartaoResumo
+          compacto
+          titulo="Valor em disputa"
+          valor={carregando ? '—' : formatarMoedaResumida(valorEmDisputa)}
+          legenda="Licitações ativas com valor público"
+          icone={<IconeMoeda className="h-6 w-6" />}
+          tom="dourado"
+        />
       </div>
-    </DashboardShell>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <section className="rounded-2xl border border-ink-soft/10 bg-white p-5 shadow-soft sm:p-6">
+          <div className="mb-4 flex items-center gap-2.5">
+            <IconeCalendario className="h-6 w-6 text-forest" />
+            <h2 className="font-display text-xl font-semibold text-forest-deep">Calendário</h2>
+          </div>
+          {carregando ? (
+            <p className="py-10 text-center font-body text-sm text-ink-soft">Carregando...</p>
+          ) : (
+            <CalendarioLicitacoes licitacoes={ativas} amplo mostrarLegenda={false} />
+          )}
+        </section>
+
+        <ProximosEventos licitacoes={ativas} carregando={carregando} />
+      </div>
+
+      <PainelLicitacoesAtivas
+        licitacoes={ativas}
+        nomesClientes={nomesClientes}
+        carregando={carregando}
+        podeEditar={podeEditar}
+      />
+    </div>
   )
 }

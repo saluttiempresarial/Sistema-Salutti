@@ -1,11 +1,13 @@
 // src/components/ClienteSidebar.tsx
 //
 // Menu lateral fixo do Portal do Cliente — mesmo padrão visual do
-// AdminSidebar.tsx (foto de perfil + itens de navegação), com os 3 itens
-// que o Márcio pediu: Licitações, Calendário, Relatórios.
+// AdminSidebar.tsx (logotipo, cartão com foto de perfil, ícones padronizados,
+// página atual destacada e a frase institucional no rodapé), com os itens:
+// Licitações, Calendário, Relatórios e Indicadores.
 //
-// Ícones são SVGs simples desenhados à mão, iguais aos do AdminSidebar —
-// evita precisar rodar npm install para esta mudança.
+// Redesenho (16/10, a pedido do Márcio): no tablet o menu vira uma gaveta,
+// aberta pelo botão da barra superior (ClienteTopBar). A lógica da foto de
+// perfil (escolher, enquadrar e enviar) continua a mesma de antes.
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
@@ -13,55 +15,32 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { usuarioClienteService } from '@/services/usuarioClienteService'
 import { ROLE_LABEL } from '@/types/auth'
+import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
+import { IconeCalendario, IconeDocumento, IconeFechar, IconeGrafico, IconeTendencia } from '@/components/icones'
 
 interface ItemMenu {
   label: string
   to: string
   icon: ReactElement
-}
-
-function IconDocumento() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <path d="M6 3h8l4 4v14H6z" />
-      <path d="M14 3v4h4" />
-      <path d="M9 13l2 2 4-4" />
-    </svg>
-  )
-}
-
-function IconCalendario() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <rect x="3.5" y="5" width="17" height="15" rx="2" />
-      <path d="M3.5 10h17" />
-      <path d="M8 3v4M16 3v4" />
-    </svg>
-  )
-}
-
-function IconGrafico() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0">
-      <path d="M4 20V10" />
-      <path d="M11 20V4" />
-      <path d="M18 20v-7" />
-      <path d="M3 20h18" />
-    </svg>
-  )
+  /** Só fica ativo quando o endereço é exatamente este. */
+  exato?: boolean
 }
 
 const ITENS: ItemMenu[] = [
-  { label: 'Licitações', to: '/cliente', icon: <IconDocumento /> },
-  { label: 'Calendário', to: '/cliente/calendario', icon: <IconCalendario /> },
-  // Item "Relatórios" ocultado por enquanto: a página ainda está em construção.
-  // A rota /cliente/relatorios continua existindo; basta voltar a incluir o
-  // item aqui quando a fase de Relatórios do cliente for entregue.
-  { label: 'Indicadores', to: '/cliente/indicadores', icon: <IconGrafico /> },
+  { label: 'Licitações', to: '/cliente', icon: <IconeDocumento />, exato: true },
+  { label: 'Calendário', to: '/cliente/calendario', icon: <IconeCalendario /> },
+  { label: 'Relatórios', to: '/cliente/relatorios', icon: <IconeGrafico /> },
+  { label: 'Indicadores', to: '/cliente/indicadores', icon: <IconeTendencia /> },
 ]
 
-export function ClienteSidebar() {
+interface ClienteSidebarProps {
+  /** Gaveta aberta (só vale no tablet; no computador o menu é fixo). */
+  aberta?: boolean
+  onFechar?: () => void
+}
+
+export function ClienteSidebar({ aberta = false, onFechar }: ClienteSidebarProps) {
   const { user } = useAuth()
   const location = useLocation()
 
@@ -110,62 +89,116 @@ export function ClienteSidebar() {
     }
   }
 
-  return (
-    <aside className="flex w-64 shrink-0 flex-col bg-forest-deep">
-      <div className="flex items-center gap-3 border-b border-white/10 px-5 py-6">
-        <button
-          type="button"
-          onClick={() => inputFotoRef.current?.click()}
-          disabled={enviandoFoto}
-          aria-label={fotoUrl ? 'Trocar foto de perfil' : 'Adicionar foto de perfil'}
-          className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-white/15 disabled:opacity-60"
-        >
-          {fotoUrl ? (
-            <img src={fotoUrl} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center font-body text-sm font-semibold text-white">
-              {iniciais || '—'}
-            </span>
-          )}
-        </button>
-        <input
-          ref={inputFotoRef}
-          type="file"
-          accept="image/*"
-          onChange={handleSelecionarFoto}
-          className="hidden"
-        />
-        <div>
-          <p className="font-body text-sm font-semibold text-white">{user?.name ?? '—'}</p>
-          <p className="font-mono text-[11px] uppercase tracking-wide text-white/60">
-            {user ? ROLE_LABEL[user.role] : ''}
-          </p>
-        </div>
-      </div>
+  function estaAtivo(item: ItemMenu): boolean {
+    if (item.exato) return location.pathname === item.to
+    return location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+  }
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
-        {ITENS.map((item) => {
-          const ativo = location.pathname === item.to
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 font-body text-sm transition-colors ${
-                ativo ? 'bg-white/15 font-medium text-white' : 'text-white/75 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          )
-        })}
-      </nav>
+  return (
+    <>
+      {/* Fundo escurecido atrás da gaveta (tablet) */}
+      {aberta && (
+        <div className="fixed inset-0 z-40 bg-charcoal/50 lg:hidden" onClick={onFechar} aria-hidden="true" />
+      )}
+
+      {/* `lg:transform-none` evita que a gaveta vire referência de posição
+          para janelas (modais) abertas de dentro dela. */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto bg-forest-deep transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-64 lg:max-w-none lg:shrink-0 lg:self-start lg:transform-none ${
+          aberta ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-4">
+          <Link
+            to="/cliente"
+            className="block flex-1 rounded-2xl bg-paper px-4 py-3 shadow-soft"
+            aria-label="Salutti Empresarial — ir para o início"
+          >
+            <Logo />
+            <p className="mt-1 pl-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.3em] text-brass">
+              Empresarial
+            </p>
+          </Link>
+          <button
+            type="button"
+            onClick={onFechar}
+            aria-label="Fechar o menu"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/80 hover:bg-white/10 lg:hidden"
+          >
+            <IconeFechar className="h-6 w-6" />
+          </button>
+        </div>
+
+        <div className="mx-4 mb-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+          <button
+            type="button"
+            onClick={() => inputFotoRef.current?.click()}
+            disabled={enviandoFoto}
+            aria-label={fotoUrl ? 'Trocar foto de perfil' : 'Adicionar foto de perfil'}
+            className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-forest ring-2 ring-white/20 disabled:opacity-60"
+          >
+            {fotoUrl ? (
+              <img src={fotoUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center font-body text-sm font-semibold text-white">
+                {iniciais || '—'}
+              </span>
+            )}
+          </button>
+          <input
+            ref={inputFotoRef}
+            type="file"
+            accept="image/*"
+            onChange={handleSelecionarFoto}
+            className="hidden"
+          />
+          <div className="min-w-0">
+            <p className="font-body text-sm font-semibold leading-snug text-white">{user?.name ?? '—'}</p>
+            <p className="mt-0.5 font-mono text-[11px] uppercase tracking-wide text-white/60">
+              {user ? ROLE_LABEL[user.role] : ''}
+            </p>
+          </div>
+        </div>
+
+        <nav className="flex-1 space-y-1 px-3 py-3" aria-label="Menu principal">
+          {ITENS.map((item) => {
+            const ativo = estaAtivo(item)
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={ativo ? 'page' : undefined}
+                className={`flex items-center gap-3 rounded-xl px-3 py-3 font-body text-sm transition-colors ${
+                  ativo
+                    ? 'bg-forest font-semibold text-white shadow-soft ring-1 ring-white/10'
+                    : 'text-white/75 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {item.icon}
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Frase institucional no rodapé do menu */}
+        <div className="mx-3 mb-5 mt-2 border-t border-white/10 px-3 pt-5">
+          <div className="border-l-2 border-brass pl-3">
+            <p className="font-body text-sm font-bold uppercase leading-snug tracking-wide text-white">
+              Qualidade que gera <span className="text-brass-light">confiança.</span>
+            </p>
+            <p className="mt-1 font-body text-sm font-bold uppercase leading-snug tracking-wide text-white">
+              Estratégia que entrega <span className="text-brass-light">resultados.</span>
+            </p>
+          </div>
+        </div>
+      </aside>
 
       <FotoPerfilCropModal
         arquivo={arquivoParaRecortar}
         onCancelar={() => setArquivoParaRecortar(null)}
         onConfirmar={handleConfirmarRecorte}
       />
-    </aside>
+    </>
   )
 }

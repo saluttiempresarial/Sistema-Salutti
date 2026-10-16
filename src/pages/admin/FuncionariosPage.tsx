@@ -106,7 +106,14 @@ export function FuncionariosPage() {
           />
         </div>
 
-        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onPageChange={setPage}
+          itemSingular="funcionário"
+          itemPlural="funcionários"
+        />
       </div>
 
       <FuncionarioFormModal

@@ -117,6 +117,45 @@ async function restaurarPadrao(funcionarioId: string): Promise<void> {
   if (error) throw new Error(`Não foi possível voltar o analista ao padrão: ${error.message}`)
 }
 
+/** Grava a liberação de UM indicador para vários analistas de uma vez (visão
+ *  "Por indicador"). `marcados` traz, por analista, se o indicador fica liberado.
+ *  Quem ficou diferente do padrão vira exceção (linha gravada); quem ficou igual
+ *  ao padrão perde a exceção desse indicador (linha apagada). Os demais
+ *  indicadores de cada analista não são tocados. */
+async function salvarExcecoesDoIndicador(
+  indicador: string,
+  marcados: Record<string, boolean>,
+  padrao: boolean,
+): Promise<void> {
+  const diferentes = Object.entries(marcados).filter(([, liberado]) => liberado !== padrao)
+  const iguais = Object.entries(marcados)
+    .filter(([, liberado]) => liberado === padrao)
+    .map(([funcionarioId]) => funcionarioId)
+
+  if (diferentes.length > 0) {
+    const agora = new Date().toISOString()
+    const linhas = diferentes.map(([funcionarioId, liberado]) => ({
+      funcionario_id: funcionarioId,
+      indicador,
+      liberado,
+      atualizado_em: agora,
+    }))
+    const { error } = await supabase
+      .from('relatorio_liberacao_analista')
+      .upsert(linhas, { onConflict: 'funcionario_id,indicador' })
+    if (error) throw new Error(`Não foi possível salvar a liberação do indicador: ${error.message}`)
+  }
+
+  if (iguais.length > 0) {
+    const { error } = await supabase
+      .from('relatorio_liberacao_analista')
+      .delete()
+      .eq('indicador', indicador)
+      .in('funcionario_id', iguais)
+    if (error) throw new Error(`Não foi possível atualizar a liberação do indicador: ${error.message}`)
+  }
+}
+
 /** Indicadores que o analista logado pode ver (padrão + exceções dele). Devolve
  *  `null` quando o usuário logado não é analista ativo. */
 async function indicadoresDoAnalistaLogado(): Promise<string[] | null> {
@@ -131,6 +170,7 @@ export const liberacaoAnalistaService = {
   carregarExcecoes,
   diferencasDoPadrao,
   salvarExcecoes,
+  salvarExcecoesDoIndicador,
   restaurarPadrao,
   indicadoresDoAnalistaLogado,
 }
