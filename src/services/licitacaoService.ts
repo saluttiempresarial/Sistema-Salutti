@@ -16,6 +16,7 @@
 // historico_acoes, filtrada por entidade_tipo='licitacao'.
 
 import { supabase } from '@/lib/supabaseClient'
+import type { MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
 import type {
   Licitacao,
   LicitacaoFormData,
@@ -56,6 +57,7 @@ interface LicitacaoRow {
   orgao: string
   estado: string
   municipio: string
+  esfera: Licitacao['esfera'] | null
   distancia_matriz: string | null
   modalidade: Licitacao['modalidade']
   estrutura: string
@@ -76,6 +78,7 @@ interface LicitacaoRow {
   pontos_atencao: string | null
   decisao_cliente: Licitacao['decisaoCliente']
   motivo_recusa_cliente: string | null
+  motivo_nao_participacao: Licitacao['motivoNaoParticipacao'] | null
   decisao_cliente_em: string | null
   cobrar_frete: boolean
   percentual_frete: number | null
@@ -174,6 +177,7 @@ function paraLicitacao(
     numeroPregao: row.numero_pregao,
     orgao: row.orgao,
     estado: row.estado,
+    esfera: row.esfera ?? undefined,
     municipio: row.municipio,
     distanciaMatriz: row.distancia_matriz ?? '',
     modalidade: row.modalidade,
@@ -202,6 +206,7 @@ function paraLicitacao(
     totalItens: itens.length,
     decisaoCliente: row.decisao_cliente,
     motivoRecusaCliente: row.motivo_recusa_cliente ?? undefined,
+    motivoNaoParticipacao: row.motivo_nao_participacao ?? undefined,
     decisaoClienteEm: row.decisao_cliente_em ?? undefined,
     cobrarFrete: row.cobrar_frete,
     percentualFrete: row.percentual_frete ?? undefined,
@@ -231,6 +236,7 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     numero_pregao: dados.numeroPregao,
     orgao: dados.orgao,
     estado: dados.estado,
+    esfera: dados.esfera ?? null,
     municipio: dados.municipio,
     distancia_matriz: dados.distanciaMatriz || null,
     modalidade: dados.modalidade,
@@ -252,6 +258,7 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     pontos_atencao: dados.pontosAtencao,
     decisao_cliente: dados.decisaoCliente,
     motivo_recusa_cliente: dados.motivoRecusaCliente || null,
+    motivo_nao_participacao: dados.motivoNaoParticipacao ?? null,
     decisao_cliente_em: dados.decisaoClienteEm || null,
     cobrar_frete: dados.cobrarFrete,
     percentual_frete: dados.cobrarFrete ? dados.percentualFrete ?? null : null,
@@ -556,13 +563,19 @@ export const licitacaoService = {
     id: string,
     decisao: 'participar' | 'recusar',
     nomeCliente: string,
-    opcoes: { motivoRecusa?: string; cobrarFrete?: boolean; percentualFrete?: number } = {}
+    opcoes: {
+      motivoRecusa?: string
+      motivoNaoParticipacao?: MotivoNaoParticipacao
+      cobrarFrete?: boolean
+      percentualFrete?: number
+    } = {}
   ): Promise<Licitacao> {
     const { error } = await supabase.rpc('registrar_decisao_cliente', {
       p_licitacao_id: id,
       p_decisao: decisao,
       p_usuario: nomeCliente,
       p_motivo_recusa: decisao === 'recusar' ? opcoes.motivoRecusa ?? null : null,
+      p_motivo_nao_participacao: decisao === 'recusar' ? opcoes.motivoNaoParticipacao ?? null : null,
       p_cobrar_frete: opcoes.cobrarFrete ?? false,
       p_percentual_frete: opcoes.cobrarFrete ? opcoes.percentualFrete ?? null : null,
     })

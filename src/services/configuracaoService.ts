@@ -85,7 +85,19 @@ export const configuracaoService = {
   // usar esse valor já carregado em vez de chamar este service de novo.
   // Ver src/utils/prazoUtils.ts — os cálculos de prazo devem passar a
   // receber a regra como parâmetro em vez de lê-la diretamente daqui.
+  //
+  // 19/10: a regra é lida pela função obter_regra_prazo_interno() (migração
+  // 050), que devolve só os dois campos da regra e vale para qualquer usuário
+  // logado — o Cliente não tem permissão de ler a tabela `configuracoes`
+  // inteira (dados cadastrais da Salutti) e isso gerava erro 406 no console.
+  // Se a função ainda não existir no banco, cai para a leitura direta da
+  // tabela, como antes.
   async obterRegraPrazo(): Promise<RegraPrazoInterno> {
+    const { data, error } = await supabase.rpc('obter_regra_prazo_interno')
+    const linha = Array.isArray(data) ? data[0] : data
+    if (!error && linha) {
+      return { diasUteisAntes: linha.dias_uteis_antes, horario: paraHorarioCurto(linha.horario_limite) }
+    }
     const row = await buscarConfiguracaoRow()
     return { diasUteisAntes: row.dias_uteis_antes, horario: paraHorarioCurto(row.horario_limite) }
   },

@@ -40,13 +40,16 @@
 //     (decisaoCliente = 'participar'). "Ganhou" = ao menos um item/grupo
 //     ganho.
 
-import { MODALIDADE_LICITACAO_LABEL } from '../types/licitacao';
-import type { Licitacao, ItemLicitacao, ModalidadeLicitacao } from '../types/licitacao';
+import { ESFERA_LICITACAO_LABEL, MODALIDADE_LICITACAO_LABEL } from '../types/licitacao';
+import type { EsferaLicitacao, Licitacao, ItemLicitacao, ModalidadeLicitacao } from '../types/licitacao';
 import type { Disputa } from '../types/disputa';
+import { GRUPO_MOTIVO_LABEL, definicaoDoMotivo } from '../types/motivoNaoParticipacao';
+import type { ChaveMotivoIndicador, GrupoMotivo } from '../types/motivoNaoParticipacao';
 import {
   CHAVE_GRUPOS,
   CHAVE_SEM_FAMILIA,
   CHAVE_SEM_MARCA,
+  FILTRO_SEM_ESFERA,
   FILTRO_SEM_FAMILIA,
   type BarraFamilia,
   type BarraMarca,
@@ -77,6 +80,12 @@ import {
   type ClientesSemAtividade,
   type ConcentracaoCarteira,
   type DesempenhoModalidade,
+  type DesempenhoTerritorio,
+  type ClienteResumo,
+  type GrupoMotivoNaoParticipacao,
+  type LinhaMotivoNaoParticipacao,
+  type MercadoUfEsfera,
+  type MotivosNaoParticipacao,
   type FatiaCarteira,
   type TempoResposta,
   type ValorCliente,
@@ -87,7 +96,7 @@ import {
   type ValorAdjudicadoMes,
   type VolumeMes,
 } from '../types/indicadores';
-import { calcularAnaliseItem, totalReferenciaItem, totalReferenciaOportunidade } from './licitacaoCalculos';
+import { calcularAnaliseItem, licitacaoExclusivaMeEpp, totalReferenciaItem, totalReferenciaOportunidade } from './licitacaoCalculos';
 import { calcularPrazoInterno, classificarUrgenciaPrazo } from './prazoUtils';
 
 const LIMITE_TOP = 10;
@@ -207,6 +216,11 @@ export function resultadoDaLicitacao(
  *  licitações que têm ao menos um item da família (ou, para "sem família", ao
  *  menos um item sem família); o filtro de marca funciona igual. As disputas
  *  só são necessárias para os filtros de resultado e de fase. */
+/** UF da licitação em maiúsculas e sem espaços ("" se não informada). */
+function ufDaLicitacao(l: Licitacao): string {
+  return (l.estado ?? '').trim().toUpperCase();
+}
+
 export function filtrarLicitacoes(
   licitacoes: Licitacao[],
   filtros: FiltrosIndicadores,
@@ -225,6 +239,8 @@ export function filtrarLicitacoes(
       if (!temItem) return false;
     }
     if (filtros.orgao && normalizarNome(l.orgao) !== filtros.orgao) return false;
+    if (filtros.uf && ufDaLicitacao(l) !== filtros.uf) return false;
+    if (filtros.esfera && (l.esfera ?? FILTRO_SEM_ESFERA) !== filtros.esfera) return false;
     if (filtros.marca && !l.itens.some((i) => marcaDoItem(i) === filtros.marca)) return false;
     if (disputaPorLicitacao) {
       const disputa = disputaPorLicitacao.get(l.id);
@@ -1282,6 +1298,116 @@ export function calcularDesempenhoModalidade(
 }
 
 // ---------------------------------------------------------------------------
+// Mercado por UF e por esfera (Especificação 3.6) — 19/10
+// ---------------------------------------------------------------------------
+const ORDEM_ESFERAS: EsferaLicitacao[] = ['municipal', 'estadual', 'federal', 'distrital'];
+
+function agruparDesempenhoTerritorio(
+  licitacoes: Licitacao[],
+  comGanho: Set<string>,
+  chaveDe: (l: Licitacao) => { chave: string; nome: string }
+): DesempenhoTerritorio[] {
+  const mapa = new Map<string, DesempenhoTerritorio>();
+  licitacoes.forEach((l) => {
+    const { chave, nome } = chaveDe(l);
+    const atual = mapa.get(chave) ?? { chave, nome, licitacoes: 0, participou: 0, ganhou: 0, taxa: null };
+    atual.licitacoes += 1;
+    if (l.decisaoCliente === 'participar') atual.participou += 1;
+    if (comGanho.has(l.id)) atual.ganhou += 1;
+    mapa.set(chave, atual);
+  });
+  return [...mapa.values()].map((m) => ({ ...m, taxa: m.participou > 0 ? (m.ganhou / m.participou) * 100 : null }));
+}
+
+/** Licitações, participações e vitórias por UF (as 10 com mais licitações) e por
+ *  esfera. Licitação sem UF cai em "Sem UF" e sem esfera em "Não informada", para
+ *  o dado faltante ficar visível. Vitória = ao menos 1 item ou grupo ganho. */
+export function calcularMercadoUfEsfera(licitacoes: Licitacao[], unidades: UnidadeResultado[]): MercadoUfEsfera {
+  const comGanho = new Set(unidades.filter((u) => u.resultado === 'ganho').map((u) => u.licitacaoId));
+
+  const porUf = agruparDesempenhoTerritorio(licitacoes, comGanho, (l) => {
+    const uf = ufDaLicitacao(l);
+    return uf ? { chave: uf, nome: uf } : { chave: 'sem-uf', nome: 'Sem UF' };
+  })
+    .sort((a, b) => b.licitacoes - a.licitacoes || a.nome.localeCompare(b.nome, 'pt-BR'))
+    .slice(0, LIMITE_LISTA_GESTAO);
+
+  const esferas = agruparDesempenhoTerritorio(licitacoes, comGanho, (l) =>
+    l.esfera
+      ? { chave: l.esfera, nome: ESFERA_LICITACAO_LABEL[l.esfera] ?? l.esfera }
+      : { chave: FILTRO_SEM_ESFERA, nome: 'Não informada' }
+  );
+  const posicao = (chave: string) => {
+    const i = ORDEM_ESFERAS.indexOf(chave as EsferaLicitacao);
+    return i === -1 ? ORDEM_ESFERAS.length : i;
+  };
+  const porEsfera = esferas.sort((a, b) => posicao(a.chave) - posicao(b.chave));
+
+  return { porUf, porEsfera };
+}
+
+/** Motivo de não participação de uma licitação, ou null se o cliente participou
+ *  ou a licitação ainda está em aberto. Recusa: vale o motivo gravado (recusas
+ *  anteriores à lista ficam "não classificado"). Sessão passada sem decisão:
+ *  empresa ME/EPP = bloqueio do sistema; licitação exclusiva ME/EPP e empresa
+ *  "Demais" = bloqueio do sistema; o resto = sem resposta do cliente. */
+export function motivoNaoParticipacaoDaLicitacao(
+  l: Licitacao,
+  porteDoCliente: 'me_epp' | 'demais' | undefined,
+  agora: Date
+): ChaveMotivoIndicador | null {
+  if (l.decisaoCliente === 'recusar') return l.motivoNaoParticipacao ?? 'nao_classificado';
+  if (l.decisaoCliente === 'pendente' && new Date(dataDaLicitacao(l)) < agora) {
+    if (porteDoCliente === 'me_epp') return 'bloqueio_porte';
+    if (porteDoCliente === 'demais' && l.itens.length > 0 && licitacaoExclusivaMeEpp(l.itens)) return 'exclusiva_me_epp';
+    return 'sem_resposta';
+  }
+  return null;
+}
+
+/** Licitações sem participação do cliente, por motivo e por grupo de motivo.
+ *  Mesma definição de "Não participou" do filtro de resultado. */
+export function calcularMotivosNaoParticipacao(
+  licitacoes: Licitacao[],
+  clientes: ClienteResumo[],
+  agora: Date
+): MotivosNaoParticipacao {
+  const porte = new Map(clientes.map((c) => [c.id, c.porte]));
+  const contagem = new Map<ChaveMotivoIndicador, number>();
+  let total = 0;
+  licitacoes.forEach((l) => {
+    const chave = motivoNaoParticipacaoDaLicitacao(l, porte.get(l.clienteId), agora);
+    if (!chave) return;
+    total += 1;
+    contagem.set(chave, (contagem.get(chave) ?? 0) + 1);
+  });
+
+  const percentual = (q: number) => (total > 0 ? (q / total) * 100 : 0);
+  const motivos: LinhaMotivoNaoParticipacao[] = [];
+  const grupos = new Map<GrupoMotivo, number>();
+  contagem.forEach((quantidade, chave) => {
+    const def = definicaoDoMotivo(chave);
+    const grupo: GrupoMotivo = def?.grupo ?? 'outro';
+    motivos.push({
+      chave,
+      nome: def?.rotulo ?? chave,
+      grupo,
+      origem: def?.origem ?? 'cliente',
+      quantidade,
+      percentual: percentual(quantidade),
+    });
+    grupos.set(grupo, (grupos.get(grupo) ?? 0) + quantidade);
+  });
+  motivos.sort((a, b) => b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const porGrupo: GrupoMotivoNaoParticipacao[] = [...grupos.entries()]
+    .map(([grupo, quantidade]) => ({ grupo, nome: GRUPO_MOTIVO_LABEL[grupo], quantidade, percentual: percentual(quantidade) }))
+    .sort((a, b) => b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  return { total, motivos, porGrupo };
+}
+
+// ---------------------------------------------------------------------------
 // Conjunto completo (painel do Administrador)
 // ---------------------------------------------------------------------------
 export function calcularIndicadoresAdmin(
@@ -1340,6 +1466,8 @@ export function calcularIndicadoresAdmin(
     concentracaoCarteira: calcularConcentracaoCarteira(licitacoes, dados.clientes),
     valorPorCliente: calcularValorPorCliente(licitacoes, unidades, dados.disputas, nomeDoCliente),
     desempenhoModalidade: calcularDesempenhoModalidade(licitacoes, unidades),
+    mercadoUfEsfera: calcularMercadoUfEsfera(licitacoes, unidades),
+    motivosNaoParticipacao: calcularMotivosNaoParticipacao(licitacoes, dados.clientes, agora),
     totalLicitacoes: licitacoes.length,
   };
 }

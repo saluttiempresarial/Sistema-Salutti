@@ -27,6 +27,7 @@ async function carregarDadosBase(restricao: { clienteIds?: string[]; licitacaoId
       id: c.id,
       nome: c.empresa.nomeFantasia || c.empresa.razaoSocial,
       segmento: c.empresa.segmento,
+      porte: c.empresa.porte,
     })),
   }
 }

@@ -180,7 +180,7 @@ export function ClienteNotificacoes() {
           )}
 
           <Link
-            to="/cliente"
+            to="/cliente/licitacoes"
             onClick={() => setAberto(false)}
             className="block border-t border-ink-soft/10 px-4 py-3 text-center font-body text-sm font-semibold text-forest hover:bg-forest-mist/50"
           >

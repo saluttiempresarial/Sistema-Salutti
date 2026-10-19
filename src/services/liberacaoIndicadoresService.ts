@@ -15,7 +15,7 @@ export const PERFIS_LIBERACAO: { chave: PerfilLiberacao; rotulo: string }[] = [
   { chave: 'cliente', rotulo: 'Cliente' },
 ]
 
-/** Catálogo de indicadores. As chaves devem ser as mesmas das migrações 037 (primeira entrega), 042 (preço e competitividade) e 043 (pipeline e prazos) e 049 (gestão da carteira e da operação). */
+/** Catálogo de indicadores. As chaves devem ser as mesmas das migrações 037 (primeira entrega), 042 (preço e competitividade), 043 (pipeline e prazos), 049 (gestão da carteira e da operação) e 051 (mercado por UF e por esfera). */
 export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: string }[] = [
   { chave: 'pipeline', nome: 'Pipeline', descricao: 'Uso interno: licitações por fase, da decisão do cliente ao resultado' },
   { chave: 'prazos_proximos', nome: 'Prazos dos próximos 7 dias', descricao: 'Uso interno: prazos internos vencidos ou vencendo' },
@@ -38,6 +38,8 @@ export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: str
   { chave: 'concentracao_carteira', nome: 'Concentração da carteira', descricao: 'Uso interno: peso de cada cliente e de cada segmento no valor das licitações' },
   { chave: 'valor_por_cliente', nome: 'Valor por cliente', descricao: 'Uso interno: valor em disputa e valor adjudicado por cliente' },
   { chave: 'desempenho_modalidade', nome: 'Desempenho por modalidade', descricao: 'Participações e vitórias por modalidade (pregão, concorrência)' },
+  { chave: 'motivos_nao_participacao', nome: 'Motivos de não participação', descricao: 'Por que o cliente não participou: motivos escolhidos por ele e registros do sistema (sem resposta, bloqueio ME/EPP)' },
+  { chave: 'mercado_uf_esfera', nome: 'Mercado por UF e por esfera', descricao: 'Licitações, participações e vitórias por estado e por esfera (municipal, estadual, federal, distrital)' },
 ]
 
 /** indicador -> perfil -> liberado. Sempre traz todos os indicadores do catálogo. */

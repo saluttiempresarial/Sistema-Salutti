@@ -25,6 +25,7 @@ import type {
   TipoContratacaoLicitacao,
   ProcedimentoLicitacao,
   FormaPagamento,
+  EsferaLicitacao,
 } from './licitacao';
 
 export interface ItemChecklistExtraidoIA {
@@ -41,6 +42,7 @@ export interface ExtracaoEditalIA {
   orgao: string;
   estado: string; // UF
   municipio: string;
+  esfera?: EsferaLicitacao | null; // opcional: a Edge Function ainda não devolve (preenche à mão)
   modalidade: ModalidadeLicitacao;
   estrutura: EstruturaLicitacao;
   tipoContratacao: TipoContratacaoLicitacao;

@@ -26,6 +26,8 @@ import type {
   ClientesSemAtividade,
   ConcentracaoCarteira,
   DesempenhoModalidade,
+  MercadoUfEsfera,
+  MotivosNaoParticipacao,
   FatiaCarteira,
   TempoResposta,
   ValorCliente,
@@ -43,6 +45,7 @@ import type {
   TaxaVitoriaFamilia,
   ValorAdjudicado,
 } from '../../types/indicadores'
+import { FILTRO_SEM_ESFERA } from '../../types/indicadores'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '../../utils/prazoUtils'
 
 const COR_GANHO = '#0B5C3C' // forest
@@ -1053,6 +1056,121 @@ function ModalidadeBloco({ dados }: { dados: DesempenhoModalidade[] }) {
   )
 }
 
+function UfEsferaBloco({ dados }: { dados: MercadoUfEsfera }) {
+  if (dados.porUf.length === 0 && dados.porEsfera.length === 0) return <SemDados />
+  const semEsfera = dados.porEsfera.find((e) => e.chave === FILTRO_SEM_ESFERA)
+  const totalEsferas = dados.porEsfera.reduce((soma, e) => soma + e.licitacoes, 0)
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <div className="space-y-3">
+        <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Por esfera</h4>
+        <BarrasDuplas
+          dados={dados.porEsfera.map((e) => ({ esfera: e.nome, participou: e.participou, ganhou: e.ganhou }))}
+          chaveRotulo="esfera"
+          chaveTotal="participou"
+          chaveGanho="ganhou"
+          rotuloTotal="Participou"
+          rotuloGanho="Com vitória"
+        />
+        <ul className="font-body text-sm text-ink-soft">
+          {dados.porEsfera.map((e) => (
+            <li key={e.chave}>
+              <strong className="text-ink">{e.nome}:</strong> {formatarNumero(e.licitacoes)}{' '}
+              {e.licitacoes === 1 ? 'licitação' : 'licitações'} · taxa de vitória {formatarPercentual(e.taxa)}
+            </li>
+          ))}
+        </ul>
+        {semEsfera && (
+          <p className="rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft">
+            {formatarNumero(semEsfera.licitacoes)} de {formatarNumero(totalEsferas)}{' '}
+            {totalEsferas === 1 ? 'licitação está' : 'licitações estão'} sem esfera informada. A esfera é
+            opcional e escolhida no cadastro da licitação.
+          </p>
+        )}
+      </div>
+      <div className="space-y-3">
+        <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Por UF (10 com mais licitações)</h4>
+        <BarrasDuplas
+          dados={dados.porUf.map((u) => ({ uf: u.nome, participou: u.participou, ganhou: u.ganhou }))}
+          chaveRotulo="uf"
+          chaveTotal="participou"
+          chaveGanho="ganhou"
+          rotuloTotal="Participou"
+          rotuloGanho="Com vitória"
+        />
+        <ul className="font-body text-sm text-ink-soft">
+          {dados.porUf.map((u) => (
+            <li key={u.chave}>
+              <strong className="text-ink">{u.nome}:</strong> {formatarNumero(u.licitacoes)}{' '}
+              {u.licitacoes === 1 ? 'licitação' : 'licitações'} · taxa de vitória {formatarPercentual(u.taxa)}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function MotivosNaoParticipacaoBloco({ dados }: { dados: MotivosNaoParticipacao }) {
+  if (dados.total === 0) return <SemDados texto="Nenhuma licitação sem participação nos filtros escolhidos." />
+  const maximo = Math.max(...dados.motivos.map((m) => m.quantidade), 1)
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="space-y-3">
+        <p className="font-body text-sm text-ink">
+          <strong>{formatarNumero(dados.total)}</strong>{' '}
+          {dados.total === 1 ? 'licitação sem participação do cliente' : 'licitações sem participação do cliente'}
+        </p>
+        <ul className="space-y-3">
+          {dados.motivos.map((m) => (
+            <li key={m.chave}>
+              <div className="flex items-baseline justify-between gap-3 font-body text-sm">
+                <span className="text-ink">{m.nome}</span>
+                <span className="shrink-0 text-ink">
+                  <strong>{formatarNumero(m.quantidade)}</strong>
+                  <span className="ml-2 text-ink-soft">({formatarPercentual(m.percentual)})</span>
+                </span>
+              </div>
+              <div className="mt-1 h-3 rounded bg-forest-mist">
+                <div
+                  className="h-3 rounded"
+                  style={{
+                    width: `${Math.max((m.quantidade / maximo) * 100, 2)}%`,
+                    backgroundColor: m.origem === 'cliente' ? COR_GANHO : COR_REFERENCIA,
+                  }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="flex flex-wrap gap-x-4 gap-y-1 font-body text-xs text-ink-soft">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: COR_GANHO }} />
+            Escolhido pelo cliente
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: COR_REFERENCIA }} />
+            Registrado pelo sistema
+          </span>
+        </p>
+      </div>
+      <div className="space-y-3">
+        <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Por grupo de motivo</h4>
+        <ul className="space-y-1.5 font-body text-sm text-ink-soft">
+          {dados.porGrupo.map((g) => (
+            <li key={g.grupo} className="flex items-baseline justify-between gap-3">
+              <strong className="font-semibold text-ink">{g.nome}</strong>
+              <span>
+                {formatarNumero(g.quantidade)} ({formatarPercentual(g.percentual)})
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Painel completo
 // ---------------------------------------------------------------------------
@@ -1083,6 +1201,8 @@ export type ChaveIndicador =
   | 'concentracao_carteira'
   | 'valor_por_cliente'
   | 'desempenho_modalidade'
+  | 'mercado_uf_esfera'
+  | 'motivos_nao_participacao'
 
 interface IndicadoresGraficosProps {
   indicadores: IndicadoresAdmin
@@ -1156,6 +1276,26 @@ export function IndicadoresGraficos({ indicadores, visiveis }: IndicadoresGrafic
       {ver('desempenho_modalidade') && (
         <Cartao titulo="Desempenho por modalidade" subtitulo="Participações x licitações com vitória">
           <ModalidadeBloco dados={indicadores.desempenhoModalidade} />
+        </Cartao>
+      )}
+
+      {ver('mercado_uf_esfera') && (
+        <Cartao
+          titulo="Mercado por UF e por esfera"
+          subtitulo="Participações x licitações com vitória, por estado e por esfera do órgão"
+          className="lg:col-span-2"
+        >
+          <UfEsferaBloco dados={indicadores.mercadoUfEsfera} />
+        </Cartao>
+      )}
+
+      {ver('motivos_nao_participacao') && (
+        <Cartao
+          titulo="Motivos de não participação"
+          subtitulo="Por que o cliente não participou: recusas com motivo escolhido e licitações sem resposta"
+          className="lg:col-span-2"
+        >
+          <MotivosNaoParticipacaoBloco dados={indicadores.motivosNaoParticipacao} />
         </Cartao>
       )}
 

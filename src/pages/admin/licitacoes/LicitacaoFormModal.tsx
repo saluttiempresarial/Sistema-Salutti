@@ -42,6 +42,8 @@ import {
   ModalidadeLicitacao,
   MODALIDADE_LICITACAO_LABEL,
   MODALIDADE_LICITACAO_DESCRICAO,
+  ESFERA_LICITACAO_LABEL,
+  EsferaLicitacao,
   ParticipacaoLicitacao,
   PARTICIPACAO_LICITACAO_LABEL,
   PARTICIPACAO_LICITACAO_DESCRICAO,
@@ -69,6 +71,7 @@ import {
 } from '../../../types/licitacao';
 import { clienteService } from '../../../services/clienteService';
 import { PorteEmpresa } from '../../../types/cliente';
+import { rotuloDoMotivo } from '../../../types/motivoNaoParticipacao';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 // Funções de formatação/conversão numérica BR (vírgula decimal, ponto de
@@ -634,6 +637,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       orgao: extracao.orgao,
       estado: extracao.estado,
       municipio: extracao.municipio,
+      esfera: extracao.esfera ?? atual.esfera,
       modalidade: extracao.modalidade,
       estrutura: extracao.estrutura,
       tipoContratacao: extracao.tipoContratacao,
@@ -1008,6 +1012,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   }
                 />
               )}
+              <SelectField
+                label="Esfera"
+                value={form.esfera ?? ''}
+                onChange={(e) => atualizarCampo('esfera', e.target.value ? (e.target.value as EsferaLicitacao) : undefined)}
+                placeholder="Não informada"
+                options={Object.entries(ESFERA_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+              />
               <TextField
                 label="Distância da matriz"
                 value={form.distanciaMatriz}
@@ -1193,6 +1204,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 <p className="text-ink-soft">
                   {DECISAO_CLIENTE_LABEL[licitacaoEmEdicao.decisaoCliente]}
                   {licitacaoEmEdicao.decisaoClienteEm && ` em ${formatarDataHora(licitacaoEmEdicao.decisaoClienteEm)}`}
+                  {licitacaoEmEdicao.decisaoCliente === 'recusar' &&
+                    licitacaoEmEdicao.motivoNaoParticipacao &&
+                    ` — ${rotuloDoMotivo(licitacaoEmEdicao.motivoNaoParticipacao)}`}
                   {licitacaoEmEdicao.motivoRecusaCliente && ` — "${licitacaoEmEdicao.motivoRecusaCliente}"`}
                 </p>
                 <p className="mt-1 text-xs text-ink-soft/70">

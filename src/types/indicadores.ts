@@ -7,9 +7,13 @@
 // a partir de dados base carregados uma única vez, para ficarem idênticos aos
 // da tela de Disputa (mesmo mínimo c/ frete).
 
-import type { Licitacao } from './licitacao';
+import type { Licitacao, EsferaLicitacao } from './licitacao';
+import type { ChaveMotivoIndicador, GrupoMotivo } from './motivoNaoParticipacao';
 import type { Disputa, ResultadoItemDisputa } from './disputa';
 import type { FamiliaProduto } from '../services/familiaProdutoService';
+
+/** Valor do filtro de esfera para licitações sem esfera informada. */
+export const FILTRO_SEM_ESFERA = 'sem-esfera';
 
 /** Valor do filtro de família para itens que ainda não têm família. */
 export const FILTRO_SEM_FAMILIA = 'sem-familia';
@@ -25,6 +29,10 @@ export interface FiltrosIndicadores {
   /** Marca da proposta do cliente, já normalizada: só licitações com ao menos
    *  um item dessa marca; os resultados passam a considerar só esses itens. */
   marca?: string;
+  /** UF do órgão (sigla em maiúsculas, ex.: "SP"). */
+  uf?: string;
+  /** Esfera do órgão, ou FILTRO_SEM_ESFERA para as sem esfera informada. */
+  esfera?: EsferaLicitacao | typeof FILTRO_SEM_ESFERA;
   /** Resultado da licitação (ver ResultadoLicitacaoFiltro). */
   resultado?: ResultadoLicitacaoFiltro;
   /** Fase no pipeline — filtro "Status", só para Administrador e Analista. */
@@ -53,6 +61,8 @@ export interface ClienteResumo {
   nome: string;
   /** Segmento do cadastro do cliente (só no painel interno). */
   segmento?: string;
+  /** Porte da empresa (só no painel interno); usado para reconhecer o bloqueio ME/EPP. */
+  porte?: 'me_epp' | 'demais';
 }
 
 /** Tudo o que os cálculos precisam, carregado de uma vez. */
@@ -437,6 +447,50 @@ export interface DesempenhoModalidade {
   taxa: number | null;
 }
 
+/** Desempenho de um território (UF ou esfera): licitações, participações e vitórias. */
+export interface DesempenhoTerritorio {
+  chave: string;
+  nome: string;
+  licitacoes: number;
+  participou: number;
+  ganhou: number;
+  /** ganhou ÷ participou, em %; null = sem participação. */
+  taxa: number | null;
+}
+
+export interface MercadoUfEsfera {
+  porUf: DesempenhoTerritorio[];
+  porEsfera: DesempenhoTerritorio[];
+}
+
+/** Uma linha do indicador de motivos de não participação. */
+export interface LinhaMotivoNaoParticipacao {
+  chave: ChaveMotivoIndicador;
+  nome: string;
+  grupo: GrupoMotivo;
+  /** 'cliente' = escolhido pelo cliente; 'sistema' = registrado ou calculado pelo sistema. */
+  origem: 'cliente' | 'sistema';
+  quantidade: number;
+  /** % sobre o total de licitações em que o cliente não participou. */
+  percentual: number;
+}
+
+export interface GrupoMotivoNaoParticipacao {
+  grupo: GrupoMotivo;
+  nome: string;
+  quantidade: number;
+  percentual: number;
+}
+
+/** Licitações em que o cliente não participou (recusou ou deixou a sessão
+ *  passar sem decidir), por motivo. */
+export interface MotivosNaoParticipacao {
+  total: number;
+  /** Só os motivos com ao menos 1 licitação, do mais frequente ao menos. */
+  motivos: LinhaMotivoNaoParticipacao[];
+  porGrupo: GrupoMotivoNaoParticipacao[];
+}
+
 export interface IndicadoresAdmin {
   funil: EtapaFunil[];
   taxaVitoria: TaxaVitoriaComparada;
@@ -472,6 +526,8 @@ export interface IndicadoresAdmin {
   concentracaoCarteira: ConcentracaoCarteira;
   valorPorCliente: ValorCliente[]; // 10 maiores por valor adjudicado
   desempenhoModalidade: DesempenhoModalidade[];
+  mercadoUfEsfera: MercadoUfEsfera;
+  motivosNaoParticipacao: MotivosNaoParticipacao;
   /** Quantidade de licitações consideradas após os filtros. */
   totalLicitacoes: number;
 }

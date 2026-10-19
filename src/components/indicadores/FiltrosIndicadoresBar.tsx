@@ -1,7 +1,7 @@
 // src/components/indicadores/FiltrosIndicadoresBar.tsx
 //
 // Barra de filtros globais do painel de Indicadores: Período (atalhos ou
-// datas livres), Cliente, Modalidade, Família, Órgão, Marca, Resultado da licitação e
+// datas livres), Cliente, Modalidade, Família, Órgão, UF, Esfera, Marca, Resultado da licitação e
 // Status (fase do pipeline, só para a equipe da Salutti). Os filtros valem para todos
 // os gráficos da página. O componente é controlado: quem o usa guarda os
 // filtros no estado e recalcula os indicadores a cada mudança.
@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react'
 import { SelectField } from '../SelectField'
 import {
+  FILTRO_SEM_ESFERA,
   FILTRO_SEM_FAMILIA,
   ROTULO_RESULTADO_LICITACAO,
   type ClienteResumo,
@@ -17,7 +18,13 @@ import {
   type OpcaoFiltro,
   type ResultadoLicitacaoFiltro,
 } from '../../types/indicadores'
-import { MODALIDADE_LICITACAO_LABEL, type ModalidadeLicitacao } from '../../types/licitacao'
+import {
+  ESFERA_LICITACAO_LABEL,
+  MODALIDADE_LICITACAO_LABEL,
+  type EsferaLicitacao,
+  type ModalidadeLicitacao,
+} from '../../types/licitacao'
+import { ESTADOS_BRASILEIROS } from '../../types/cliente'
 import type { FamiliaProduto } from '../../services/familiaProdutoService'
 
 type AtalhoPeriodo = 'todo' | 'mes' | 'trimestre' | 'ano' | 'personalizado'
@@ -129,6 +136,23 @@ export function FiltrosIndicadoresBar({
   }, [familias, clientes, filtros.clienteId])
 
   const opcoesOrgaos = useMemo(() => [{ value: '', label: 'Todos os órgãos' }, ...orgaos], [orgaos])
+  const opcoesUfs = useMemo(
+    () => [{ value: '', label: 'Todos os estados' }, ...ESTADOS_BRASILEIROS.map((uf) => ({ value: uf, label: uf }))],
+    [],
+  )
+
+  const opcoesEsferas = useMemo(
+    () => [
+      { value: '', label: 'Todas as esferas' },
+      ...(Object.keys(ESFERA_LICITACAO_LABEL) as EsferaLicitacao[]).map((e) => ({
+        value: e,
+        label: ESFERA_LICITACAO_LABEL[e],
+      })),
+      { value: FILTRO_SEM_ESFERA, label: 'Não informada' },
+    ],
+    [],
+  )
+
   const opcoesMarcas = useMemo(() => [{ value: '', label: 'Todas as marcas' }, ...marcas], [marcas])
 
   const opcoesResultados = useMemo(
@@ -184,6 +208,8 @@ export function FiltrosIndicadoresBar({
       filtros.modalidade ||
       filtros.familiaId ||
       filtros.orgao ||
+      filtros.uf ||
+      filtros.esfera ||
       filtros.marca ||
       filtros.resultado ||
       filtros.fase,
@@ -269,6 +295,20 @@ export function FiltrosIndicadoresBar({
           value={filtros.orgao ?? ''}
           options={opcoesOrgaos}
           onChange={(e) => onChange({ ...filtros, orgao: e.target.value || undefined })}
+        />
+        <SelectField
+          label="UF"
+          value={filtros.uf ?? ''}
+          options={opcoesUfs}
+          onChange={(e) => onChange({ ...filtros, uf: e.target.value || undefined })}
+        />
+        <SelectField
+          label="Esfera"
+          value={filtros.esfera ?? ''}
+          options={opcoesEsferas}
+          onChange={(e) =>
+            onChange({ ...filtros, esfera: (e.target.value || undefined) as FiltrosIndicadores['esfera'] })
+          }
         />
         <SelectField
           label="Marca"

@@ -3,7 +3,7 @@
 // Menu lateral fixo do Portal do Cliente — mesmo padrão visual do
 // AdminSidebar.tsx (logotipo, cartão com foto de perfil, ícones padronizados,
 // página atual destacada e a frase institucional no rodapé), com os itens:
-// Licitações, Calendário, Relatórios e Indicadores.
+// Início, Licitações, Calendário e Indicadores (o item "Relatórios" foi retirado em 19/10: o painel de Indicadores cumpre esse papel).
 //
 // Redesenho (16/10, a pedido do Márcio): no tablet o menu vira uma gaveta,
 // aberta pelo botão da barra superior (ClienteTopBar). A lógica da foto de
@@ -17,7 +17,7 @@ import { usuarioClienteService } from '@/services/usuarioClienteService'
 import { ROLE_LABEL } from '@/types/auth'
 import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
-import { IconeCalendario, IconeDocumento, IconeFechar, IconeGrafico, IconeTendencia } from '@/components/icones'
+import { IconeCalendario, IconeDocumento, IconeInicio, IconeFechar, IconeTendencia } from '@/components/icones'
 
 interface ItemMenu {
   label: string
@@ -28,9 +28,9 @@ interface ItemMenu {
 }
 
 const ITENS: ItemMenu[] = [
-  { label: 'Licitações', to: '/cliente', icon: <IconeDocumento />, exato: true },
+  { label: 'Início', to: '/cliente', icon: <IconeInicio />, exato: true },
+  { label: 'Licitações', to: '/cliente/licitacoes', icon: <IconeDocumento /> },
   { label: 'Calendário', to: '/cliente/calendario', icon: <IconeCalendario /> },
-  { label: 'Relatórios', to: '/cliente/relatorios', icon: <IconeGrafico /> },
   { label: 'Indicadores', to: '/cliente/indicadores', icon: <IconeTendencia /> },
 ]
 

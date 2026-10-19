@@ -54,6 +54,8 @@ import {
 import { formatarDataHora, formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
+import { MOTIVOS_ESCOLHIDOS_CLIENTE, rotuloDoMotivo } from '@/types/motivoNaoParticipacao'
+import type { MotivoEscolhidoCliente, MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
 
 const TABS = [
   { id: 'gerais', label: 'Informações Gerais' },
@@ -171,6 +173,7 @@ export function LicitacaoDetalhePage() {
 
   const [recusando, setRecusando] = useState(false)
   const [motivoRecusa, setMotivoRecusa] = useState('')
+  const [motivoEscolhido, setMotivoEscolhido] = useState<MotivoEscolhidoCliente | ''>('')
   const [decidindo, setDecidindo] = useState(false)
   const [porteCliente, setPorteCliente] = useState<PorteEmpresa | null>(null)
 
@@ -211,12 +214,27 @@ export function LicitacaoDetalhePage() {
     }
   }, [id])
 
+  // Quando o "Não vou participar" acontece por um bloqueio do sistema (empresa
+  // ME/EPP, ou licitação exclusiva ME/EPP e empresa "Demais"), o motivo é
+  // registrado sozinho e o cliente não precisa escolher. Nos demais casos a
+  // escolha do motivo é obrigatória (migração 052).
+  const motivoAutomatico: MotivoNaoParticipacao | null =
+    porteCliente === 'me_epp'
+      ? 'bloqueio_porte'
+      : porteCliente === 'demais' && licitacao && licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens)
+        ? 'exclusiva_me_epp'
+        : null
+  const motivoParaGravar: MotivoNaoParticipacao | '' = motivoAutomatico ?? motivoEscolhido
+  const explicacaoObrigatoria = motivoParaGravar === 'outro'
+  const recusaValida = motivoParaGravar !== '' && (!explicacaoObrigatoria || motivoRecusa.trim() !== '')
+
   async function confirmarRecusa() {
-    if (!user || !id) return
+    if (!user || !id || motivoParaGravar === '' || !recusaValida) return
     setDecidindo(true)
     try {
       await licitacaoService.registrarDecisaoCliente(id, 'recusar', user.name, {
-        motivoRecusa: motivoRecusa.trim() || undefined,
+        motivoNaoParticipacao: motivoParaGravar,
+        motivoRecusa: explicacaoObrigatoria ? motivoRecusa.trim() || undefined : undefined,
       })
       navigate('/cliente')
     } finally {
@@ -468,17 +486,47 @@ export function LicitacaoDetalhePage() {
           <div className="mt-6 border-t border-ink-soft/10 pt-4">
             {recusando ? (
               <div className="space-y-3">
-                <TextAreaField
-                  label="Motivo da recusa (opcional)"
-                  value={motivoRecusa}
-                  onChange={(e) => setMotivoRecusa(e.target.value)}
-                  rows={2}
-                />
+                {motivoAutomatico ? (
+                  <p className="rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft">
+                    Motivo registrado: {rotuloDoMotivo(motivoAutomatico)}.
+                  </p>
+                ) : (
+                  <fieldset className="space-y-1.5">
+                    <legend className="mb-1.5 font-mono text-xs uppercase tracking-wide text-ink-soft">
+                      Motivo para não participar (obrigatório)
+                    </legend>
+                    {MOTIVOS_ESCOLHIDOS_CLIENTE.map((m) => (
+                      <div key={m.chave} className="flex items-center gap-2">
+                        <label className="flex cursor-pointer items-center gap-2 font-body text-sm text-ink">
+                          <input
+                            type="radio"
+                            name="motivo-nao-participacao"
+                            value={m.chave}
+                            checked={motivoEscolhido === m.chave}
+                            onChange={() => setMotivoEscolhido(m.chave as MotivoEscolhidoCliente)}
+                            className="h-4 w-4 accent-forest"
+                          />
+                          {m.rotulo}
+                        </label>
+                        <InfoTooltip titulo={m.rotulo} texto={m.descricao} />
+                      </div>
+                    ))}
+                  </fieldset>
+                )}
+                {explicacaoObrigatoria && (
+                  <TextAreaField
+                    label="Explique o motivo (obrigatório)"
+                    value={motivoRecusa}
+                    onChange={(e) => setMotivoRecusa(e.target.value)}
+                    rows={2}
+                    autoFocus
+                  />
+                )}
                 <div className="flex gap-2">
                   <Button variant="ghost" onClick={() => setRecusando(false)} disabled={decidindo}>
                     Cancelar
                   </Button>
-                  <Button onClick={confirmarRecusa} disabled={decidindo}>
+                  <Button onClick={confirmarRecusa} disabled={decidindo || !recusaValida}>
                     {decidindo ? 'Salvando...' : 'Confirmar recusa'}
                   </Button>
                 </div>
@@ -524,6 +572,9 @@ export function LicitacaoDetalhePage() {
                 <p className="font-body text-xs text-ink-soft">
                   {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}
                   {licitacao.decisaoClienteEm && ` em ${formatarDataHora(licitacao.decisaoClienteEm)}`}
+                  {licitacao.decisaoCliente === 'recusar' &&
+                    licitacao.motivoNaoParticipacao &&
+                    ` — ${rotuloDoMotivo(licitacao.motivoNaoParticipacao)}`}
                   {licitacao.motivoRecusaCliente && ` — "${licitacao.motivoRecusaCliente}"`}
                 </p>
                 {licitacao.decisaoCliente === 'participar' && (

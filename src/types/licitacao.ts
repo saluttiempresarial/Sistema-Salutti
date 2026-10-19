@@ -29,6 +29,8 @@
 //   desconto passa de 40%, "⚖️ Positiva" entre 0% e 40% de desconto,
 //   "❌ Não participar" quando o valor fica acima da referência).
 
+import type { MotivoNaoParticipacao } from './motivoNaoParticipacao';
+
 export type StatusLicitacao =
   | 'pendente'
   | 'em_analise'
@@ -49,6 +51,18 @@ export type ModalidadeLicitacao = 'pregao_eletronico' | 'concorrencia';
 export const MODALIDADE_LICITACAO_LABEL: Record<ModalidadeLicitacao, string> = {
   pregao_eletronico: 'Pregão',
   concorrencia: 'Concorrência',
+};
+
+// Esfera do órgão (19/10): campo OPCIONAL, usado no indicador "Mercado por UF e
+// por esfera". Hoje o Analista escolhe à mão; quando a leitura do edital por IA
+// passar a devolvê-la, ela pré-preenche o campo.
+export type EsferaLicitacao = 'municipal' | 'estadual' | 'federal' | 'distrital';
+
+export const ESFERA_LICITACAO_LABEL: Record<EsferaLicitacao, string> = {
+  municipal: 'Municipal',
+  estadual: 'Estadual',
+  federal: 'Federal',
+  distrital: 'Distrital',
 };
 
 // Texto de apoio exibido junto ao dropdown de Modalidade, explicando a
@@ -361,6 +375,7 @@ export interface Licitacao {
   numeroPregao: string;
   orgao: string;
   estado: string; // UF
+  esfera?: EsferaLicitacao; // opcional: municipal, estadual, federal ou distrital
   municipio: string;
   distanciaMatriz: string; // texto livre, ex: "120km" ou "cerca de 2h de viagem"
   modalidade: string;
@@ -411,6 +426,9 @@ export interface Licitacao {
   // Seção 4.3 — Decisão do Cliente (fora das 5 abas do cadastro)
   decisaoCliente: DecisaoCliente;
   motivoRecusaCliente?: string;
+  // Motivo padronizado da recusa (lista fixa, obrigatório ao recusar — migração 052).
+  // O texto livre acima passa a ser só a explicação complementar.
+  motivoNaoParticipacao?: MotivoNaoParticipacao;
   decisaoClienteEm?: string;
   cobrarFrete: boolean;
   percentualFrete?: number; // só relevante quando cobrarFrete = true

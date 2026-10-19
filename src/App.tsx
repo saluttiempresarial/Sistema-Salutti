@@ -19,11 +19,11 @@ import { IndicadoresPage } from '@/pages/admin/indicadores/IndicadoresPage'
 import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
 import { CalendarioPage as AdminCalendarioPage } from '@/pages/admin/CalendarioPage'
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
+import { InicioPage as ClienteInicioPage } from '@/pages/cliente/InicioPage'
 import { LicitacoesPage as ClienteLicitacoesPage } from '@/pages/cliente/LicitacoesPage'
 import { LicitacaoDetalhePage } from '@/pages/cliente/LicitacaoDetalhePage'
 import { PropostaComercialPage as ClientePropostaComercialPage } from '@/pages/cliente/PropostaComercialPage'
 import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
-import { RelatoriosPage as ClienteRelatoriosPage } from '@/pages/cliente/RelatoriosPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { carregarRegraPrazoCache } from '@/utils/prazoUtils'
 
@@ -41,7 +41,12 @@ export default function App() {
     // basename vem de import.meta.env.BASE_URL (configurado em vite.config.ts):
     // "/" em desenvolvimento local, "/Salutti-licitacoes/" no build para o
     // GitHub Pages — sem isso, as rotas quebram assim que o app roda fora da raiz.
-    <BrowserRouter basename={import.meta.env.BASE_URL}>
+    // As duas "future flags" abaixo só adotam desde já o comportamento do React
+    // Router v7 e silenciam os dois avisos amarelos do console.
+    <BrowserRouter
+      basename={import.meta.env.BASE_URL}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <AuthProvider>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -187,6 +192,17 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['cliente']}>
                 <ClienteLayout>
+                  <ClienteInicioPage />
+                </ClienteLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cliente/licitacoes"
+            element={
+              <ProtectedRoute allowedRoles={['cliente']}>
+                <ClienteLayout>
                   <ClienteLicitacoesPage />
                 </ClienteLayout>
               </ProtectedRoute>
@@ -232,17 +248,6 @@ export default function App() {
               <ProtectedRoute allowedRoles={['cliente']}>
                 <ClienteLayout>
                   <IndicadoresPage />
-                </ClienteLayout>
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/cliente/relatorios"
-            element={
-              <ProtectedRoute allowedRoles={['cliente']}>
-                <ClienteLayout>
-                  <ClienteRelatoriosPage />
                 </ClienteLayout>
               </ProtectedRoute>
             }
