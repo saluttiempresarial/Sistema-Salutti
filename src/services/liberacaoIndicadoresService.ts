@@ -15,7 +15,7 @@ export const PERFIS_LIBERACAO: { chave: PerfilLiberacao; rotulo: string }[] = [
   { chave: 'cliente', rotulo: 'Cliente' },
 ]
 
-/** Catálogo de indicadores. As chaves devem ser as mesmas das migrações 037 (primeira entrega), 042 (preço e competitividade), 043 (pipeline e prazos), 049 (gestão da carteira e da operação) e 051 (mercado por UF e por esfera). */
+/** Catálogo de indicadores. As chaves devem ser as mesmas das migrações 037 (primeira entrega), 042 (preço e competitividade), 043 (pipeline e prazos), 044 (produtos e marcas), 049 (gestão da carteira e da operação) e 051 (mercado por UF e por esfera) e 052 (motivos de não participação). */
 export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: string }[] = [
   { chave: 'pipeline', nome: 'Pipeline', descricao: 'Uso interno: licitações por fase, da decisão do cliente ao resultado' },
   { chave: 'prazos_proximos', nome: 'Prazos dos próximos 7 dias', descricao: 'Uso interno: prazos internos vencidos ou vencendo' },
@@ -23,6 +23,9 @@ export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: str
   { chave: 'taxa_vitoria', nome: 'Taxa de vitória', descricao: 'Por quantidade e por valor, com comparação com o período anterior' },
   { chave: 'volume_periodo', nome: 'Volume por período', descricao: 'Licitações e valor de referência por mês' },
   { chave: 'familias', nome: 'Famílias de produtos', descricao: 'Itens cotados e itens ganhos por família' },
+  { chave: 'taxa_vitoria_familia', nome: 'Taxa de vitória por família', descricao: 'Itens ganhos sobre itens disputados, por família de produtos' },
+  { chave: 'marcas', nome: 'Marcas mais cotadas e mais ganhas', descricao: 'Marcas dos itens cotados e dos itens ganhos' },
+  { chave: 'produtos_nunca_ganhos', nome: 'Produtos cotados e nunca ganhos', descricao: 'Produtos já disputados que nunca foram ganhos (revisão de portfólio)' },
   { chave: 'ganho_sobre_minimo', nome: 'Ganho sobre o mínimo', descricao: 'Quanto se vendeu acima do preço mínimo do cliente' },
   { chave: 'perdas_evitaveis', nome: 'Perdas evitáveis', descricao: 'Uso interno: vencedor com preço ainda acima do mínimo do cliente' },
   { chave: 'valor_adjudicado', nome: 'Valor adjudicado por mês', descricao: 'Valor dos itens ganhos por mês (não é faturamento)' },
@@ -32,6 +35,7 @@ export const CATALOGO_INDICADORES: { chave: string; nome: string; descricao: str
   { chave: 'distancia_derrota', nome: 'Distância da derrota', descricao: 'Nas perdas por preço, quanto o cliente ficou acima do vencedor' },
   { chave: 'orgaos', nome: 'Órgãos', descricao: 'Participações e vitórias por órgão' },
   { chave: 'concorrentes', nome: 'Concorrentes que mais vencem', descricao: 'Quem mais ganhou do cliente' },
+  { chave: 'concorrentes_familia', nome: 'Concorrentes por família', descricao: 'Contra quem o cliente perde em cada família de produtos' },
   { chave: 'aproveitamento', nome: 'Aproveitamento', descricao: 'Uso interno: licitações analisadas x licitações em que o cliente participou' },
   { chave: 'tempo_resposta', nome: 'Tempo de resposta do cliente', descricao: 'Uso interno: dias entre o cadastro da licitação e a decisão do cliente' },
   { chave: 'clientes_sem_atividade', nome: 'Clientes sem atividade', descricao: 'Uso interno: clientes parados há 30, 60 ou 90 dias' },

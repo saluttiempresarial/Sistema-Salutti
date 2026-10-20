@@ -1223,7 +1223,26 @@ export function IndicadoresGraficos({ indicadores, visiveis }: IndicadoresGrafic
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="grid grid-flow-dense gap-5 lg:grid-cols-2">
+      {/* Os três indicadores principais vêm primeiro, para todos os perfis. */}
+      {ver('funil') && (
+        <Cartao titulo="Funil de licitações" subtitulo="Contagem por licitação: analisadas → participou → ganhou (ao menos 1 item ganho)">
+          <Funil etapas={indicadores.funil} />
+        </Cartao>
+      )}
+
+      {ver('taxa_vitoria') && (
+        <Cartao titulo="Taxa de vitória" subtitulo="Contagem por item: só itens e grupos ganhos ou perdidos">
+          <TaxaVitoriaBloco atual={indicadores.taxaVitoria.atual} anterior={indicadores.taxaVitoria.anterior} />
+        </Cartao>
+      )}
+
+      {ver('volume_periodo') && (
+        <Cartao titulo="Volume por mês" subtitulo="Licitações por mês da sessão (passe o mouse para ver o valor)" className="lg:col-span-2">
+          <VolumeMensal dados={indicadores.volumePorMes} />
+        </Cartao>
+      )}
+
       {ver('pipeline') && (
         <Cartao titulo="Pipeline" subtitulo="Licitações por fase, da decisão do cliente ao resultado">
           <PipelineBloco dados={indicadores.pipeline} />
@@ -1296,24 +1315,6 @@ export function IndicadoresGraficos({ indicadores, visiveis }: IndicadoresGrafic
           className="lg:col-span-2"
         >
           <MotivosNaoParticipacaoBloco dados={indicadores.motivosNaoParticipacao} />
-        </Cartao>
-      )}
-
-      {ver('funil') && (
-        <Cartao titulo="Funil de licitações" subtitulo="Contagem por licitação: analisadas → participou → ganhou (ao menos 1 item ganho)">
-          <Funil etapas={indicadores.funil} />
-        </Cartao>
-      )}
-
-      {ver('taxa_vitoria') && (
-        <Cartao titulo="Taxa de vitória" subtitulo="Contagem por item: só itens e grupos ganhos ou perdidos">
-          <TaxaVitoriaBloco atual={indicadores.taxaVitoria.atual} anterior={indicadores.taxaVitoria.anterior} />
-        </Cartao>
-      )}
-
-      {ver('volume_periodo') && (
-        <Cartao titulo="Volume por mês" subtitulo="Licitações por mês da sessão (passe o mouse para ver o valor)" className="lg:col-span-2">
-          <VolumeMensal dados={indicadores.volumePorMes} />
         </Cartao>
       )}
 

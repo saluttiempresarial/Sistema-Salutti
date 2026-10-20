@@ -36,6 +36,13 @@ export function CalendarioPage() {
     }
   }, [user?.clienteId])
 
+  // O calendário não mostra as licitações que o cliente recusou: as datas delas
+  // não exigem mais nada dele. Ganhas e perdidas continuam (histórico).
+  const noCalendario = useMemo(
+    () => licitacoes.filter((l) => l.decisaoCliente !== 'recusar'),
+    [licitacoes]
+  )
+
   const emAndamento = useMemo(
     () =>
       licitacoes.filter(
@@ -57,7 +64,7 @@ export function CalendarioPage() {
             <p className="py-10 text-center font-body text-sm text-ink-soft">Carregando...</p>
           ) : (
             <CalendarioLicitacoes
-              licitacoes={licitacoes}
+              licitacoes={noCalendario}
               amplo
               mostrarLegenda={false}
               rotuloPrazo="Data de retorno"

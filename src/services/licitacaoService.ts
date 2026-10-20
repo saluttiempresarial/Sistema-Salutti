@@ -16,6 +16,7 @@
 // historico_acoes, filtrada por entidade_tipo='licitacao'.
 
 import { supabase } from '@/lib/supabaseClient'
+import { limparNumeroPregao } from '@/utils/numeroPregao'
 import type { MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
 import type {
   Licitacao,
@@ -174,7 +175,7 @@ function paraLicitacao(
     dataEfetivaLicitacao: row.data_efetiva_licitacao ?? undefined,
     portal: row.portal,
     objeto: row.objeto,
-    numeroPregao: row.numero_pregao,
+    numeroPregao: limparNumeroPregao(row.numero_pregao),
     orgao: row.orgao,
     estado: row.estado,
     esfera: row.esfera ?? undefined,
@@ -233,7 +234,7 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     data_efetiva_licitacao: dados.dataEfetivaLicitacao || null,
     portal: dados.portal,
     objeto: dados.objeto || null,
-    numero_pregao: dados.numeroPregao,
+    numero_pregao: limparNumeroPregao(dados.numeroPregao),
     orgao: dados.orgao,
     estado: dados.estado,
     esfera: dados.esfera ?? null,
@@ -584,6 +585,17 @@ export const licitacaoService = {
     const atualizada = await this.buscarPorId(id)
     if (!atualizada) throw new Error('Licitação não encontrada após registrar decisão')
     return atualizada
+  },
+
+  // Reabrir a decisão do cliente (20/10, a pedido do Márcio): anula uma recusa
+  // e devolve a licitação para "Aguardando decisão". Só o Administrador (a
+  // função do banco confere — migração 053).
+  async reabrirDecisaoCliente(id: string, usuario: string): Promise<void> {
+    const { error } = await supabase.rpc('reabrir_decisao_cliente', {
+      p_licitacao_id: id,
+      p_usuario: usuario,
+    })
+    if (error) throw new Error(error.message)
   },
 
   // Liberar/travar manualmente o prazo do Cliente (29/09, a pedido do

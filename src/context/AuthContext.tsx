@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { authService } from '@/services/authService'
 import type { AuthContextValue, AuthUser, LoginCredentials } from '@/types/auth'
+import { carregarRegraPrazoCache } from '@/utils/prazoUtils'
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
@@ -16,6 +17,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
     })
   }, [])
+
+  // Carrega a regra de prazo interno (cache em memória) quando há usuário
+  // logado, seja por login novo ou por sessão restaurada (F5). Antes do login
+  // o banco nega a leitura.
+  const idDoUsuario = user?.id
+  useEffect(() => {
+    if (idDoUsuario) carregarRegraPrazoCache()
+  }, [idDoUsuario])
 
   async function login(credentials: LoginCredentials) {
     const { user: found, error } = await authService.signIn(credentials)

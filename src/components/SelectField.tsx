@@ -34,6 +34,10 @@ export function SelectField({
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${fieldId}-error` : undefined}
         {...rest}
+        // Valor nulo (ex.: licitação antiga ou leitura de edital sem o campo)
+        // vira texto vazio; sem isso o React avisa no console e trata o campo
+        // como não controlado. Só vale quando o campo é controlado (`value`).
+        {...('value' in rest ? { value: rest.value ?? '' } : {})}
       >
         {placeholder && (
           <option value="" disabled>

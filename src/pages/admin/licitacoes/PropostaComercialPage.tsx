@@ -19,6 +19,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { useAuth } from '@/context/AuthContext'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { rotuloDoMotivo } from '@/types/motivoNaoParticipacao'
 import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
 import { PropostaComercialCards, SalvarPropostaComercialPayload } from '@/components/Licitacoes/PropostaComercialCards'
@@ -95,6 +97,9 @@ export function PropostaComercialPage() {
   const [novaDataLiberacao, setNovaDataLiberacao] = useState('')
   const [novaHoraLiberacao, setNovaHoraLiberacao] = useState('18:30')
   const [erroLiberacao, setErroLiberacao] = useState<string | null>(null)
+  const [confirmandoReabertura, setConfirmandoReabertura] = useState(false)
+  const [reabrindo, setReabrindo] = useState(false)
+  const [erroReabertura, setErroReabertura] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     if (!id) return
@@ -147,6 +152,23 @@ export function PropostaComercialPage() {
       await carregar()
     } finally {
       setAlterandoPrazo(false)
+    }
+  }
+
+  // Reabrir a decisão do cliente depois de uma recusa (20/10) — só o
+  // Administrador. A licitação volta para "Aguardando decisão".
+  async function handleReabrirDecisao() {
+    if (!id) return
+    setReabrindo(true)
+    setErroReabertura(null)
+    try {
+      await licitacaoService.reabrirDecisaoCliente(id, usuarioAtual)
+      setConfirmandoReabertura(false)
+      await carregar()
+    } catch (erro) {
+      setErroReabertura(erro instanceof Error ? erro.message : 'Não foi possível reabrir a decisão.')
+    } finally {
+      setReabrindo(false)
     }
   }
 
@@ -419,6 +441,30 @@ export function PropostaComercialPage() {
             </p>
           )}
 
+          {/* Reabrir decisão (20/10): só o Administrador, quando o cliente recusou. */}
+          {isAdmin && licitacao.decisaoCliente === 'recusar' && (
+            <div className="mb-4 rounded-lg border border-brass-pale bg-brass-pale/40 px-3 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="font-body text-xs text-brass">
+                  O Cliente recusou participar desta licitação
+                  {licitacao.motivoNaoParticipacao && ` — ${rotuloDoMotivo(licitacao.motivoNaoParticipacao)}`}
+                  {licitacao.motivoRecusaCliente && ` ("${licitacao.motivoRecusaCliente}")`}. Se foi um engano, você
+                  pode reabrir a decisão: a licitação volta para "Aguardando decisão" e ele escolhe de novo.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErroReabertura(null)
+                    setConfirmandoReabertura(true)
+                  }}
+                  className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline"
+                >
+                  Reabrir decisão
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Prazo do Cliente — Admin e Analista veem o controle de
               liberar/travar (29/09, atualizado no mesmo dia a pedido do
               Márcio). Quem libera escolhe a data/hora até quando vale —
@@ -544,6 +590,16 @@ export function PropostaComercialPage() {
           />
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmandoReabertura}
+        title="Reabrir decisão do cliente"
+        description={`A recusa será anulada e a licitação volta para "Aguardando decisão". O cliente poderá escolher de novo.${erroReabertura ? ' ' + erroReabertura : ''}`}
+        confirmLabel="Reabrir decisão"
+        isLoading={reabrindo}
+        onConfirm={handleReabrirDecisao}
+        onCancel={() => setConfirmandoReabertura(false)}
+      />
     </div>
   )
 }
