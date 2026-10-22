@@ -40,6 +40,13 @@ import {
   RESULTADO_DISPUTA_LABEL,
   ResultadoItemDisputa,
   RESULTADO_ITEM_DISPUTA_LABEL,
+  MotivoPerdaHabilitacao,
+  MOTIVO_PERDA_HABILITACAO_LABEL,
+  ETAPA_ORIGEM_PERDA_HABILITACAO,
+  MotivoPerdaEvitavel,
+  MOTIVO_PERDA_EVITAVEL_LABEL,
+  SITUACAO_DISPUTA_LABEL,
+  SituacaoDisputa,
 } from '../../../types/disputa';
 import { Licitacao, ItemLicitacao } from '../../../types/licitacao';
 import { licitacaoService } from '../../../services/licitacaoService';
@@ -197,6 +204,29 @@ function construirLinhas(licitacao: Licitacao, chavesForcadas: Set<string>): Lin
   return { linhas, foraDaDisputa };
 }
 
+// CNPJ digitado com máscara (00.000.000/0000-00); só os 14 números vão
+// para o banco.
+function formatarCnpj(texto: string): string {
+  const d = texto.replace(/\D/g, '').slice(0, 14);
+  const partes = [d.slice(0, 2), d.slice(2, 5), d.slice(5, 8), d.slice(8, 12), d.slice(12, 14)];
+  let r = partes[0];
+  if (partes[1]) r += `.${partes[1]}`;
+  if (partes[2]) r += `.${partes[2]}`;
+  if (partes[3]) r += `/${partes[3]}`;
+  if (partes[4]) r += `-${partes[4]}`;
+  return r;
+}
+
+// Data (yyyy-mm-dd) no fuso local a partir de um ISO — usada no campo
+// "Homologado em".
+function isoParaDataLocal(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 interface ValoresLinha {
   posicaoTexto: string;
   valorOfertadoTexto: string;
@@ -204,6 +234,11 @@ interface ValoresLinha {
   resultadoItem: ResultadoItemDisputa | '';
   valorVencedorTexto: string; // só vale quando resultadoItem = 'perdido'
   nomeVencedor: string; // só vale quando resultadoItem = 'perdido'
+  // Campos de gestão (migração 054). Cada um só vale para o resultado indicado.
+  cnpjVencedor: string; // 'perdido' — com máscara na tela, 14 números no banco
+  motivoEvitavel: MotivoPerdaEvitavel | ''; // 'perdido'
+  motivoHabilitacao: MotivoPerdaHabilitacao | ''; // 'perdido_habilitacao' (obrigatório)
+  convocacao: boolean; // 'ganho' — vitória por convocação
 }
 
 const VALORES_VAZIOS: ValoresLinha = {
@@ -212,7 +247,138 @@ const VALORES_VAZIOS: ValoresLinha = {
   resultadoItem: '',
   valorVencedorTexto: '',
   nomeVencedor: '',
+  cnpjVencedor: '',
+  motivoEvitavel: '',
+  motivoHabilitacao: '',
+  convocacao: false,
 };
+
+/** Campos de gestão que serão gravados, conforme o resultado escolhido —
+ *  o que não pertence ao resultado atual é descartado, mesmo que tenha
+ *  sido preenchido antes de trocar o resultado. */
+function camposComplementaresParaSalvar(v: ValoresLinha | undefined) {
+  const resultado = v?.resultadoItem;
+  const cnpj = v?.cnpjVencedor.replace(/\D/g, '') ?? '';
+  return {
+    motivoPerdaHabilitacao:
+      resultado === 'perdido_habilitacao' && v?.motivoHabilitacao ? v.motivoHabilitacao : undefined,
+    motivoPerdaEvitavel: resultado === 'perdido' && v?.motivoEvitavel ? v.motivoEvitavel : undefined,
+    vitoriaPorConvocacao: resultado === 'ganho' ? !!v?.convocacao : false,
+    cnpjVencedor: resultado === 'perdido' && cnpj ? cnpj : undefined,
+  };
+}
+
+/** Mensagem de erro de preenchimento (ou null). */
+function erroDeComplementares(v: ValoresLinha | undefined, nome: string): string | null {
+  if (!v) return null;
+  if (v.resultadoItem === 'perdido_habilitacao' && !v.motivoHabilitacao) {
+    return `${nome}: informe o motivo da perda na aceitação/habilitação.`;
+  }
+  const cnpj = v.cnpjVencedor.replace(/\D/g, '');
+  if (v.resultadoItem === 'perdido' && cnpj && cnpj.length !== 14) {
+    return `${nome}: o CNPJ do vencedor precisa ter 14 números (ou ficar em branco).`;
+  }
+  return null;
+}
+
+interface CamposComplementaresProps {
+  valores: ValoresLinha;
+  onChange: <K extends keyof ValoresLinha>(campo: K, valor: ValoresLinha[K]) => void;
+}
+
+/** Campos extras do resultado do item/grupo, que aparecem conforme o
+ *  resultado: perdido (CNPJ e motivo evitável), perdido na habilitação
+ *  (motivo, com etapa e origem) e ganho (vitória por convocação). */
+function CamposComplementares({ valores, onChange }: CamposComplementaresProps) {
+  const classeSelect =
+    'rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none';
+  const rotulo = 'text-[10px] font-semibold uppercase tracking-wide text-ink-soft';
+
+  if (valores.resultadoItem === 'perdido') {
+    return (
+      <>
+        <label className="flex flex-col gap-1">
+          <span className={rotulo}>
+            CNPJ do vencedor <span className="normal-case font-normal text-ink-soft/70">(opcional)</span>
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={valores.cnpjVencedor}
+            onChange={(e) => onChange('cnpjVencedor', formatarCnpj(e.target.value))}
+            placeholder="00.000.000/0000-00"
+            className="w-44 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={rotulo}>
+            Motivo da perda evitável <span className="normal-case font-normal text-ink-soft/70">(opcional)</span>
+          </span>
+          <select
+            value={valores.motivoEvitavel}
+            onChange={(e) => onChange('motivoEvitavel', e.target.value as MotivoPerdaEvitavel | '')}
+            className={classeSelect}
+          >
+            <option value="">—</option>
+            {Object.entries(MOTIVO_PERDA_EVITAVEL_LABEL).map(([valor, texto]) => (
+              <option key={valor} value={valor}>
+                {texto}
+              </option>
+            ))}
+          </select>
+        </label>
+      </>
+    );
+  }
+
+  if (valores.resultadoItem === 'perdido_habilitacao') {
+    const classificacao = valores.motivoHabilitacao
+      ? ETAPA_ORIGEM_PERDA_HABILITACAO[valores.motivoHabilitacao]
+      : null;
+    return (
+      <label className="flex flex-col gap-1">
+        <span className={rotulo}>Motivo da perda *</span>
+        <select
+          value={valores.motivoHabilitacao}
+          onChange={(e) => onChange('motivoHabilitacao', e.target.value as MotivoPerdaHabilitacao | '')}
+          className={`${classeSelect} max-w-md`}
+        >
+          <option value="">Selecione o motivo</option>
+          {Object.entries(MOTIVO_PERDA_HABILITACAO_LABEL).map(([valor, texto]) => (
+            <option key={valor} value={valor}>
+              {texto}
+            </option>
+          ))}
+        </select>
+        {classificacao && (
+          <span className="text-xs text-ink-soft">
+            Etapa: <strong className="text-ink">{classificacao.etapa}</strong> · Origem:{' '}
+            <strong className="text-ink">{classificacao.origem}</strong>
+          </span>
+        )}
+      </label>
+    );
+  }
+
+  if (valores.resultadoItem === 'ganho') {
+    return (
+      <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={valores.convocacao}
+          onChange={(e) => onChange('convocacao', e.target.checked)}
+          className="h-4 w-4 rounded border-ink-soft/40 text-forest focus:ring-forest/30"
+        />
+        <span>
+          Vitória por convocação{' '}
+          <span className="text-xs text-ink-soft">(concorrentes desclassificados; a vez passou ao cliente)</span>
+        </span>
+      </label>
+    );
+  }
+
+  return null;
+}
 
 // Especificação de item cheia demais pra mostrar de cara na tabela (ver
 // nota sobre "ver mais/ver menos" mais abaixo). Limite aproximado — não
@@ -224,6 +390,7 @@ function criarFormularioVazio(licitacaoId: string): DisputaFormData {
     licitacaoId,
     dataSessaoRealizada: undefined,
     resultado: 'em_andamento',
+    homologadoEm: undefined,
     observacoes: '',
     linkAtaSigaPregao: '',
     itens: [],
@@ -254,6 +421,10 @@ export function DisputaFormModal({
   // engolido em silêncio: o modal só ficava aberto de novo, sem nenhuma
   // pista do que aconteceu. Agora a mensagem aparece na tela.
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  // Situação do resultado (22/10): definitiva = tem "Homologado em". Só os
+  // resultados definitivos entram nos relatórios (por padrão).
+  const [situacaoDefinitiva, setSituacaoDefinitiva] = useState(false);
+  const [dataHomologacao, setDataHomologacao] = useState('');
   const [carregandoLicitacao, setCarregandoLicitacao] = useState(false);
   const [licitacao, setLicitacao] = useState<Licitacao | null>(null);
   const [valoresPorLinha, setValoresPorLinha] = useState<Record<string, ValoresLinha>>({});
@@ -303,10 +474,11 @@ export function DisputaFormModal({
           licitacaoId: disputaEmEdicao.licitacaoId,
           dataSessaoRealizada: disputaEmEdicao.dataSessaoRealizada,
           resultado: disputaEmEdicao.resultado,
+          homologadoEm: disputaEmEdicao.homologadoEm,
           observacoes: disputaEmEdicao.observacoes,
           linkAtaSigaPregao: disputaEmEdicao.linkAtaSigaPregao,
           itens: disputaEmEdicao.itens.map(
-            ({ itemId, grupoId, posicao, valorFechado, resultadoItem, valorVencedor, nomeVencedor, observacao }) => ({
+            ({
               itemId,
               grupoId,
               posicao,
@@ -315,11 +487,30 @@ export function DisputaFormModal({
               valorVencedor,
               nomeVencedor,
               observacao,
+              motivoPerdaHabilitacao,
+              motivoPerdaEvitavel,
+              vitoriaPorConvocacao,
+              cnpjVencedor,
+            }) => ({
+              itemId,
+              grupoId,
+              posicao,
+              valorFechado,
+              resultadoItem,
+              valorVencedor,
+              nomeVencedor,
+              observacao,
+              motivoPerdaHabilitacao,
+              motivoPerdaEvitavel,
+              vitoriaPorConvocacao,
+              cnpjVencedor,
             })
           ),
         }
       : criarFormularioVazio(licitacaoId);
     setForm(inicial);
+    setSituacaoDefinitiva(!!disputaEmEdicao?.homologadoEm);
+    setDataHomologacao(isoParaDataLocal(disputaEmEdicao?.homologadoEm));
     setErroSalvar(null);
     setModoEscolhidoManualmente(false); // reabriu o modal — libera a detecção automática de novo
 
@@ -335,6 +526,10 @@ export function DisputaFormModal({
         resultadoItem: linha.resultadoItem ?? '',
         valorVencedorTexto: numeroParaCampoDecimal(linha.valorVencedor, 2),
         nomeVencedor: linha.nomeVencedor ?? '',
+        cnpjVencedor: formatarCnpj(linha.cnpjVencedor ?? ''),
+        motivoEvitavel: linha.motivoPerdaEvitavel ?? '',
+        motivoHabilitacao: linha.motivoPerdaHabilitacao ?? '',
+        convocacao: linha.vitoriaPorConvocacao ?? false,
       };
       if (linha.itemId) valoresItem[linha.itemId] = valoresLinha;
       else if (linha.grupoId) valoresGrupo[linha.grupoId] = valoresLinha;
@@ -466,6 +661,17 @@ export function DisputaFormModal({
 
   async function handleSalvar() {
     const itens: DisputaResultadoLinhaFormData[] = [];
+    let erroPreenchimento: string | null = null;
+
+    // Situação definitiva exige a data de homologação e um resultado final.
+    if (situacaoDefinitiva && !dataHomologacao) {
+      setErroSalvar('Informe a data em "Homologado em" ou deixe a situação como Provisória.');
+      return;
+    }
+    if (situacaoDefinitiva && form.resultado === 'em_andamento') {
+      setErroSalvar('Uma disputa definitiva precisa ter o resultado Ganho ou Perdido (não "Em andamento").');
+      return;
+    }
 
     blocosVisuais.forEach((bloco) => {
       // "Tratar como grupo" = este bloco tem grupo E o modo escolhido pede
@@ -484,6 +690,7 @@ export function DisputaFormModal({
           (valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined) ??
           (emGrupoEItem ? somaItensDoBloco(bloco) ?? undefined : undefined);
         const resultadoGrupo = valores?.resultadoItem || undefined;
+        erroPreenchimento = erroPreenchimento ?? erroDeComplementares(valores, bloco.grupoRotulo ?? 'Grupo');
         const grupoPerdido = resultadoGrupo === 'perdido';
         const valorVencedorGrupo =
           grupoPerdido && valores ? campoParaNumeroDecimal(valores.valorVencedorTexto, 2) : undefined;
@@ -496,6 +703,7 @@ export function DisputaFormModal({
             resultadoItem: resultadoGrupo,
             valorVencedor: valorVencedorGrupo,
             nomeVencedor: nomeVencedorGrupo,
+            ...camposComplementaresParaSalvar(valores),
           });
         }
         // Só no modo "Por grupo" os itens do grupo não são gravados. No modo
@@ -513,6 +721,7 @@ export function DisputaFormModal({
         const posicao = !posicaoSoNoGrupo && valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
         const valorFechado = valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined;
         const resultadoItem = valores?.resultadoItem || undefined;
+        erroPreenchimento = erroPreenchimento ?? erroDeComplementares(valores, `Item ${linha.item.numero}`);
         // Vencedor só faz sentido quando perdemos o item: nos demais
         // resultados (ganho, fracassado, deserto, cancelado) os dois campos
         // são descartados, mesmo que tenham sido digitados antes de trocar o
@@ -524,15 +733,29 @@ export function DisputaFormModal({
         // linhas vazias pra item que o analista ainda não chegou a
         // registrar.
         if (posicao != null || valorFechado != null || resultadoItem) {
-          itens.push({ itemId: linha.itemId, posicao, valorFechado, resultadoItem, valorVencedor, nomeVencedor });
+          itens.push({
+            itemId: linha.itemId,
+            posicao,
+            valorFechado,
+            resultadoItem,
+            valorVencedor,
+            nomeVencedor,
+            ...camposComplementaresParaSalvar(valores),
+          });
         }
       });
     });
 
+    if (erroPreenchimento) {
+      setErroSalvar(erroPreenchimento);
+      return;
+    }
+
     setSalvando(true);
     setErroSalvar(null);
     try {
-      await onSave({ ...form, itens });
+      const homologadoEm = situacaoDefinitiva && dataHomologacao ? new Date(`${dataHomologacao}T12:00:00`).toISOString() : undefined;
+      await onSave({ ...form, homologadoEm, itens });
       onClose();
     } catch (erro) {
       setErroSalvar(erro instanceof Error ? erro.message : 'Erro desconhecido ao salvar o resultado.');
@@ -572,7 +795,7 @@ export function DisputaFormModal({
       ? null
       : resultadosInformados.some((r) => r === 'ganho')
         ? 'ganho'
-        : resultadosInformados.every((r) => r === 'perdido')
+        : resultadosInformados.every((r) => r === 'perdido' || r === 'perdido_habilitacao')
           ? 'perdido'
           : null;
 
@@ -615,7 +838,12 @@ export function DisputaFormModal({
               required
               value={form.resultado}
               onChange={(e) => atualizarCampo('resultado', e.target.value as ResultadoDisputa)}
-              options={Object.entries(RESULTADO_DISPUTA_LABEL).map(([value, label]) => ({ value, label }))}
+              options={Object.entries(RESULTADO_DISPUTA_LABEL)
+                // "Homologado" deixou de ser um resultado: virou a Situação
+                // Definitiva (campo "Homologado em"). Só aparece se a
+                // disputa já estiver gravada assim.
+                .filter(([value]) => value !== 'homologado' || form.resultado === 'homologado')
+                .map(([value, label]) => ({ value, label }))}
             />
             {resultadoMudaStatus && (
               <p className="mt-1 font-body text-xs text-ink-soft">
@@ -643,6 +871,35 @@ export function DisputaFormModal({
               </p>
             )}
           </div>
+        </div>
+
+        {/* Situação do resultado (22/10): Provisória até a homologação;
+            Definitiva quando "Homologado em" é preenchido. Só os resultados
+            definitivos entram nos relatórios (por padrão). */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <SelectField
+              label="Situação do resultado"
+              value={situacaoDefinitiva ? 'definitiva' : 'provisoria'}
+              onChange={(e) => {
+                const definitiva = (e.target.value as SituacaoDisputa) === 'definitiva';
+                setSituacaoDefinitiva(definitiva);
+                if (!definitiva) setDataHomologacao('');
+              }}
+              options={Object.entries(SITUACAO_DISPUTA_LABEL).map(([value, label]) => ({ value, label }))}
+            />
+            <p className="mt-1 font-body text-xs text-ink-soft">
+              Provisória: ainda pode mudar (recurso, desclassificação). Definitiva: homologada.
+            </p>
+          </div>
+          {situacaoDefinitiva && (
+            <TextField
+              label="Homologado em *"
+              type="date"
+              value={dataHomologacao}
+              onChange={(e) => setDataHomologacao(e.target.value)}
+            />
+          )}
         </div>
 
         {/* Como a disputa aconteceu — define se o Valor ofertado é
@@ -974,6 +1231,12 @@ export function DisputaFormModal({
                                       </label>
                                     </>
                                   )}
+                                  {valoresGrupo && (
+                                    <CamposComplementares
+                                      valores={valoresGrupo}
+                                      onChange={(campo, valor) => atualizarValorGrupo(bloco.grupoId!, campo, valor)}
+                                    />
+                                  )}
                                 </>
                               )}
                             </div>
@@ -1183,6 +1446,10 @@ export function DisputaFormModal({
                                           </label>
                                         </>
                                       )}
+                                      <CamposComplementares
+                                        valores={valores}
+                                        onChange={(campo, valor) => atualizarValorLinha(linha.chave, campo, valor)}
+                                      />
                                     </>
                                   )}
                                 </div>

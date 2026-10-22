@@ -8,6 +8,10 @@ interface ConfirmDialogProps {
   confirmLabel?: string
   cancelLabel?: string
   isLoading?: boolean
+  /** 'danger' (vermelho, padrão — ações destrutivas) ou 'success' (verde — ações positivas, como liberar). */
+  variant?: 'danger' | 'success'
+  /** Texto do botão enquanto processa. Padrão: "Excluindo…". */
+  loadingLabel?: string
   onConfirm: () => void
   onCancel: () => void
 }
@@ -21,6 +25,8 @@ export function ConfirmDialog({
   confirmLabel = 'Confirmar',
   cancelLabel = 'Cancelar',
   isLoading = false,
+  variant = 'danger',
+  loadingLabel = 'Excluindo…',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -38,9 +44,13 @@ export function ConfirmDialog({
           <Button
             onClick={onConfirm}
             disabled={isLoading}
-            className="bg-red-600 hover:bg-red-700 focus-visible:outline-red-600 disabled:bg-red-600/50"
+            className={
+              variant === 'success'
+                ? 'bg-green-600 hover:bg-green-700 focus-visible:outline-green-600 disabled:bg-green-600/50'
+                : 'bg-red-600 hover:bg-red-700 focus-visible:outline-red-600 disabled:bg-red-600/50'
+            }
           >
-            {isLoading ? 'Excluindo…' : confirmLabel}
+            {isLoading ? loadingLabel : confirmLabel}
           </Button>
         </>
       }

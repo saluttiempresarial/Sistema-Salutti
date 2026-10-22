@@ -25,6 +25,8 @@ import {
   DisputaResultadoLinhaFormData,
   ResultadoDisputa,
   ResultadoItemDisputa,
+  MotivoPerdaHabilitacao,
+  MotivoPerdaEvitavel,
 } from '../types/disputa'
 import { licitacaoService } from './licitacaoService'
 
@@ -34,6 +36,7 @@ interface DisputaRow {
   licitacao_id: string
   data_sessao_realizada: string | null
   resultado: ResultadoDisputa
+  homologado_em?: string | null
   observacoes: string | null
   link_ata_siga_pregao: string | null
   criado_em: string
@@ -53,6 +56,11 @@ interface DisputaItemRow {
   valor_vencedor: number | null
   nome_vencedor: string | null
   observacao: string | null
+  // Migração 054 — opcionais porque a função do portal do cliente ainda não as devolve.
+  motivo_perda_habilitacao?: MotivoPerdaHabilitacao | null
+  motivo_perda_evitavel?: MotivoPerdaEvitavel | null
+  vitoria_por_convocacao?: boolean | null
+  cnpj_vencedor?: string | null
   criado_em: string
   atualizado_em: string
 }
@@ -70,6 +78,10 @@ function paraDisputaResultadoLinha(row: DisputaItemRow): DisputaResultadoLinha {
     valorVencedor: row.valor_vencedor ?? undefined,
     nomeVencedor: row.nome_vencedor ?? undefined,
     observacao: row.observacao ?? undefined,
+    motivoPerdaHabilitacao: row.motivo_perda_habilitacao ?? undefined,
+    motivoPerdaEvitavel: row.motivo_perda_evitavel ?? undefined,
+    vitoriaPorConvocacao: row.vitoria_por_convocacao ?? false,
+    cnpjVencedor: row.cnpj_vencedor ?? undefined,
   }
 }
 
@@ -79,6 +91,7 @@ function paraDisputa(row: DisputaRow, itensRows: DisputaItemRow[]): Disputa {
     licitacaoId: row.licitacao_id,
     dataSessaoRealizada: row.data_sessao_realizada ?? undefined,
     resultado: row.resultado,
+    homologadoEm: row.homologado_em ?? undefined,
     observacoes: row.observacoes ?? '',
     linkAtaSigaPregao: row.link_ata_siga_pregao ?? undefined,
     itens: itensRows.map(paraDisputaResultadoLinha),
@@ -95,6 +108,9 @@ function paraColunasDisputa(dados: Partial<Omit<DisputaFormData, 'itens'>>) {
   if (dados.licitacaoId !== undefined) colunas.licitacao_id = dados.licitacaoId
   if (dados.dataSessaoRealizada !== undefined) colunas.data_sessao_realizada = dados.dataSessaoRealizada || null
   if (dados.resultado !== undefined) colunas.resultado = dados.resultado
+  // 'in' (e não !== undefined) para permitir LIMPAR a data: voltar uma
+  // disputa de definitiva para provisória grava null.
+  if ('homologadoEm' in dados) colunas.homologado_em = dados.homologadoEm || null
   if (dados.observacoes !== undefined) colunas.observacoes = dados.observacoes
   if (dados.linkAtaSigaPregao !== undefined) colunas.link_ata_siga_pregao = dados.linkAtaSigaPregao || null
   return colunas
@@ -112,6 +128,10 @@ function paraColunasItem(linha: DisputaResultadoLinhaFormData, disputaId: string
     valor_vencedor: linha.valorVencedor ?? null,
     nome_vencedor: linha.nomeVencedor ?? null,
     observacao: linha.observacao ?? null,
+    motivo_perda_habilitacao: linha.motivoPerdaHabilitacao ?? null,
+    motivo_perda_evitavel: linha.motivoPerdaEvitavel ?? null,
+    vitoria_por_convocacao: linha.vitoriaPorConvocacao ?? false,
+    cnpj_vencedor: linha.cnpjVencedor ?? null,
   }
 }
 

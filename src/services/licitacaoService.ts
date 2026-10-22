@@ -81,6 +81,8 @@ interface LicitacaoRow {
   motivo_recusa_cliente: string | null
   motivo_nao_participacao: Licitacao['motivoNaoParticipacao'] | null
   decisao_cliente_em: string | null
+  liberada_ao_cliente_em: string | null
+  liberada_ao_cliente_por: string | null
   cobrar_frete: boolean
   percentual_frete: number | null
   status_proposta: Licitacao['statusProposta']
@@ -209,6 +211,8 @@ function paraLicitacao(
     motivoRecusaCliente: row.motivo_recusa_cliente ?? undefined,
     motivoNaoParticipacao: row.motivo_nao_participacao ?? undefined,
     decisaoClienteEm: row.decisao_cliente_em ?? undefined,
+    liberadaAoClienteEm: row.liberada_ao_cliente_em ?? undefined,
+    liberadaAoClientePor: row.liberada_ao_cliente_por ?? undefined,
     cobrarFrete: row.cobrar_frete,
     percentualFrete: row.percentual_frete ?? undefined,
     statusProposta: row.status_proposta,
@@ -519,7 +523,14 @@ export const licitacaoService = {
     return paraLicitacao(row, grupos, itens, historico)
   },
 
-  async atualizar(id: string, dados: Partial<LicitacaoFormData>, usuario: string): Promise<Licitacao> {
+  // `motivoAlteracao`: obrigatório na tela quando a licitação já foi liberada ao
+  // cliente (22/10, a pedido do Márcio); vai para o histórico junto da alteração.
+  async atualizar(
+    id: string,
+    dados: Partial<LicitacaoFormData>,
+    usuario: string,
+    motivoAlteracao?: string
+  ): Promise<Licitacao> {
     // Precisa do registro completo antes, já que dados pode ser parcial
     // (atualizarStatus/registrarDecisaoCliente chamam com poucos campos).
     const atual = await this.buscarPorId(id)
@@ -541,7 +552,14 @@ export const licitacaoService = {
       await substituirGruposEItens(id, mesclado.grupos, mesclado.itens)
     }
 
-    await registrarHistorico(id, 'Dados da licitação atualizados', usuario)
+    const motivo = motivoAlteracao?.trim()
+    await registrarHistorico(
+      id,
+      motivo
+        ? `Dados da licitação atualizados após a liberação ao cliente — motivo: ${motivo}`
+        : 'Dados da licitação atualizados',
+      usuario
+    )
 
     const row = data as LicitacaoRow
     const [{ grupos, itens }, historico] = await Promise.all([
@@ -585,6 +603,16 @@ export const licitacaoService = {
     const atualizada = await this.buscarPorId(id)
     if (!atualizada) throw new Error('Licitação não encontrada após registrar decisão')
     return atualizada
+  },
+
+  // Libera a licitação para o cliente ver (22/10, migração 055). A data e hora
+  // são gravadas pelo banco; só Administrador ou Analista da carteira conseguem.
+  async liberarAoCliente(id: string, usuario: string): Promise<void> {
+    const { error } = await supabase.rpc('liberar_licitacao_ao_cliente', {
+      p_licitacao_id: id,
+      p_usuario: usuario,
+    })
+    if (error) throw new Error(error.message)
   },
 
   // Reabrir a decisão do cliente (20/10, a pedido do Márcio): anula uma recusa

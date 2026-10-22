@@ -430,6 +430,11 @@ export interface Licitacao {
   // O texto livre acima passa a ser só a explicação complementar.
   motivoNaoParticipacao?: MotivoNaoParticipacao;
   decisaoClienteEm?: string;
+  // Liberação ao cliente (22/10, migrações 054 e 055): enquanto estiver vazio,
+  // a licitação NÃO aparece no Portal do Cliente. Quem libera é o Administrador
+  // ou o Analista, pelo botão "Liberar para o cliente". Preenchido pelo banco.
+  liberadaAoClienteEm?: string;
+  liberadaAoClientePor?: string;
   cobrarFrete: boolean;
   percentualFrete?: number; // só relevante quando cobrarFrete = true
   statusProposta: StatusProposta;

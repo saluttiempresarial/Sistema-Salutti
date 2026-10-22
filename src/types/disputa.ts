@@ -52,14 +52,84 @@ export const RESULTADO_DISPUTA_LABEL: Record<ResultadoDisputa, string> = {
 /** Resultado de CADA item na disputa (migração 036) — alimenta os relatórios
  *  (produtos ganhos, perdas evitáveis, distância da derrota etc.). Preenchido
  *  pelo Analista/Admin; o sistema não deduz. */
-export type ResultadoItemDisputa = 'ganho' | 'perdido' | 'fracassado' | 'deserto' | 'cancelado';
+export type ResultadoItemDisputa =
+  | 'ganho'
+  | 'perdido'
+  | 'perdido_habilitacao'
+  | 'fracassado'
+  | 'deserto'
+  | 'cancelado';
 
 export const RESULTADO_ITEM_DISPUTA_LABEL: Record<ResultadoItemDisputa, string> = {
   ganho: 'Ganho',
   perdido: 'Perdido',
+  // Ganho no lance, mas perdido depois: desclassificação na aceitação da
+  // proposta, inabilitação ou recurso (migração 054, 22/10).
+  perdido_habilitacao: 'Ganho no lance, perdido na aceitação/habilitação',
   fracassado: 'Fracassado',
   deserto: 'Deserto',
   cancelado: 'Cancelado',
+};
+
+/** Motivo da perda na aceitação/habilitação (migração 054). A ETAPA e a
+ *  ORIGEM não são digitadas: saem do motivo (ver tabelas abaixo). */
+export type MotivoPerdaHabilitacao =
+  | 'desclass_documentacao_produto'
+  | 'desclass_amostra_especificacao'
+  | 'desclass_erro_proposta'
+  | 'inabil_documento_habilitacao'
+  | 'inabil_qualificacao'
+  | 'perdido_recurso';
+
+export const MOTIVO_PERDA_HABILITACAO_LABEL: Record<MotivoPerdaHabilitacao, string> = {
+  desclass_documentacao_produto: 'Desclassificação — documentação do produto (ficha técnica, catálogo, registro, certificação)',
+  desclass_amostra_especificacao: 'Desclassificação — amostra reprovada ou especificação não atendida',
+  desclass_erro_proposta: 'Desclassificação — erro na proposta (preço, marca, modelo)',
+  inabil_documento_habilitacao: 'Inabilitação — documento de habilitação vencido ou faltante',
+  inabil_qualificacao: 'Inabilitação — qualificação técnica ou econômico-financeira',
+  perdido_recurso: 'Perdido em recurso',
+};
+
+export type EtapaPerdaHabilitacao = 'Desclassificação' | 'Inabilitação' | 'Recurso';
+export type OrigemPerdaHabilitacao = 'Indústria' | 'Produto' | 'Salutti' | 'Cliente' | 'Recurso';
+
+export const ETAPA_ORIGEM_PERDA_HABILITACAO: Record<
+  MotivoPerdaHabilitacao,
+  { etapa: EtapaPerdaHabilitacao; origem: OrigemPerdaHabilitacao }
+> = {
+  desclass_documentacao_produto: { etapa: 'Desclassificação', origem: 'Indústria' },
+  desclass_amostra_especificacao: { etapa: 'Desclassificação', origem: 'Produto' },
+  desclass_erro_proposta: { etapa: 'Desclassificação', origem: 'Salutti' },
+  inabil_documento_habilitacao: { etapa: 'Inabilitação', origem: 'Cliente' },
+  inabil_qualificacao: { etapa: 'Inabilitação', origem: 'Cliente' },
+  perdido_recurso: { etapa: 'Recurso', origem: 'Recurso' },
+};
+
+/** Motivo da perda evitável (item 12 do documento de relatórios). */
+export type MotivoPerdaEvitavel =
+  | 'lance_nao_chegou_minimo'
+  | 'nao_classificado_etapa_fechada'
+  | 'erro_cadastro_proposta'
+  | 'outro';
+
+export const MOTIVO_PERDA_EVITAVEL_LABEL: Record<MotivoPerdaEvitavel, string> = {
+  lance_nao_chegou_minimo: 'Lance não chegou ao mínimo',
+  nao_classificado_etapa_fechada: 'Não classificado para a etapa fechada',
+  erro_cadastro_proposta: 'Erro no cadastro da proposta',
+  outro: 'Outro',
+};
+
+/** Situação da disputa: com "Homologado em" preenchido o resultado é
+ *  DEFINITIVO; sem data, é PROVISÓRIO. */
+export type SituacaoDisputa = 'provisoria' | 'definitiva';
+
+export function situacaoDaDisputa(disputa: Pick<Disputa, 'homologadoEm'>): SituacaoDisputa {
+  return disputa.homologadoEm ? 'definitiva' : 'provisoria';
+}
+
+export const SITUACAO_DISPUTA_LABEL: Record<SituacaoDisputa, string> = {
+  provisoria: 'Provisória',
+  definitiva: 'Definitiva',
 };
 
 /** Um item avulso é preenchido com `itemId`; um grupo inteiro é preenchido
@@ -77,6 +147,11 @@ export interface DisputaResultadoLinha {
   valorVencedor?: number; // unitário do vencedor — só quando resultadoItem = 'perdido'
   nomeVencedor?: string; // empresa vencedora — só quando resultadoItem = 'perdido'
   observacao?: string;
+  // Campos de gestão (migração 054, 22/10):
+  motivoPerdaHabilitacao?: MotivoPerdaHabilitacao; // só quando resultadoItem = 'perdido_habilitacao'
+  motivoPerdaEvitavel?: MotivoPerdaEvitavel; // só quando resultadoItem = 'perdido'
+  vitoriaPorConvocacao?: boolean; // só quando resultadoItem = 'ganho'
+  cnpjVencedor?: string; // 14 dígitos, sem pontuação — só quando resultadoItem = 'perdido'
 }
 
 export type DisputaResultadoLinhaFormData = Omit<DisputaResultadoLinha, 'id' | 'disputaId'>;
@@ -87,6 +162,8 @@ export interface Disputa {
 
   dataSessaoRealizada?: string; // ISO datetime — quando a sessão de fato ocorreu
   resultado: ResultadoDisputa;
+  /** Data da homologação. Vazio = resultado provisório; preenchido = definitivo (migração 054). */
+  homologadoEm?: string;
   observacoes: string;
   linkAtaSigaPregao?: string; // link/registro da ata no app do SIGA Pregão
 

@@ -20,7 +20,7 @@ import { Pagination } from '../../../components/Pagination';
 import { StatusPill, StatusTone } from '../../../components/StatusPill';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { Button } from '../../../components/Button';
-import { LicitacaoFormModal } from './LicitacaoFormModal';
+import { LicitacaoFormModal, type OpcoesSalvarLicitacao } from './LicitacaoFormModal';
 import { licitacaoService } from '../../../services/licitacaoService';
 import { propostaPendenciasService } from '../../../services/propostaPendenciasService';
 import { pendenciaDeFaltas, type PendenciaIdentificacao } from '../../../utils/propostaPendencias';
@@ -70,6 +70,12 @@ export function LicitacoesPage() {
   const [licitacaoParaExcluir, setLicitacaoParaExcluir] = useState<Licitacao | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [exportando, setExportando] = useState(false);
+
+  // Liberação ao cliente (22/10): a licitação só aparece no Portal do Cliente
+  // depois de liberada pelo Administrador ou pelo Analista.
+  const [licitacaoParaLiberar, setLicitacaoParaLiberar] = useState<Licitacao | null>(null);
+  const [liberando, setLiberando] = useState(false);
+  const [erroLiberacao, setErroLiberacao] = useState<string | null>(null);
 
   // Mapa id -> nome fantasia, carregado direto do Supabase (tabela `clientes`).
   // Substituiu o antigo `mockClientesResumo` — que era uma lista fixa de
@@ -192,9 +198,16 @@ export function LicitacoesPage() {
     }
   }
 
-  async function salvar(dados: LicitacaoFormData) {
+  async function salvar(dados: LicitacaoFormData, opcoes: OpcoesSalvarLicitacao) {
+    const jaLiberada = !!licitacaoEmEdicao?.liberadaAoClienteEm;
     if (licitacaoEmEdicao) {
-      await licitacaoService.atualizar(licitacaoEmEdicao.id, dados, usuarioAtual);
+      // Licitação já liberada ao cliente: o motivo da alteração vai para o histórico.
+      await licitacaoService.atualizar(
+        licitacaoEmEdicao.id,
+        dados,
+        usuarioAtual,
+        jaLiberada ? opcoes.motivoAlteracao : undefined
+      );
     } else {
       await licitacaoService.criar(dados, usuarioAtual);
     }
@@ -212,6 +225,22 @@ export function LicitacoesPage() {
       await carregar();
     } finally {
       setExcluindo(false);
+    }
+  }
+
+  async function confirmarLiberacao() {
+    if (!licitacaoParaLiberar) return;
+    setLiberando(true);
+    setErroLiberacao(null);
+    try {
+      await licitacaoService.liberarAoCliente(licitacaoParaLiberar.id, usuarioAtual);
+      limparCacheLicitacoesInternas();
+      setLicitacaoParaLiberar(null);
+      await carregar();
+    } catch (erro) {
+      setErroLiberacao(erro instanceof Error ? erro.message : 'Não foi possível liberar a licitação.');
+    } finally {
+      setLiberando(false);
     }
   }
 
@@ -307,6 +336,29 @@ export function LicitacoesPage() {
   }
 
   function blocoDecisao(licitacao: Licitacao) {
+    // Ainda não liberada: o cliente não enxerga a licitação, então não há
+    // decisão a mostrar — aparece o aviso e o botão para liberar.
+    if (!licitacao.liberadaAoClienteEm) {
+      return (
+        <div className="flex flex-col items-start gap-1.5">
+          <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 font-body text-xs font-medium text-slate-600">
+            Não liberada ao cliente
+          </span>
+          {podeEditar && (
+            <button
+              type="button"
+              onClick={() => {
+                setErroLiberacao(null);
+                setLicitacaoParaLiberar(licitacao);
+              }}
+              className="font-body text-xs font-semibold text-forest-deep hover:underline"
+            >
+              Liberar para o cliente
+            </button>
+          )}
+        </div>
+      );
+    }
     return (
       <span
         className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 font-body text-xs font-medium ${
@@ -562,6 +614,20 @@ export function LicitacoesPage() {
         isLoading={excluindo}
         onConfirm={confirmarExclusao}
         onCancel={() => setLicitacaoParaExcluir(null)}
+      />
+
+      <ConfirmDialog
+        open={!!licitacaoParaLiberar}
+        title="Liberar para o cliente"
+        description={`A licitação "${licitacaoParaLiberar?.numeroPregao}" passará a aparecer no Portal do Cliente${
+          licitacaoParaLiberar && !licitacaoParaLiberar.totalItens ? ', mas ainda não tem itens cadastrados' : ''
+        }. Depois de liberada, ela não volta a ficar oculta.${erroLiberacao ? ` ${erroLiberacao}` : ''}`}
+        confirmLabel="Liberar"
+        variant="success"
+        loadingLabel="Liberando…"
+        isLoading={liberando}
+        onConfirm={confirmarLiberacao}
+        onCancel={() => setLicitacaoParaLiberar(null)}
       />
     </div>
   );

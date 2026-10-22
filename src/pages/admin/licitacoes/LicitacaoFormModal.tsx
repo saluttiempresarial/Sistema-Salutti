@@ -284,10 +284,16 @@ function mesclarChecklistComExtracao(
   });
 }
 
+/** O que o formulário devolve além dos dados da licitação (22/10):
+ *  motivoAlteracao é obrigatório quando a licitação já foi liberada ao cliente. */
+export interface OpcoesSalvarLicitacao {
+  motivoAlteracao?: string;
+}
+
 interface LicitacaoFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (dados: LicitacaoFormData) => Promise<void>;
+  onSave: (dados: LicitacaoFormData, opcoes: OpcoesSalvarLicitacao) => Promise<void>;
   licitacaoEmEdicao?: Licitacao | null;
   /** true enquanto a página está buscando o registro completo (grupos/itens)
    *  antes de abrir em modo edição — mostra um estado de carregamento no
@@ -312,6 +318,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [abaAtiva, setAbaAtiva] = useState('gerais');
   const [form, setForm] = useState<LicitacaoFormData>(criarFormularioVazio());
   const [salvando, setSalvando] = useState(false);
+  // Para licitação já liberada ao cliente: motivo da alteração — ver OpcoesSalvarLicitacao.
+  const [motivoAlteracao, setMotivoAlteracao] = useState('');
+  const [erroMotivo, setErroMotivo] = useState(false);
   const [clientes, setClientes] = useState<Array<{ value: string; label: string; porte: PorteEmpresa }>>([]);
   const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
   // Texto exibido no campo "Valor total da licitação" — separado do número
@@ -430,6 +439,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (!isOpen) return;
     setAbaAtiva('gerais');
     setErroChecklist(null);
+    setMotivoAlteracao('');
+    setErroMotivo(false);
 
     if (licitacaoEmEdicao) {
       // Editando uma licitação existente — rascunho local não se aplica.
@@ -703,7 +714,19 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     }
   }
 
+  // Licitação já liberada ao cliente: qualquer alteração exige um motivo, que
+  // vai para o histórico (a regra é: depois de liberada, só se mexe a pedido do
+  // cliente ou quando a equipe constata a necessidade).
+  const jaLiberada = !!licitacaoEmEdicao?.liberadaAoClienteEm;
+
   async function handleSalvar() {
+    if (jaLiberada && !motivoAlteracao.trim()) {
+      setErroMotivo(true);
+      setAbaAtiva('gerais');
+      window.setTimeout(() => document.getElementById('motivo-alteracao')?.focus(), 0);
+      return;
+    }
+    setErroMotivo(false);
     // Bloqueia o salvamento se faltar algum campo obrigatório da aba
     // "Informações Gerais" — sem essa checagem, o formulário deixava
     // enviar "clienteId" vazio pro banco, que rejeitava com um erro
@@ -763,9 +786,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
 
     setSalvando(true);
     try {
-      await onSave(form);
+      await onSave(form, {
+        motivoAlteracao: jaLiberada ? motivoAlteracao.trim() : undefined,
+      });
       if (!licitacaoEmEdicao) limparRascunho();
       onClose();
+    } catch (erro) {
+      setErroChecklist(erro instanceof Error ? erro.message : 'Não foi possível salvar a licitação.');
     } finally {
       setSalvando(false);
     }
@@ -862,6 +889,40 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   Já conferi
                 </button>
               </div>
+            </div>
+          )}
+
+          {jaLiberada && (
+            <div className="mb-4 rounded-lg border border-brass/30 bg-brass-pale px-3 py-3">
+              <p className="font-body text-xs text-brass">
+                Esta licitação já foi liberada ao cliente
+                {licitacaoEmEdicao?.liberadaAoClienteEm &&
+                  ` em ${formatarDataHora(licitacaoEmEdicao.liberadaAoClienteEm)}`}
+                . Depois da liberação, ela só deve ser alterada a pedido do cliente ou quando a equipe constatar a
+                necessidade. Informe o motivo da alteração: ele fica registrado no histórico.
+              </p>
+              <label htmlFor="motivo-alteracao" className="mt-2 block font-body text-xs font-semibold text-ink">
+                Motivo da alteração (obrigatório)
+              </label>
+              <textarea
+                id="motivo-alteracao"
+                name="motivo-alteracao"
+                value={motivoAlteracao}
+                onChange={(e) => {
+                  setMotivoAlteracao(e.target.value);
+                  if (erroMotivo) setErroMotivo(false);
+                }}
+                rows={2}
+                placeholder="Ex.: o cliente pediu a correção da quantidade do item 3"
+                className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 font-body text-sm text-ink focus:outline-none focus:ring-2 ${
+                  erroMotivo
+                    ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
+                    : 'border-ink-soft/20 focus:border-forest focus:ring-forest/20'
+                }`}
+              />
+              {erroMotivo && (
+                <p className="mt-1 font-body text-xs text-red-700">Informe o motivo antes de salvar a alteração.</p>
+              )}
             </div>
           )}
 

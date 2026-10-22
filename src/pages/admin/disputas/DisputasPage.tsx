@@ -17,7 +17,14 @@ import { StatusPill, StatusTone } from '../../../components/StatusPill';
 import { DisputaFormModal } from './DisputaFormModal';
 import { disputaService } from '../../../services/disputaService';
 import { licitacaoService } from '../../../services/licitacaoService';
-import { Disputa, DisputaFormData, ResultadoDisputa, RESULTADO_DISPUTA_LABEL } from '../../../types/disputa';
+import {
+  Disputa,
+  DisputaFormData,
+  ResultadoDisputa,
+  RESULTADO_DISPUTA_LABEL,
+  SITUACAO_DISPUTA_LABEL,
+  situacaoDaDisputa,
+} from '../../../types/disputa';
 import { Licitacao } from '../../../types/licitacao';
 import { formatarDataHora } from '../../../utils/prazoUtils';
 
@@ -38,6 +45,7 @@ export function DisputasPage() {
   const [licitacoes, setLicitacoes] = useState<Licitacao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [filtroResultado, setFiltroResultado] = useState('');
+  const [filtroSituacao, setFiltroSituacao] = useState('');
   // 30/09, a pedido do Márcio: um erro no carregamento (ex.: falha de
   // permissão/consulta no Supabase) deixava a tela travada em "Carregando
   // disputas..." pra sempre, porque setCarregando(false) só rodava no
@@ -96,8 +104,13 @@ export function DisputasPage() {
   }, [disputas, licitacoes]);
 
   const disputasFiltradas = useMemo(
-    () => (filtroResultado ? disputas.filter((d) => d.resultado === filtroResultado) : disputas),
-    [disputas, filtroResultado]
+    () =>
+      disputas.filter(
+        (d) =>
+          (!filtroResultado || d.resultado === filtroResultado) &&
+          (!filtroSituacao || situacaoDaDisputa(d) === filtroSituacao),
+      ),
+    [disputas, filtroResultado, filtroSituacao]
   );
 
   function abrirNova(licitacao: Licitacao) {
@@ -158,7 +171,21 @@ export function DisputasPage() {
           className="rounded-md border border-charcoal-3/20 bg-white px-3 py-2 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
         >
           <option value="">Todos os resultados</option>
-          {Object.entries(RESULTADO_DISPUTA_LABEL).map(([value, label]) => (
+          {Object.entries(RESULTADO_DISPUTA_LABEL)
+            .filter(([value]) => value !== 'homologado')
+            .map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+        </select>
+        <select
+          value={filtroSituacao}
+          onChange={(e) => setFiltroSituacao(e.target.value)}
+          className="ml-3 rounded-md border border-charcoal-3/20 bg-white px-3 py-2 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
+        >
+          <option value="">Todas as situações</option>
+          {Object.entries(SITUACAO_DISPUTA_LABEL).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
             </option>
@@ -174,27 +201,28 @@ export function DisputasPage() {
               <th className="px-4 py-3">Sessão realizada</th>
               <th className="px-4 py-3">Itens com resultado</th>
               <th className="px-4 py-3">Resultado</th>
+              <th className="px-4 py-3">Situação</th>
               <th className="px-4 py-3 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-charcoal-3/10">
             {carregando && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-ink-soft">
+                <td colSpan={6} className="px-4 py-8 text-center text-ink-soft">
                   Carregando disputas...
                 </td>
               </tr>
             )}
             {!carregando && erroCarregar && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-red-700">
+                <td colSpan={6} className="px-4 py-8 text-center text-red-700">
                   Não foi possível carregar as disputas: {erroCarregar}
                 </td>
               </tr>
             )}
             {!carregando && !erroCarregar && disputasFiltradas.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-ink-soft">
+                <td colSpan={6} className="px-4 py-8 text-center text-ink-soft">
                   Nenhuma disputa registrada ainda.
                 </td>
               </tr>
@@ -221,6 +249,18 @@ export function DisputasPage() {
                         label={RESULTADO_DISPUTA_LABEL[disputa.resultado]}
                         tone={RESULTADO_TONE[disputa.resultado]}
                       />
+                    </td>
+                    <td className="px-4 py-3">
+                      {situacaoDaDisputa(disputa) === 'definitiva' ? (
+                        <>
+                          <StatusPill label="Definitiva" tone="success" />
+                          <p className="mt-1 text-xs text-ink-soft">
+                            Homologada em {new Date(disputa.homologadoEm as string).toLocaleDateString('pt-BR')}
+                          </p>
+                        </>
+                      ) : (
+                        <StatusPill label="Provisória" tone="neutral" />
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {disputa.linkAtaSigaPregao && (

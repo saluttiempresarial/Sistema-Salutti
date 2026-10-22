@@ -26,6 +26,7 @@ type AbaRelatorio = 'licitacoes' | 'disputas';
 const ROTULO_RESULTADO_ITEM: Record<ResultadoItemDisputa, { singular: string; plural: string }> = {
   ganho: { singular: 'ganho', plural: 'ganhos' },
   perdido: { singular: 'perdido', plural: 'perdidos' },
+  perdido_habilitacao: { singular: 'perdido na habilitação', plural: 'perdidos na habilitação' },
   fracassado: { singular: 'fracassado', plural: 'fracassados' },
   deserto: { singular: 'deserto', plural: 'desertos' },
   cancelado: { singular: 'cancelado', plural: 'cancelados' },
