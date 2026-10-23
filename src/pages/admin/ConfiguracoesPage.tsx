@@ -11,8 +11,15 @@ import { TextField } from '../../components/TextField';
 import { Button } from '../../components/Button';
 import { LiberacaoIndicadoresSecao } from '../../components/indicadores/LiberacaoIndicadoresSecao';
 import { LiberacaoAnalistasSecao } from '../../components/indicadores/LiberacaoAnalistasSecao';
-import { configuracaoService } from '../../services/configuracaoService';
-import { ConfiguracoesSistema, DadosEmpresa, RegraPrazoInterno, LinkRapido } from '../../types/configuracoes';
+import { configuracaoService, validarFaixasInatividade } from '../../services/configuracaoService';
+import {
+  ConfiguracoesSistema,
+  DadosEmpresa,
+  RegraPrazoInterno,
+  LinkRapido,
+  FaixasInatividade,
+  FAIXAS_INATIVIDADE_PADRAO,
+} from '../../types/configuracoes';
 
 function gerarIdLocal(): string {
   return `link-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -28,6 +35,11 @@ export function ConfiguracoesPage() {
   const [regraPrazo, setRegraPrazo] = useState<RegraPrazoInterno | null>(null);
   const [salvandoPrazo, setSalvandoPrazo] = useState(false);
 
+  const [faixas, setFaixas] = useState<FaixasInatividade>(FAIXAS_INATIVIDADE_PADRAO);
+  const [salvandoFaixas, setSalvandoFaixas] = useState(false);
+  const [erroFaixas, setErroFaixas] = useState<string | null>(null);
+  const [faixasSalvas, setFaixasSalvas] = useState(false);
+
   const [links, setLinks] = useState<LinkRapido[]>([]);
   const [salvandoLinks, setSalvandoLinks] = useState(false);
 
@@ -36,6 +48,7 @@ export function ConfiguracoesPage() {
       setConfig(c);
       setDadosEmpresa(c.dadosEmpresa);
       setRegraPrazo(c.regraPrazoInterno);
+      setFaixas(c.faixasInatividade);
       setLinks(c.linksRapidos);
       setCarregando(false);
     });
@@ -60,6 +73,27 @@ export function ConfiguracoesPage() {
       setConfig(atualizado);
     } finally {
       setSalvandoPrazo(false);
+    }
+  }
+
+  async function salvarFaixas() {
+    setFaixasSalvas(false);
+    const erro = validarFaixasInatividade(faixas);
+    if (erro) {
+      setErroFaixas(erro);
+      return;
+    }
+    setErroFaixas(null);
+    setSalvandoFaixas(true);
+    try {
+      const atualizado = await configuracaoService.atualizarFaixasInatividade(faixas);
+      setConfig(atualizado);
+      setFaixas(atualizado.faixasInatividade);
+      setFaixasSalvas(true);
+    } catch (e) {
+      setErroFaixas(e instanceof Error ? e.message : 'Não foi possível salvar as faixas.');
+    } finally {
+      setSalvandoFaixas(false);
     }
   }
 
@@ -176,6 +210,61 @@ export function ConfiguracoesPage() {
           <div className="mt-4 flex justify-end">
             <Button onClick={salvarPrazo} disabled={salvandoPrazo}>
               {salvandoPrazo ? 'Salvando...' : 'Salvar regra de prazo'}
+            </Button>
+          </div>
+        </section>
+
+        {/* Faixas de "Clientes sem atividade" */}
+        <section className="rounded-xl border border-charcoal-3/10 bg-white p-6 shadow-soft">
+          <h2 className="font-display text-lg font-semibold text-forest-deep">Faixas de "Clientes sem atividade"</h2>
+          <p className="mt-1 mb-4 font-body text-sm text-ink-soft">
+            Dias sem atividade que separam os níveis de alerta do indicador de clientes parados. O padrão é 7, 14 e
+            21 dias. As faixas precisam ser crescentes.
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            <TextField
+              label="1ª faixa (dias)"
+              type="number"
+              min={1}
+              value={faixas.faixa1Dias}
+              onChange={(e) => setFaixas({ ...faixas, faixa1Dias: Number(e.target.value) })}
+            />
+            <TextField
+              label="2ª faixa (dias)"
+              type="number"
+              min={1}
+              value={faixas.faixa2Dias}
+              onChange={(e) => setFaixas({ ...faixas, faixa2Dias: Number(e.target.value) })}
+            />
+            <TextField
+              label="3ª faixa (dias)"
+              type="number"
+              min={1}
+              value={faixas.faixa3Dias}
+              onChange={(e) => setFaixas({ ...faixas, faixa3Dias: Number(e.target.value) })}
+            />
+          </div>
+          {erroFaixas && (
+            <p role="alert" className="mt-3 font-body text-sm text-red-700">
+              {erroFaixas}
+            </p>
+          )}
+          {faixasSalvas && !erroFaixas && (
+            <p className="mt-3 font-body text-sm text-forest-deep">Faixas salvas.</p>
+          )}
+          <div className="mt-4 flex justify-between">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setFaixas(FAIXAS_INATIVIDADE_PADRAO);
+                setErroFaixas(null);
+                setFaixasSalvas(false);
+              }}
+            >
+              Restaurar padrão (7, 14 e 21)
+            </Button>
+            <Button onClick={salvarFaixas} disabled={salvandoFaixas}>
+              {salvandoFaixas ? 'Salvando...' : 'Salvar faixas'}
             </Button>
           </div>
         </section>

@@ -396,17 +396,23 @@ function ValorAdjudicadoBloco({ dados }: { dados: ValorAdjudicado }) {
             <Tooltip
               contentStyle={ESTILO_DICA}
               cursor={{ fill: '#E7F0EA' }}
-              formatter={(valor) => [formatarMoeda(Number(valor)), 'Valor adjudicado']}
+              formatter={(valor, nome) => [formatarMoeda(Number(valor)), String(nome)]}
               labelFormatter={(rotulo, itens) => {
                 const ganhas = (itens?.[0]?.payload as { licitacoesGanhas?: number } | undefined)?.licitacoesGanhas ?? 0
                 return `${rotulo} — ${formatarNumero(ganhas)} ${ganhas === 1 ? 'licitação ganha' : 'licitações ganhas'}`
               }}
             />
-            <Bar dataKey="valor" name="Valor adjudicado" fill={COR_GANHO} radius={[4, 4, 0, 0]} maxBarSize={40} />
+            <Legend wrapperStyle={{ fontSize: 13, fontFamily: '"Source Sans 3", sans-serif' }} />
+            <Bar dataKey="valorConvencional" name="Contratação convencional" stackId="adj" fill={COR_GANHO} maxBarSize={40} />
+            <Bar dataKey="valorSrp" name="Registro de Preços (SRP)" stackId="adj" fill={COR_REFERENCIA} radius={[4, 4, 0, 0]} maxBarSize={40} />
           </BarChart>
         </ResponsiveContainer>
       </div>
       <p className="mt-3 font-body text-xs text-ink-soft">{NOTA_ADJUDICADO}</p>
+      <p className="mt-1 font-body text-xs text-ink-soft">
+        Em Sistema de Registro de Preços (SRP), o valor é o máximo potencial da ata, não o que será efetivamente
+        empenhado. Mês de referência: data da sessão realizada.
+      </p>
     </div>
   )
 }

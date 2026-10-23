@@ -25,6 +25,16 @@ export interface RegraPrazoInterno {
   horario: string; // formato "HH:mm", hoje: "18:00"
 }
 
+/** Faixas, em dias, do indicador "Clientes sem atividade" (item 15 do documento
+ *  de relatórios). Sempre crescentes: faixa 1 < faixa 2 < faixa 3. Padrão 7/14/21. */
+export interface FaixasInatividade {
+  faixa1Dias: number;
+  faixa2Dias: number;
+  faixa3Dias: number;
+}
+
+export const FAIXAS_INATIVIDADE_PADRAO: FaixasInatividade = { faixa1Dias: 7, faixa2Dias: 14, faixa3Dias: 21 };
+
 export interface LinkRapido {
   id: string;
   label: string;
@@ -34,6 +44,7 @@ export interface LinkRapido {
 export interface ConfiguracoesSistema {
   dadosEmpresa: DadosEmpresa;
   regraPrazoInterno: RegraPrazoInterno;
+  faixasInatividade: FaixasInatividade;
   linksRapidos: LinkRapido[]; // portais mostrados na Mesa de Trabalho
   atualizadoEm: string;
 }

@@ -10,7 +10,14 @@
 // rápidos, em vez de ter esses valores fixos espalhados pelo código.
 
 import { supabase } from '@/lib/supabaseClient'
-import { ConfiguracoesSistema, DadosEmpresa, RegraPrazoInterno, LinkRapido } from '../types/configuracoes'
+import {
+  ConfiguracoesSistema,
+  DadosEmpresa,
+  RegraPrazoInterno,
+  LinkRapido,
+  FaixasInatividade,
+  FAIXAS_INATIVIDADE_PADRAO,
+} from '../types/configuracoes'
 
 /** Formato da linha única da tabela `configuracoes` do Postgres. */
 interface ConfiguracaoRow {
@@ -23,6 +30,9 @@ interface ConfiguracaoRow {
   email: string | null
   dias_uteis_antes: number
   horario_limite: string // formato "HH:mm:ss", vindo do tipo `time` do Postgres
+  inatividade_faixa_1_dias?: number | null // migração 054
+  inatividade_faixa_2_dias?: number | null
+  inatividade_faixa_3_dias?: number | null
   atualizado_em: string
 }
 
@@ -57,6 +67,27 @@ async function buscarConfiguracaoRow(): Promise<ConfiguracaoRow> {
   return data as ConfiguracaoRow
 }
 
+function paraFaixasInatividade(row: ConfiguracaoRow): FaixasInatividade {
+  return {
+    faixa1Dias: row.inatividade_faixa_1_dias ?? FAIXAS_INATIVIDADE_PADRAO.faixa1Dias,
+    faixa2Dias: row.inatividade_faixa_2_dias ?? FAIXAS_INATIVIDADE_PADRAO.faixa2Dias,
+    faixa3Dias: row.inatividade_faixa_3_dias ?? FAIXAS_INATIVIDADE_PADRAO.faixa3Dias,
+  }
+}
+
+/** Mensagem de erro se as faixas forem inválidas (ou null). Mesma regra do
+ *  banco: inteiros, 1 ≤ faixa 1 < faixa 2 < faixa 3. */
+export function validarFaixasInatividade(f: FaixasInatividade): string | null {
+  const todas = [f.faixa1Dias, f.faixa2Dias, f.faixa3Dias]
+  if (todas.some((d) => !Number.isInteger(d) || d < 1)) {
+    return 'Informe as três faixas em dias inteiros, a partir de 1.'
+  }
+  if (!(f.faixa1Dias < f.faixa2Dias && f.faixa2Dias < f.faixa3Dias)) {
+    return 'As faixas precisam ser crescentes: a 1ª menor que a 2ª, e a 2ª menor que a 3ª.'
+  }
+  return null
+}
+
 function paraConfiguracoesSistema(row: ConfiguracaoRow, links: LinkRapido[]): ConfiguracoesSistema {
   return {
     dadosEmpresa: {
@@ -71,6 +102,7 @@ function paraConfiguracoesSistema(row: ConfiguracaoRow, links: LinkRapido[]): Co
       diasUteisAntes: row.dias_uteis_antes,
       horario: paraHorarioCurto(row.horario_limite),
     },
+    faixasInatividade: paraFaixasInatividade(row),
     linksRapidos: links,
     atualizadoEm: row.atualizado_em,
   }
@@ -130,6 +162,22 @@ export const configuracaoService = {
       .update({
         dias_uteis_antes: regra.diasUteisAntes,
         horario_limite: `${regra.horario}:00`,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq('id', true)
+    if (error) throw new Error(error.message)
+    return this.obter()
+  },
+
+  async atualizarFaixasInatividade(faixas: FaixasInatividade): Promise<ConfiguracoesSistema> {
+    const erro = validarFaixasInatividade(faixas)
+    if (erro) throw new Error(erro)
+    const { error } = await supabase
+      .from('configuracoes')
+      .update({
+        inatividade_faixa_1_dias: faixas.faixa1Dias,
+        inatividade_faixa_2_dias: faixas.faixa2Dias,
+        inatividade_faixa_3_dias: faixas.faixa3Dias,
         atualizado_em: new Date().toISOString(),
       })
       .eq('id', true)

@@ -212,7 +212,8 @@ export function FiltrosIndicadoresBar({
       filtros.esfera ||
       filtros.marca ||
       filtros.resultado ||
-      filtros.fase,
+      filtros.fase ||
+      filtros.incluirProvisorios,
   )
 
   return (
@@ -333,6 +334,21 @@ export function FiltrosIndicadoresBar({
           />
         )}
       </div>
+
+      <label className="mt-3 flex items-start gap-2 font-body text-sm text-ink">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 rounded border-ink-soft/40 accent-forest"
+          checked={Boolean(filtros.incluirProvisorios)}
+          onChange={(e) => onChange({ ...filtros, incluirProvisorios: e.target.checked || undefined })}
+        />
+        <span>
+          Incluir resultados provisórios
+          <span className="block text-xs text-ink-soft">
+            Por padrão só entram resultados definitivos (disputa com "Homologado em" preenchido).
+          </span>
+        </span>
+      </label>
 
       {avisoResultado && (
         <p className="mt-3 rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft" role="status">

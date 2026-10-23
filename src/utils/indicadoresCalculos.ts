@@ -43,6 +43,7 @@
 import { ESFERA_LICITACAO_LABEL, MODALIDADE_LICITACAO_LABEL } from '../types/licitacao';
 import type { EsferaLicitacao, Licitacao, ItemLicitacao, ModalidadeLicitacao } from '../types/licitacao';
 import type { Disputa } from '../types/disputa';
+import { situacaoDaDisputa } from '../types/disputa';
 import { GRUPO_MOTIVO_LABEL, definicaoDoMotivo } from '../types/motivoNaoParticipacao';
 import type { ChaveMotivoIndicador, GrupoMotivo } from '../types/motivoNaoParticipacao';
 import {
@@ -289,7 +290,8 @@ export function montarUnidades(
   licitacoes: Licitacao[],
   disputas: Disputa[],
   filtroFamilia?: string,
-  filtroMarca?: string
+  filtroMarca?: string,
+  incluirProvisorios = false
 ): UnidadeResultado[] {
   const licitacaoPorId = new Map(licitacoes.map((l) => [l.id, l]));
   const unidades: UnidadeResultado[] = [];
@@ -297,7 +299,13 @@ export function montarUnidades(
   disputas.forEach((disputa) => {
     const licitacao = licitacaoPorId.get(disputa.licitacaoId);
     if (!licitacao) return;
+    // Resultado provisório (sem "Homologado em") só entra quando pedido.
+    const definitiva = situacaoDaDisputa(disputa) === 'definitiva';
+    if (!definitiva && !incluirProvisorios) return;
     const taxaFrete = taxaFreteDaLicitacao(licitacao);
+    const dataSessao = disputa.dataSessaoRealizada || dataDaLicitacao(licitacao);
+    const procedimento: 'srp' | 'convencional' = licitacao.procedimento === 'srp' ? 'srp' : 'convencional';
+    const comuns = { definitiva, dataSessao, procedimento };
 
     // Grupos que têm resultado próprio: os itens deles não contam de novo.
     const gruposComResultado = new Set(
@@ -330,6 +338,10 @@ export function montarUnidades(
           valorReferencia: totalReferenciaItem(item) > 0 ? totalReferenciaItem(item) : null,
           valorVencedor: linha.valorVencedor != null ? linha.valorVencedor * item.quantidade : null,
           nomeVencedor: linha.nomeVencedor,
+          vitoriaPorConvocacao: linha.vitoriaPorConvocacao,
+          motivoPerdaHabilitacao: linha.motivoPerdaHabilitacao,
+          cnpjVencedor: linha.cnpjVencedor,
+          ...comuns,
         });
         return;
       }
@@ -360,6 +372,10 @@ export function montarUnidades(
           valorReferencia: referenciaGrupo > 0 ? referenciaGrupo : null,
           valorVencedor: linha.valorVencedor ?? null,
           nomeVencedor: linha.nomeVencedor,
+          vitoriaPorConvocacao: linha.vitoriaPorConvocacao,
+          motivoPerdaHabilitacao: linha.motivoPerdaHabilitacao,
+          cnpjVencedor: linha.cnpjVencedor,
+          ...comuns,
         });
       }
     });
@@ -391,9 +407,14 @@ export function calcularFunil(licitacoes: Licitacao[], unidades: UnidadeResultad
 // ---------------------------------------------------------------------------
 // 2 — Taxa de vitória
 // ---------------------------------------------------------------------------
+/** Perdida = perdida no lance ou perdida na aceitação/habilitação. */
+export function ehPerdida(u: UnidadeResultado): boolean {
+  return u.resultado === 'perdido' || u.resultado === 'perdido_habilitacao';
+}
+
 export function calcularTaxaVitoria(unidades: UnidadeResultado[]): TaxaVitoria {
   const ganhas = unidades.filter((u) => u.resultado === 'ganho');
-  const perdidas = unidades.filter((u) => u.resultado === 'perdido');
+  const perdidas = unidades.filter(ehPerdida);
   const soma = (lista: UnidadeResultado[]) => lista.reduce((s, u) => s + (u.valorOfertado ?? 0), 0);
   const valorAdjudicado = soma(ganhas);
   const valorDisputado = valorAdjudicado + soma(perdidas);
@@ -606,32 +627,47 @@ export function calcularValorAdjudicado(licitacoes: Licitacao[], unidades: Unida
   const comGanho = new Set(ganhos.map((u) => u.licitacaoId));
 
   const meses = new Map<string, ValorAdjudicadoMes>();
-  function mesDe(licitacaoId: string): ValorAdjudicadoMes | null {
+  function mesDe(licitacaoId: string, mesDaSessao?: string): ValorAdjudicadoMes | null {
     const l = licitacaoPorId.get(licitacaoId);
     if (!l) return null;
-    const mes = diaLocal(dataDaLicitacao(l)).slice(0, 7);
+    const mes = diaLocal(mesDaSessao ?? dataDaLicitacao(l)).slice(0, 7);
     const existente = meses.get(mes);
     if (existente) return existente;
     const nova: ValorAdjudicadoMes = {
       mes,
       rotulo: `${MESES_ABREVIADOS[Number(mes.slice(5, 7)) - 1]}/${mes.slice(0, 4)}`,
       valor: 0,
+      valorSrp: 0,
+      valorConvencional: 0,
       licitacoesGanhas: 0,
     };
     meses.set(mes, nova);
     return nova;
   }
 
+  // O mês é o da sessão realizada; a licitação conta no mês da primeira
+  // unidade ganha dela.
+  const sessaoDaLicitacao = new Map<string, string | undefined>();
+  ganhos.forEach((u) => {
+    const atual = sessaoDaLicitacao.get(u.licitacaoId);
+    if (!sessaoDaLicitacao.has(u.licitacaoId) || (u.dataSessao && (!atual || u.dataSessao < atual))) {
+      sessaoDaLicitacao.set(u.licitacaoId, u.dataSessao);
+    }
+  });
   comGanho.forEach((id) => {
-    const m = mesDe(id);
+    const m = mesDe(id, sessaoDaLicitacao.get(id));
     if (m) m.licitacoesGanhas += 1;
   });
   let total = 0;
   ganhos.forEach((u) => {
     const valor = u.valorOfertado ?? 0;
     total += valor;
-    const m = mesDe(u.licitacaoId);
-    if (m) m.valor += valor;
+    const m = mesDe(u.licitacaoId, u.dataSessao);
+    if (m) {
+      m.valor += valor;
+      if (u.procedimento === 'srp') m.valorSrp += valor;
+      else m.valorConvencional += valor;
+    }
   });
 
   return {
@@ -785,7 +821,7 @@ export function calcularTaxaVitoriaFamilia(
   unidades: UnidadeResultado[],
   nomeDaFamilia: (id: string) => string
 ): TaxaVitoriaFamilia {
-  const base = unidades.filter((u) => u.resultado === 'ganho' || u.resultado === 'perdido');
+  const base = unidades.filter((u) => u.resultado === 'ganho' || ehPerdida(u));
   const taxa = (lista: UnidadeResultado[]) => {
     const ganhos = lista.filter((u) => u.resultado === 'ganho').length;
     return { ganhos, disputados: lista.length, percentual: lista.length > 0 ? (ganhos / lista.length) * 100 : null };
@@ -852,7 +888,7 @@ export function calcularMarcas(
 export function calcularProdutosNuncaGanhos(unidades: UnidadeResultado[]): ProdutosNuncaGanhos {
   const mapa = new Map<string, { nome: string; ganhos: number; perdas: number }>();
   unidades
-    .filter((u) => u.tipo === 'item' && u.produtoChave && (u.resultado === 'ganho' || u.resultado === 'perdido'))
+    .filter((u) => u.tipo === 'item' && u.produtoChave && (u.resultado === 'ganho' || ehPerdida(u)))
     .forEach((u) => {
       const atual = mapa.get(u.produtoChave as string) ?? { nome: u.produtoNome ?? '', ganhos: 0, perdas: 0 };
       if (u.resultado === 'ganho') atual.ganhos += 1;
@@ -1419,7 +1455,7 @@ export function calcularIndicadoresAdmin(
   const nomeDoCliente = (id: string) => dados.clientes.find((c) => c.id === id)?.nome ?? '—';
 
   const licitacoes = filtrarLicitacoes(dados.licitacoes, filtros, dados.disputas, agora);
-  const unidades = montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca);
+  const unidades = montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios);
 
   // Período anterior (mesmos demais filtros) para a variação da taxa de vitória.
   const anterior = periodoAnterior(filtros);
@@ -1427,7 +1463,7 @@ export function calcularIndicadoresAdmin(
   if (anterior) {
     const licitacoesAnteriores = filtrarLicitacoes(dados.licitacoes, { ...filtros, ...anterior }, dados.disputas, agora);
     taxaAnterior = calcularTaxaVitoria(
-      montarUnidades(licitacoesAnteriores, dados.disputas, filtros.familiaId, filtros.marca)
+      montarUnidades(licitacoesAnteriores, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios)
     );
   }
 

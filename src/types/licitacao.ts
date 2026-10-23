@@ -331,6 +331,8 @@ export interface PropostaClienteItem {
   marca?: string;
   modelo?: string;
   precoMinimo?: number;
+  /** Marcas que compõem o item (cestas básicas/natalinas e kits) — opcional, até 30 (migração 056). */
+  marcasComposicao?: string[];
 }
 
 export interface GrupoItens {
@@ -374,6 +376,8 @@ export interface Licitacao {
   objeto: string;
   numeroPregao: string;
   orgao: string;
+  orgaoCnpj?: string; // CNPJ do órgão, só números (opcional) — relatórios por órgão
+  orgaoUasg?: string; // UASG (Unidade Administrativa de Serviços Gerais), opcional
   estado: string; // UF
   esfera?: EsferaLicitacao; // opcional: municipal, estadual, federal ou distrital
   municipio: string;

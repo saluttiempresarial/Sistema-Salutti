@@ -15,7 +15,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useLicitacoesInternas } from '@/hooks/useLicitacoesInternas'
-import { licitacaoService } from '@/services/licitacaoService'
+import { relatorioIndicadoresService } from '@/services/relatorioIndicadoresService'
+import { calcularTaxaVitoria, montarUnidades } from '@/utils/indicadoresCalculos'
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { CabecalhoPainel } from '@/components/dashboard/CabecalhoPainel'
 import { CartaoResumo } from '@/components/dashboard/CartaoResumo'
@@ -44,12 +45,13 @@ export function AdminDashboard() {
 
   useEffect(() => {
     let ativo = true
-    Promise.all([
-      licitacaoService.listar({ status: 'ganho', page: 1, pageSize: 1 }),
-      licitacaoService.listar({ status: 'perdido', page: 1, pageSize: 1 }),
-    ])
-      .then(([ganhas, perdidas]) => {
-        if (ativo) setFinalizadas({ ganhas: ganhas.total, perdidas: perdidas.total })
+    // Mesma regra do painel de Indicadores: itens/grupos de disputas com
+    // resultado definitivo; perdido na habilitação conta como perdido.
+    relatorioIndicadoresService
+      .carregarDadosBase()
+      .then((base) => {
+        const taxa = calcularTaxaVitoria(montarUnidades(base.licitacoes, base.disputas))
+        if (ativo) setFinalizadas({ ganhas: taxa.ganhos, perdidas: taxa.perdidos })
       })
       .catch(() => {
         if (ativo) setFinalizadas(null)
@@ -118,7 +120,7 @@ export function AdminDashboard() {
           compacto
           titulo="Taxa de vitória"
           valor={taxaVitoria === null ? '—' : `${taxaVitoria}%`}
-          legenda={taxaVitoria === null ? 'Sem licitações finalizadas ainda' : 'ganhas entre as finalizadas'}
+          legenda={taxaVitoria === null ? 'Sem resultados definitivos ainda' : 'ganhos entre os resultados definitivos'}
           icone={<IconeTendencia className="h-6 w-6" />}
           tom="verde"
         />

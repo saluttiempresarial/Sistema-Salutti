@@ -56,6 +56,8 @@ interface LicitacaoRow {
   objeto: string
   numero_pregao: string
   orgao: string
+  orgao_cnpj?: string | null
+  orgao_uasg?: string | null
   estado: string
   municipio: string
   esfera: Licitacao['esfera'] | null
@@ -116,6 +118,7 @@ interface ItemRow {
   proposta_marca: string | null
   proposta_modelo: string | null
   proposta_preco_minimo: number | null
+  proposta_marcas_composicao?: string[] | null
   decisao_acima_referencia: DecisaoAcimaReferencia | null
   decisao_acima_referencia_por: string | null
   decisao_acima_referencia_em: string | null
@@ -138,13 +141,15 @@ function paraItem(row: ItemRow): ItemLicitacao {
     row.proposta_descricao ||
     row.proposta_marca ||
     row.proposta_modelo ||
-    row.proposta_preco_minimo != null
+    row.proposta_preco_minimo != null ||
+    (row.proposta_marcas_composicao?.length ?? 0) > 0
       ? {
           codigoInterno: row.proposta_codigo_interno ?? undefined,
           descricaoProduto: row.proposta_descricao ?? undefined,
           marca: row.proposta_marca ?? undefined,
           modelo: row.proposta_modelo ?? undefined,
           precoMinimo: row.proposta_preco_minimo ?? undefined,
+          marcasComposicao: row.proposta_marcas_composicao ?? undefined,
         }
       : undefined
 
@@ -179,6 +184,8 @@ function paraLicitacao(
     objeto: row.objeto,
     numeroPregao: limparNumeroPregao(row.numero_pregao),
     orgao: row.orgao,
+    orgaoCnpj: row.orgao_cnpj ?? undefined,
+    orgaoUasg: row.orgao_uasg ?? undefined,
     estado: row.estado,
     esfera: row.esfera ?? undefined,
     municipio: row.municipio,
@@ -240,6 +247,8 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     objeto: dados.objeto || null,
     numero_pregao: limparNumeroPregao(dados.numeroPregao),
     orgao: dados.orgao,
+    orgao_cnpj: dados.orgaoCnpj ? dados.orgaoCnpj.replace(/\D/g, '') || null : null,
+    orgao_uasg: dados.orgaoUasg?.trim() || null,
     estado: dados.estado,
     esfera: dados.esfera ?? null,
     municipio: dados.municipio,
@@ -311,6 +320,8 @@ async function substituirGruposEItens(
             marca: item.propostaCliente.marca ?? null,
             modelo: item.propostaCliente.modelo ?? null,
             precoMinimo: item.propostaCliente.precoMinimo ?? null,
+            // Sem este campo o banco PRESERVA as marcas já gravadas (migração 056).
+            marcasComposicao: item.propostaCliente.marcasComposicao ?? [],
           }
         : null,
     })),
@@ -672,6 +683,8 @@ export const licitacaoService = {
           p_marca: propostaCliente.marca || null,
           p_modelo: propostaCliente.modelo || null,
           p_preco_minimo: propostaCliente.precoMinimo ?? null,
+          // Sempre enviado: a função do banco limpa as marcas se o parâmetro não vier (056).
+          p_marcas_composicao: propostaCliente.marcasComposicao ?? [],
         })
       )
     ).then((resultados) => {

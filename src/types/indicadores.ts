@@ -9,7 +9,7 @@
 
 import type { Licitacao, EsferaLicitacao } from './licitacao';
 import type { ChaveMotivoIndicador, GrupoMotivo } from './motivoNaoParticipacao';
-import type { Disputa, ResultadoItemDisputa } from './disputa';
+import type { Disputa, ResultadoItemDisputa, MotivoPerdaHabilitacao } from './disputa';
 import type { FamiliaProduto } from '../services/familiaProdutoService';
 
 /** Valor do filtro de esfera para licitações sem esfera informada. */
@@ -37,6 +37,9 @@ export interface FiltrosIndicadores {
   resultado?: ResultadoLicitacaoFiltro;
   /** Fase no pipeline — filtro "Status", só para Administrador e Analista. */
   fase?: FasePipeline;
+  /** Falso/ausente: só entram resultados DEFINITIVOS (disputa com "Homologado
+   *  em" preenchido). Verdadeiro: entram também os provisórios. */
+  incluirProvisorios?: boolean;
 }
 
 /** Resultado de uma licitação para o filtro "Resultado". "Não participou" =
@@ -170,6 +173,11 @@ export interface ValorAdjudicadoMes {
   rotulo: string; // ex.: "out/2026"
   /** Valor ofertado dos itens/grupos ganhos nas licitações do mês. */
   valor: number;
+  /** Parte do valor em licitações de Sistema de Registro de Preços (SRP): é o
+   *  máximo potencial da ata, não o que será empenhado. */
+  valorSrp: number;
+  /** Parte do valor em contratações convencionais. */
+  valorConvencional: number;
   licitacoesGanhas: number;
 }
 
@@ -554,4 +562,12 @@ export interface UnidadeResultado {
   valorReferencia: number | null;
   valorVencedor: number | null;
   nomeVencedor?: string;
+  /** Resultado definitivo = disputa com "Homologado em" preenchido. */
+  definitiva: boolean;
+  /** Data da sessão realizada (ou, na falta dela, a da licitação), ISO. */
+  dataSessao?: string;
+  procedimento: 'srp' | 'convencional';
+  vitoriaPorConvocacao?: boolean;
+  motivoPerdaHabilitacao?: MotivoPerdaHabilitacao;
+  cnpjVencedor?: string;
 }

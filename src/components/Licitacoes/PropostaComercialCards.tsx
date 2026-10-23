@@ -92,6 +92,7 @@ interface FormProposta {
   marca: string
   modelo: string
   precoMinimo: string // string p/ aceitar vírgula decimal enquanto digita
+  marcasComposicao: string[] // marcas de cestas/kits (opcional)
 }
 
 interface FormReferencia {
@@ -161,6 +162,7 @@ function montarFormPropostaInicial(itens: ItemLicitacao[]): Record<string, FormP
       marca: item.propostaCliente?.marca ?? '',
       modelo: item.propostaCliente?.modelo ?? '',
       precoMinimo: numeroParaCampo(item.propostaCliente?.precoMinimo),
+      marcasComposicao: item.propostaCliente?.marcasComposicao ?? [],
     }
   })
   return mapa
@@ -279,6 +281,7 @@ export function PropostaComercialCards({
         marca: formProposta?.marca ?? item.propostaCliente?.marca ?? '',
         modelo: formProposta?.modelo ?? item.propostaCliente?.modelo ?? '',
         precoMinimo: formProposta ? campoParaNumero(formProposta.precoMinimo) : item.propostaCliente?.precoMinimo,
+        marcasComposicao: formProposta?.marcasComposicao ?? item.propostaCliente?.marcasComposicao,
       },
     }
   }
@@ -388,7 +391,14 @@ export function PropostaComercialCards({
     }
   }, [itensAoVivo, porteCliente, taxaFreteNumero, taxaFretePreenchida])
 
-  function atualizarCampoProposta(itemId: string, campo: keyof FormProposta, valor: string) {
+  function atualizarMarcasComposicao(itemId: string, marcas: string[]) {
+    setFormPorItem((atual) => ({
+      ...atual,
+      [itemId]: { ...atual[itemId], marcasComposicao: marcas },
+    }))
+  }
+
+  function atualizarCampoProposta(itemId: string, campo: Exclude<keyof FormProposta, 'marcasComposicao'>, valor: string) {
     setFormPorItem((atual) => ({
       ...atual,
       [itemId]: { ...atual[itemId], [campo]: valor },
@@ -468,6 +478,7 @@ export function PropostaComercialCards({
           marca: item.propostaCliente?.marca,
           modelo: item.propostaCliente?.modelo,
           precoMinimo: item.propostaCliente?.precoMinimo,
+          marcasComposicao: item.propostaCliente?.marcasComposicao ?? [],
         } satisfies PropostaClienteItem,
       }))
 
@@ -723,7 +734,7 @@ export function PropostaComercialCards({
                   const status = classificarStatusProposta(analise.percentualDiferenca)
                   const bloqueadoMeEpp = !!(itemVivo.exclusivoMeEpp && porteCliente === 'demais')
                   const itemAbertoAgora = itemAberto === itemVivo.id
-                  const formProposta = formPorItem[itemVivo.id] ?? { marca: '', modelo: '', precoMinimo: '' }
+                  const formProposta = formPorItem[itemVivo.id] ?? { marca: '', modelo: '', precoMinimo: '', marcasComposicao: [] }
                   const formReferencia = formReferenciaPorItem[itemVivo.id]
                   const faltaIdentificacao = bloqueadoMeEpp ? null : faltaIdentificacaoDoItem(itemVivo)
 
@@ -748,6 +759,12 @@ export function PropostaComercialCards({
                               </span>
                             )}
                           </div>
+                          {(itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
+                            <div className="mt-1 font-body text-xs text-ink-soft">
+                              <span className="font-semibold">Marcas da composição:</span>{' '}
+                              {(itemVivo.propostaCliente?.marcasComposicao ?? []).join(', ')}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           {faltaIdentificacao && (
@@ -824,6 +841,12 @@ export function PropostaComercialCards({
                                     placeholder="digite o modelo/versão"
                                     onChange={(v) => atualizarCampoProposta(itemVivo.id, 'modelo', v)}
                                   />
+                                  <div className="col-span-2 sm:col-span-4">
+                                    <CampoMarcasComposicao
+                                      marcas={formProposta.marcasComposicao}
+                                      onChange={(marcas) => atualizarMarcasComposicao(itemVivo.id, marcas)}
+                                    />
+                                  </div>
                                 </>
                               ) : (
                                 <>
@@ -833,6 +856,14 @@ export function PropostaComercialCards({
                                   />
                                   <MiniCampo label="Marca/Fabricante" valor={itemVivo.propostaCliente?.marca || '—'} />
                                   <MiniCampo label="Modelo/Versão" valor={itemVivo.propostaCliente?.modelo || '—'} />
+                                  {(itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
+                                    <div className="col-span-2 sm:col-span-4">
+                                      <MiniCampo
+                                        label="Marcas da composição"
+                                        valor={(itemVivo.propostaCliente?.marcasComposicao ?? []).join(', ')}
+                                      />
+                                    </div>
+                                  )}
                                 </>
                               )}
 
@@ -981,6 +1012,84 @@ function MiniCampo({ label, valor }: { label: string; valor: string }) {
     <div>
       <div className="font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</div>
       <div className="font-body text-sm text-ink">{valor}</div>
+    </div>
+  )
+}
+
+const LIMITE_MARCAS_COMPOSICAO = 30
+
+/** Marcas que compõem o item (cestas básicas/natalinas e kits): digita-se uma
+ *  marca e tecla Enter ou vírgula; cada marca vira uma etiqueta que pode ser
+ *  removida. Repetidas (sem diferenciar maiúsculas de minúsculas) são
+ *  ignoradas; limite de 30 marcas, igual ao do banco. Campo opcional. */
+function CampoMarcasComposicao({ marcas, onChange }: { marcas: string[]; onChange: (marcas: string[]) => void }) {
+  const [texto, setTexto] = useState('')
+
+  function adicionar(bruto: string) {
+    const novas = bruto
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean)
+    if (novas.length === 0) return
+    const resultado = [...marcas]
+    novas.forEach((m) => {
+      if (resultado.length >= LIMITE_MARCAS_COMPOSICAO) return
+      if (resultado.some((existente) => existente.toLowerCase() === m.toLowerCase())) return
+      resultado.push(m.slice(0, 80))
+    })
+    onChange(resultado)
+    setTexto('')
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+        Marcas da composição <span className="normal-case font-normal">(opcional — para cestas e kits)</span>
+      </label>
+      {marcas.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
+          {marcas.map((marca) => (
+            <span
+              key={marca}
+              className="inline-flex items-center gap-1 rounded-full bg-forest-mist/60 px-2.5 py-0.5 font-body text-xs text-ink"
+            >
+              {marca}
+              <button
+                type="button"
+                onClick={() => onChange(marcas.filter((m) => m !== marca))}
+                aria-label={`Remover a marca ${marca}`}
+                className="text-ink-soft hover:text-red-700"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        type="text"
+        value={texto}
+        disabled={marcas.length >= LIMITE_MARCAS_COMPOSICAO}
+        placeholder={
+          marcas.length >= LIMITE_MARCAS_COMPOSICAO
+            ? `Limite de ${LIMITE_MARCAS_COMPOSICAO} marcas atingido`
+            : 'digite a marca e tecle Enter (ou vírgula) para adicionar'
+        }
+        aria-label="Adicionar marca da composição"
+        onChange={(e) => {
+          const valor = e.target.value
+          if (valor.includes(',')) adicionar(valor)
+          else setTexto(valor)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            adicionar(texto)
+          }
+        }}
+        onBlur={() => adicionar(texto)}
+        className="w-full rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20 disabled:opacity-60"
+      />
     </div>
   )
 }

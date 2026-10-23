@@ -90,6 +90,7 @@ import type { ExtracaoEditalIA, ItemChecklistExtraidoIA } from '../../../types/e
 // Balão "ⓘ" com a explicação de cada exigência dos checklists (texto do
 // Guia de Exigências do Edital — ver src/data/explicacaoExigencias.ts).
 import { InfoTooltip } from '../../../components/InfoTooltip';
+import { formatarCnpj, somenteDigitosCnpj } from '../../../utils/cnpj';
 import { explicacaoDaExigencia } from '../../../data/explicacaoExigencias';
 
 // Chave geral da importação de edital por IA. Mantida em false enquanto a
@@ -743,6 +744,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (!form.clienteId) camposObrigatoriosFaltando.push('Cliente vinculado');
     if (!form.status) camposObrigatoriosFaltando.push('Status');
 
+    if (form.orgaoCnpj && form.orgaoCnpj.length !== 14) {
+      setAbaAtiva('gerais');
+      setErroChecklist('O CNPJ do órgão precisa ter 14 números (ou ficar em branco).');
+      return;
+    }
+
     if (camposObrigatoriosFaltando.length > 0) {
       setAbaAtiva('gerais');
       setErroChecklist(
@@ -1032,6 +1039,20 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   onChange={(e) => atualizarCampo('orgao', e.target.value)}
                 />
               </div>
+              <TextField
+                label="CNPJ do órgão (opcional)"
+                inputMode="numeric"
+                placeholder="00.000.000/0000-00"
+                value={formatarCnpj(form.orgaoCnpj ?? '')}
+                onChange={(e) => atualizarCampo('orgaoCnpj', somenteDigitosCnpj(e.target.value))}
+              />
+              <TextField
+                label="UASG (opcional)"
+                inputMode="numeric"
+                placeholder="Ex.: 160001"
+                value={form.orgaoUasg ?? ''}
+                onChange={(e) => atualizarCampo('orgaoUasg', e.target.value.replace(/\D/g, '').slice(0, 10))}
+              />
               <SelectField
                 label="Estado (UF) *"
                 required
