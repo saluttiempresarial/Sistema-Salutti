@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { AdminLayout } from '@/components/AdminLayout'
@@ -24,6 +24,15 @@ import { LicitacaoDetalhePage } from '@/pages/cliente/LicitacaoDetalhePage'
 import { PropostaComercialPage as ClientePropostaComercialPage } from '@/pages/cliente/PropostaComercialPage'
 import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { useAuth } from '@/context/AuthContext'
+
+// /admin/indicadores: o Administrador é levado à aba Indicadores de Relatórios
+// (links antigos continuam funcionando); o Analista mantém a página própria.
+function IndicadoresAdminRota() {
+  const { user } = useAuth()
+  if (user?.role === 'admin') return <Navigate to="/admin/relatorios?aba=indicadores" replace />
+  return <IndicadoresPage />
+}
 
 export default function App() {
   // O cache da regra de prazo interno (dias úteis antes + horário) é carregado
@@ -152,7 +161,7 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="relatorios">
                 <AdminLayout>
-                  <IndicadoresPage />
+                  <IndicadoresAdminRota />
                 </AdminLayout>
               </ProtectedRoute>
             }

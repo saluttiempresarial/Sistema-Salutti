@@ -8,6 +8,8 @@
 // básicos, indicadores-resumo e botões de exportação em Excel/PDF.
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { IndicadoresPage } from '../indicadores/IndicadoresPage';
 import { usePermissoes } from '../../../hooks/usePermissoes';
 import { licitacaoService } from '../../../services/licitacaoService';
 import { disputaService } from '../../../services/disputaService';
@@ -18,12 +20,15 @@ import { formatarDataHora, formatarMoeda } from '../../../utils/prazoUtils';
 import { totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 import { exportarParaExcel, exportarParaPDF, ColunaRelatorio } from '../../../utils/exportUtils';
 
-type AbaRelatorio = 'licitacoes' | 'disputas';
+type AbaRelatorio = 'indicadores' | 'licitacoes' | 'disputas';
 
 // Resumo do resultado por item/grupo de uma disputa (migração 036), na ordem
 // em que aparece na tabela: "2 ganhos · 2 perdidos". Linhas sem resultado
 // informado não entram na contagem.
 const ROTULO_RESULTADO_ITEM: Record<ResultadoItemDisputa, { singular: string; plural: string }> = {
+  arrematado_analise: { singular: 'arrematado em análise', plural: 'arrematados em análise' },
+  perdido_analise: { singular: 'perdido em análise', plural: 'perdidos em análise' },
+  convocado: { singular: 'convocado', plural: 'convocados' },
   ganho: { singular: 'ganho', plural: 'ganhos' },
   perdido: { singular: 'perdido', plural: 'perdidos' },
   perdido_habilitacao: { singular: 'perdido na habilitação', plural: 'perdidos na habilitação' },
@@ -47,7 +52,7 @@ function resumirResultadosDosItens(disputa: Disputa): string {
 // Vencedores dos itens/grupos perdidos: "JW — R$ 40,00; WW — R$ 3.450,00
 // (grupo)". O valor é unitário para item e total para grupo.
 function listarVencedoresDosPerdidos(disputa: Disputa): string {
-  const perdidos = disputa.itens.filter((i) => i.resultadoItem === 'perdido');
+  const perdidos = disputa.itens.filter((i) => i.resultadoItem === 'perdido' || i.resultadoItem === 'perdido_analise');
   if (perdidos.length === 0) return '—';
   return perdidos
     .map((i) => {
@@ -59,6 +64,7 @@ function listarVencedoresDosPerdidos(disputa: Disputa): string {
 }
 
 const ABAS: { id: AbaRelatorio; label: string }[] = [
+  { id: 'indicadores', label: 'Indicadores' },
   { id: 'licitacoes', label: 'Licitações' },
   { id: 'disputas', label: 'Disputas' },
 ];
@@ -100,9 +106,19 @@ function CardResumo({ label, valor, tone = 'default' }: CardResumoProps) {
 }
 
 export function RelatoriosPage() {
-  const { carregando: carregandoPermissoes, restricaoDados } = usePermissoes();
+  const { carregando: carregandoPermissoes, restricaoDados, ehAdmin } = usePermissoes();
 
-  const [aba, setAba] = useState<AbaRelatorio>('licitacoes');
+  // Aba "Indicadores": só para o Administrador, e é a primeira (padrão). O
+  // Analista segue com o menu "Indicadores" próprio. `?aba=indicadores` permite
+  // o redirecionamento da rota antiga /admin/indicadores.
+  const [searchParams] = useSearchParams();
+  const abaDaUrl = searchParams.get('aba');
+  const [abaEscolhida, setAbaEscolhida] = useState<AbaRelatorio | null>(
+    abaDaUrl === 'indicadores' || abaDaUrl === 'licitacoes' || abaDaUrl === 'disputas' ? abaDaUrl : null,
+  );
+  const abaPadrao: AbaRelatorio = ehAdmin ? 'indicadores' : 'licitacoes';
+  const aba: AbaRelatorio = abaEscolhida === 'indicadores' && !ehAdmin ? abaPadrao : (abaEscolhida ?? abaPadrao);
+  const setAba = setAbaEscolhida;
   const [licitacoes, setLicitacoes] = useState<Licitacao[]>([]);
   const [disputas, setDisputas] = useState<Disputa[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -299,7 +315,7 @@ export function RelatoriosPage() {
 
       {/* Abas */}
       <div className="mb-5 flex gap-1 border-b border-charcoal-3/15 font-body">
-        {ABAS.map((tab) => (
+        {ABAS.filter((tab) => tab.id !== 'indicadores' || ehAdmin).map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -314,6 +330,10 @@ export function RelatoriosPage() {
         ))}
       </div>
 
+      {aba === 'indicadores' ? (
+        <IndicadoresPage embutido />
+      ) : (
+        <>
       {/* Filtros */}
       <div className="mb-5 flex flex-wrap items-end gap-3 font-body text-sm">
         <div>
@@ -417,6 +437,8 @@ export function RelatoriosPage() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </div>
   );
 }

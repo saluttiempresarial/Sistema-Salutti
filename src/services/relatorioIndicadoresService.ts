@@ -9,17 +9,45 @@ import { licitacaoService } from './licitacaoService'
 import { disputaService } from './disputaService'
 import { familiaProdutoService } from './familiaProdutoService'
 import { clienteService } from './clienteService'
-import type { DadosBaseIndicadores } from '../types/indicadores'
+import { configuracaoService } from './configuracaoService'
+import { supabase } from '@/lib/supabaseClient'
+import type { DadosBaseIndicadores, ReaberturaDecisao } from '../types/indicadores'
+
+/** Reaberturas de decisão feitas pelo Administrador (histórico das licitações,
+ *  gravado pela função reabrir_decisao_cliente, migração 053). Só o
+ *  Administrador consegue ler esse histórico; para os demais perfis, ou se a
+ *  consulta falhar, devolve undefined e o indicador mostra "indisponível". */
+async function carregarReaberturas(): Promise<ReaberturaDecisao[] | undefined> {
+  try {
+    const { data, error } = await supabase
+      .from('historico_acoes')
+      .select('entidade_id, data')
+      .eq('entidade_tipo', 'licitacao')
+      .like('descricao', 'Administrador reabriu a decisão do cliente%')
+    if (error || !data) return undefined
+    return (data as { entidade_id: string; data: string }[]).map((r) => ({ licitacaoId: r.entidade_id, em: r.data }))
+  } catch {
+    return undefined
+  }
+}
 
 async function carregarDadosBase(restricao: { clienteIds?: string[]; licitacaoIds?: string[] } = {}): Promise<DadosBaseIndicadores> {
-  const [licitacoes, disputas, familias, clientes] = await Promise.all([
+  const [licitacoes, disputas, familias, clientes, reaberturas, faixasInatividade] = await Promise.all([
     licitacaoService.listarCompletas(restricao),
     disputaService.listarTodas(),
     familiaProdutoService.listarTodas(),
     clienteService.list({ page: 1, pageSize: 500 }),
+    carregarReaberturas(),
+    // Faixas de inatividade (Configurações). Se o perfil não puder ler, usa o padrão 7/14/21.
+    configuracaoService.obter().then(
+      (c) => c.faixasInatividade,
+      () => undefined
+    ),
   ])
 
   return {
+    reaberturas,
+    faixasInatividade,
     licitacoes,
     disputas,
     familias,

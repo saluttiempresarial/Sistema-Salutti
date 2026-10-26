@@ -22,6 +22,16 @@
 // Se isso for um problema pra alguma disputa específica já registrada,
 // avisa que a gente confere caso a caso.
 //
+// REFEITO em 26/10/2026, a pedido do Márcio, exatamente como o layout
+// "Tela Disputa – Resultado" (Claude Design): duas seções numeradas —
+// "1. Acompanhamento do processo" (situação do processo, ação pendente e
+// prazo, adjudicada em, homologada em, observação) e "2. Resultado do
+// cliente por grupo/item" (posição, valores, deságio e acima do mínimo
+// calculados, resultado do cliente, vencedor e motivo da perda). O campo
+// "Resultado" geral e a "Situação do resultado" saíram: o resultado geral é
+// calculado a partir dos itens e o selo provisório/definitivo, a partir da
+// data de homologação. Exige a migração 059.
+//
 // Pra montar a tabela, o modal busca a licitação completa (com itens e
 // grupos) assim que abre — `licitacaoId` sozinho não é suficiente, porque
 // a lista carregada em DisputasPage (licitacaoService.listar) não traz os
@@ -29,24 +39,21 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../../components/Modal';
-import { TextField } from '../../../components/TextField';
-import { SelectField } from '../../../components/SelectField';
 import { Button } from '../../../components/Button';
 import {
   Disputa,
   DisputaFormData,
   DisputaResultadoLinhaFormData,
   ResultadoDisputa,
-  RESULTADO_DISPUTA_LABEL,
   ResultadoItemDisputa,
   RESULTADO_ITEM_DISPUTA_LABEL,
-  MotivoPerdaHabilitacao,
-  MOTIVO_PERDA_HABILITACAO_LABEL,
-  ETAPA_ORIGEM_PERDA_HABILITACAO,
-  MotivoPerdaEvitavel,
-  MOTIVO_PERDA_EVITAVEL_LABEL,
-  SITUACAO_DISPUTA_LABEL,
-  SituacaoDisputa,
+  RESULTADOS_DE_PERDA,
+  MotivoPerda,
+  MOTIVO_PERDA_LABEL,
+  SituacaoProcesso,
+  SITUACAO_PROCESSO_LABEL,
+  AcaoPendente,
+  ACAO_PENDENTE_LABEL,
 } from '../../../types/disputa';
 import { Licitacao, ItemLicitacao } from '../../../types/licitacao';
 import { licitacaoService } from '../../../services/licitacaoService';
@@ -204,21 +211,8 @@ function construirLinhas(licitacao: Licitacao, chavesForcadas: Set<string>): Lin
   return { linhas, foraDaDisputa };
 }
 
-// CNPJ digitado com máscara (00.000.000/0000-00); só os 14 números vão
-// para o banco.
-function formatarCnpj(texto: string): string {
-  const d = texto.replace(/\D/g, '').slice(0, 14);
-  const partes = [d.slice(0, 2), d.slice(2, 5), d.slice(5, 8), d.slice(8, 12), d.slice(12, 14)];
-  let r = partes[0];
-  if (partes[1]) r += `.${partes[1]}`;
-  if (partes[2]) r += `.${partes[2]}`;
-  if (partes[3]) r += `/${partes[3]}`;
-  if (partes[4]) r += `-${partes[4]}`;
-  return r;
-}
-
 // Data (yyyy-mm-dd) no fuso local a partir de um ISO — usada no campo
-// "Homologado em".
+// "Homologada em".
 function isoParaDataLocal(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -227,18 +221,28 @@ function isoParaDataLocal(iso?: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// Data e hora (yyyy-mm-ddThh:mm) no fuso local a partir de um ISO — usada nos
+// campos "Data/hora da sessão" e "Prazo da ação".
+function isoParaDataHoraLocal(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 interface ValoresLinha {
   posicaoTexto: string;
   valorOfertadoTexto: string;
-  // Resultado do item (migração 036). '' = ainda não informado.
+  // Resultado do cliente. '' = ainda não informado.
   resultadoItem: ResultadoItemDisputa | '';
-  valorVencedorTexto: string; // só vale quando resultadoItem = 'perdido'
-  nomeVencedor: string; // só vale quando resultadoItem = 'perdido'
-  // Campos de gestão (migração 054). Cada um só vale para o resultado indicado.
-  cnpjVencedor: string; // 'perdido' — com máscara na tela, 14 números no banco
-  motivoEvitavel: MotivoPerdaEvitavel | ''; // 'perdido'
-  motivoHabilitacao: MotivoPerdaHabilitacao | ''; // 'perdido_habilitacao' (obrigatório)
-  convocacao: boolean; // 'ganho' — vitória por convocação
+  valorVencedorTexto: string;
+  nomeVencedor: string;
+  motivoPerda: MotivoPerda | '';
+  // Marca de vitória por convocação: liga ao escolher "Convocado" e é mantida
+  // quando o resultado passa a "Ganho (homologado)" (relatório de vitórias por
+  // convocação).
+  convocacao: boolean;
 }
 
 const VALORES_VAZIOS: ValoresLinha = {
@@ -247,137 +251,264 @@ const VALORES_VAZIOS: ValoresLinha = {
   resultadoItem: '',
   valorVencedorTexto: '',
   nomeVencedor: '',
-  cnpjVencedor: '',
-  motivoEvitavel: '',
-  motivoHabilitacao: '',
+  motivoPerda: '',
   convocacao: false,
 };
 
-/** Campos de gestão que serão gravados, conforme o resultado escolhido —
- *  o que não pertence ao resultado atual é descartado, mesmo que tenha
- *  sido preenchido antes de trocar o resultado. */
-function camposComplementaresParaSalvar(v: ValoresLinha | undefined) {
-  const resultado = v?.resultadoItem;
-  const cnpj = v?.cnpjVencedor.replace(/\D/g, '') ?? '';
-  return {
-    motivoPerdaHabilitacao:
-      resultado === 'perdido_habilitacao' && v?.motivoHabilitacao ? v.motivoHabilitacao : undefined,
-    motivoPerdaEvitavel: resultado === 'perdido' && v?.motivoEvitavel ? v.motivoEvitavel : undefined,
-    vitoriaPorConvocacao: resultado === 'ganho' ? !!v?.convocacao : false,
-    cnpjVencedor: resultado === 'perdido' && cnpj ? cnpj : undefined,
-  };
+// Campos que só valem para a linha salva antes desta tela (migração 054):
+// preservados ao reabrir uma disputa, para não apagar o detalhe já gravado.
+interface DetalheLegado {
+  motivoPerdaHabilitacao?: DisputaResultadoLinhaFormData['motivoPerdaHabilitacao'];
+  motivoPerdaEvitavel?: DisputaResultadoLinhaFormData['motivoPerdaEvitavel'];
+  cnpjVencedor?: string;
 }
 
-/** Mensagem de erro de preenchimento (ou null). */
-function erroDeComplementares(v: ValoresLinha | undefined, nome: string): string | null {
-  if (!v) return null;
-  if (v.resultadoItem === 'perdido_habilitacao' && !v.motivoHabilitacao) {
-    return `${nome}: informe o motivo da perda na aceitação/habilitação.`;
-  }
-  const cnpj = v.cnpjVencedor.replace(/\D/g, '');
-  if (v.resultadoItem === 'perdido' && cnpj && cnpj.length !== 14) {
-    return `${nome}: o CNPJ do vencedor precisa ter 14 números (ou ficar em branco).`;
-  }
-  return null;
+// ---------------------------------------------------------------------------
+// Estilos do layout "Tela Disputa – Resultado" (26/10/2026)
+// ---------------------------------------------------------------------------
+const CLASSE_ROTULO = 'font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#4B5651]';
+const CLASSE_CAMPO =
+  'box-border h-11 w-full rounded-md border border-[#C9D3CD] bg-white px-3 text-sm text-ink focus:border-forest focus:outline-none disabled:bg-[#F1F3F1] disabled:text-[#5E6863]';
+const CLASSE_CALCULO =
+  'box-border flex h-11 items-center rounded-md bg-[#E6EFE9] px-3 text-sm font-semibold text-[#1E4D3A]';
+const CLASSE_LEITURA =
+  'box-border flex h-11 items-center rounded-md border border-[#C9D3CD] bg-white px-3 text-sm font-semibold text-ink';
+
+function formatarPercentual(valor: number | null, comSinal: boolean): string {
+  if (valor == null || !isFinite(valor)) return '—';
+  const texto = valor.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${comSinal && valor > 0 ? '+' : ''}${texto}%`;
 }
 
-interface CamposComplementaresProps {
+interface CartaoResultadoProps {
+  /** Título do card (item, ou "Grupo N — Total do grupo"). */
+  titulo: React.ReactNode;
+  subtitulo?: React.ReactNode;
   valores: ValoresLinha;
   onChange: <K extends keyof ValoresLinha>(campo: K, valor: ValoresLinha[K]) => void;
+  /** Valor de referência e mínimo (c/ frete), já na mesma base do "Valor ofertado". */
+  referencia: number;
+  minimo: number | null;
+  /** Rótulo extra do valor ofertado: "(unit.)" ou "(total)". */
+  baseValor: 'unit.' | 'total';
+  /** Posição apenas para leitura (item de grupo no modo "Grupo e item"). */
+  posicaoSomenteLeitura?: string;
+  /** Quando preenchido, o valor ofertado é só informativo (valor do grupo). */
+  ofertadoSomenteLeitura?: string;
+  /** Texto de apoio abaixo do valor ofertado. */
+  ofertadoAjuda?: string;
+  /** Há data de "Homologada em": libera Ganho/Perdido (homologado). */
+  homologada: boolean;
+  /** Item de grupo: tom verde claro com faixa lateral. */
+  dentroDeGrupo?: boolean;
+  children?: React.ReactNode;
 }
 
-/** Campos extras do resultado do item/grupo, que aparecem conforme o
- *  resultado: perdido (CNPJ e motivo evitável), perdido na habilitação
- *  (motivo, com etapa e origem) e ganho (vitória por convocação). */
-function CamposComplementares({ valores, onChange }: CamposComplementaresProps) {
-  const classeSelect =
-    'rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none';
-  const rotulo = 'text-[10px] font-semibold uppercase tracking-wide text-ink-soft';
+/** Card de resultado do cliente (grupo ou item), no padrão do layout aprovado:
+ *  linha 1 = posição, referência, mínimo, valor ofertado e os dois cálculos
+ *  automáticos; linha 2 = resultado, vencedor e motivo da perda. */
+function CartaoResultado({
+  titulo,
+  subtitulo,
+  valores,
+  onChange,
+  referencia,
+  minimo,
+  baseValor,
+  posicaoSomenteLeitura,
+  ofertadoSomenteLeitura,
+  ofertadoAjuda,
+  homologada,
+  dentroDeGrupo,
+  children,
+}: CartaoResultadoProps) {
+  const posicaoTexto = posicaoSomenteLeitura ?? valores.posicaoTexto;
+  const posicao = posicaoTexto && Number(posicaoTexto) > 0 ? Number(posicaoTexto) : null;
+  const ofertado = campoParaNumeroDecimal(valores.valorOfertadoTexto, 2);
+  const vencedor = campoParaNumeroDecimal(valores.valorVencedorTexto, 2);
+  const emPrimeiro = posicao === 1;
+  const atrasDoPrimeiro = posicao != null && posicao > 1;
 
-  if (valores.resultadoItem === 'perdido') {
-    return (
-      <>
-        <label className="flex flex-col gap-1">
-          <span className={rotulo}>
-            CNPJ do vencedor <span className="normal-case font-normal text-ink-soft/70">(opcional)</span>
-          </span>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={valores.cnpjVencedor}
-            onChange={(e) => onChange('cnpjVencedor', formatarCnpj(e.target.value))}
-            placeholder="00.000.000/0000-00"
-            className="w-44 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={rotulo}>
-            Motivo da perda evitável <span className="normal-case font-normal text-ink-soft/70">(opcional)</span>
-          </span>
-          <select
-            value={valores.motivoEvitavel}
-            onChange={(e) => onChange('motivoEvitavel', e.target.value as MotivoPerdaEvitavel | '')}
-            className={classeSelect}
-          >
-            <option value="">—</option>
-            {Object.entries(MOTIVO_PERDA_EVITAVEL_LABEL).map(([valor, texto]) => (
-              <option key={valor} value={valor}>
-                {texto}
-              </option>
-            ))}
-          </select>
-        </label>
-      </>
-    );
-  }
+  const desagio = referencia > 0 && ofertado != null ? (1 - ofertado / referencia) * 100 : null;
+  const acimaDoMinimo = minimo != null && minimo > 0 && ofertado != null ? (ofertado / minimo - 1) * 100 : null;
+  const diferencaVencedor = vencedor != null && vencedor > 0 && ofertado != null ? (ofertado / vencedor - 1) * 100 : null;
+  const mostrarDiferencaVencedor = atrasDoPrimeiro && diferencaVencedor != null;
 
-  if (valores.resultadoItem === 'perdido_habilitacao') {
-    const classificacao = valores.motivoHabilitacao
-      ? ETAPA_ORIGEM_PERDA_HABILITACAO[valores.motivoHabilitacao]
-      : null;
-    return (
-      <label className="flex flex-col gap-1">
-        <span className={rotulo}>Motivo da perda *</span>
-        <select
-          value={valores.motivoHabilitacao}
-          onChange={(e) => onChange('motivoHabilitacao', e.target.value as MotivoPerdaHabilitacao | '')}
-          className={`${classeSelect} max-w-md`}
-        >
-          <option value="">Selecione o motivo</option>
-          {Object.entries(MOTIVO_PERDA_HABILITACAO_LABEL).map(([valor, texto]) => (
-            <option key={valor} value={valor}>
-              {texto}
-            </option>
-          ))}
-        </select>
-        {classificacao && (
-          <span className="text-xs text-ink-soft">
-            Etapa: <strong className="text-ink">{classificacao.etapa}</strong> · Origem:{' '}
-            <strong className="text-ink">{classificacao.origem}</strong>
+  const resultado = valores.resultadoItem;
+  const mostrarMotivo = resultado !== '' && RESULTADOS_DE_PERDA.includes(resultado);
+  const vencedorLiberado = atrasDoPrimeiro || (resultado !== '' && RESULTADOS_DE_PERDA.includes(resultado));
+  const textoVencedorBloqueado = emPrimeiro ? '— (cliente em 1º)' : '— (informe a posição)';
+
+  const estiloCard = emPrimeiro
+    ? 'border-[#C9D9CF] bg-[#F7FAF8]'
+    : atrasDoPrimeiro
+      ? 'border-[#E6CFCF] bg-[#FCF8F8]'
+      : dentroDeGrupo
+        ? 'border-forest/20 border-l-4 border-l-forest/50 bg-forest-mist/25'
+        : 'border-ink-soft/15 bg-white';
+
+  return (
+    <div className={`flex flex-col gap-4 rounded-[10px] border p-[18px] font-body ${estiloCard}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[15px] font-semibold text-ink">{titulo}</div>
+          {subtitulo && <div className="mt-0.5 text-[13px] text-[#5E6863]">{subtitulo}</div>}
+        </div>
+        {emPrimeiro && (
+          <span className="rounded-full bg-[#DCEEE3] px-2.5 py-1 text-xs font-bold text-[#1E4D3A]">Cliente em 1º</span>
+        )}
+        {atrasDoPrimeiro && (
+          <span className="rounded-full bg-[#F6E0E0] px-2.5 py-1 text-xs font-bold text-[#8A2323]">
+            Cliente em {posicao}º
           </span>
         )}
-      </label>
-    );
-  }
+      </div>
 
-  if (valores.resultadoItem === 'ganho') {
-    return (
-      <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-ink">
-        <input
-          type="checkbox"
-          checked={valores.convocacao}
-          onChange={(e) => onChange('convocacao', e.target.checked)}
-          className="h-4 w-4 rounded border-ink-soft/40 text-forest focus:ring-forest/30"
-        />
-        <span>
-          Vitória por convocação{' '}
-          <span className="text-xs text-ink-soft">(concorrentes desclassificados; a vez passou ao cliente)</span>
-        </span>
-      </label>
-    );
-  }
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3.5">
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Posição</span>
+          {posicaoSomenteLeitura !== undefined ? (
+            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-[#5E6863]`}>{posicaoSomenteLeitura || '—'}</div>
+          ) : (
+            <input
+              type="number"
+              min={1}
+              aria-label="Posição"
+              value={valores.posicaoTexto}
+              onChange={(e) => onChange('posicaoTexto', e.target.value)}
+              placeholder="—"
+              className={CLASSE_CAMPO}
+            />
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Valor de referência</span>
+          <div className={CLASSE_LEITURA}>{referencia > 0 ? formatarMoeda(referencia) : '—'}</div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Mínimo (c/ frete)</span>
+          <div className={CLASSE_LEITURA}>{minimo != null && minimo > 0 ? formatarMoeda(minimo) : '—'}</div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>
+            Valor ofertado <span className="normal-case tracking-normal">({baseValor})</span>
+          </span>
+          {ofertadoSomenteLeitura !== undefined ? (
+            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-[#5E6863]`}>{ofertadoSomenteLeitura}</div>
+          ) : (
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Valor ofertado"
+              value={valores.valorOfertadoTexto}
+              onChange={(e) => onChange('valorOfertadoTexto', e.target.value)}
+              onBlur={() =>
+                onChange(
+                  'valorOfertadoTexto',
+                  numeroParaCampoDecimal(campoParaNumeroDecimal(valores.valorOfertadoTexto, 2), 2),
+                )
+              }
+              placeholder="R$ 0,00"
+              className={CLASSE_CAMPO}
+            />
+          )}
+          {ofertadoAjuda && <span className="text-[11px] text-[#5E6863]">{ofertadoAjuda}</span>}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Deságio s/ referência</span>
+          <div className={CLASSE_CALCULO}>{formatarPercentual(desagio, false)}</div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>{mostrarDiferencaVencedor ? 'Diferença p/ vencedor' : 'Acima do mínimo'}</span>
+          <div className={`${CLASSE_CALCULO} ${mostrarDiferencaVencedor ? '!bg-[#F6E0E0] !text-[#8A2323]' : ''}`}>
+            {formatarPercentual(mostrarDiferencaVencedor ? diferencaVencedor : acimaDoMinimo, true)}
+          </div>
+        </div>
+      </div>
 
-  return null;
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3.5">
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Resultado do cliente *</span>
+          <select
+            aria-label="Resultado do cliente"
+            value={valores.resultadoItem}
+            onChange={(e) => onChange('resultadoItem', e.target.value as ResultadoItemDisputa | '')}
+            className={`${CLASSE_CAMPO} ${emPrimeiro ? '!border-2 !border-[#1E4D3A]' : ''}`}
+          >
+            <option value="">Selecione</option>
+            {(Object.keys(RESULTADO_ITEM_DISPUTA_LABEL) as ResultadoItemDisputa[]).map((valor) => {
+              const exigeHomologacao = valor === 'ganho' || valor === 'perdido';
+              return (
+                <option key={valor} value={valor} disabled={exigeHomologacao && !homologada && resultado !== valor}>
+                  {RESULTADO_ITEM_DISPUTA_LABEL[valor]}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Valor do vencedor</span>
+          {vencedorLiberado ? (
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Valor do vencedor"
+              value={valores.valorVencedorTexto}
+              onChange={(e) => onChange('valorVencedorTexto', e.target.value)}
+              onBlur={() =>
+                onChange(
+                  'valorVencedorTexto',
+                  numeroParaCampoDecimal(campoParaNumeroDecimal(valores.valorVencedorTexto, 2), 2),
+                )
+              }
+              placeholder="R$ 0,00"
+              className={CLASSE_CAMPO}
+            />
+          ) : (
+            <input type="text" aria-label="Valor do vencedor" value={textoVencedorBloqueado} disabled className={CLASSE_CAMPO} />
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Empresa vencedora</span>
+          {vencedorLiberado ? (
+            <input
+              type="text"
+              aria-label="Empresa vencedora"
+              value={valores.nomeVencedor}
+              onChange={(e) => onChange('nomeVencedor', e.target.value)}
+              placeholder="Nome da empresa"
+              className={CLASSE_CAMPO}
+            />
+          ) : (
+            <input type="text" aria-label="Empresa vencedora" value={textoVencedorBloqueado} disabled className={CLASSE_CAMPO} />
+          )}
+        </div>
+        {mostrarMotivo && (
+          <div className="flex flex-col gap-1.5">
+            <span className={CLASSE_ROTULO}>
+              Motivo da perda {resultado === 'perdido_habilitacao' ? '*' : ''}
+            </span>
+            <select
+              aria-label="Motivo da perda"
+              value={valores.motivoPerda}
+              onChange={(e) => onChange('motivoPerda', e.target.value as MotivoPerda | '')}
+              className={CLASSE_CAMPO}
+            >
+              <option value="">Selecione</option>
+              {(Object.keys(MOTIVO_PERDA_LABEL) as MotivoPerda[]).map((valor) => (
+                <option key={valor} value={valor}>
+                  {MOTIVO_PERDA_LABEL[valor]}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-[#5E6863]">aparece só quando o resultado é de perda</span>
+          </div>
+        )}
+      </div>
+
+      {children}
+    </div>
+  );
 }
 
 // Especificação de item cheia demais pra mostrar de cara na tabela (ver
@@ -391,6 +522,10 @@ function criarFormularioVazio(licitacaoId: string): DisputaFormData {
     dataSessaoRealizada: undefined,
     resultado: 'em_andamento',
     homologadoEm: undefined,
+    situacaoProcesso: 'em_julgamento',
+    acaoPendente: 'nenhuma',
+    prazoAcao: undefined,
+    adjudicadaEm: undefined,
     observacoes: '',
     linkAtaSigaPregao: '',
     itens: [],
@@ -421,10 +556,11 @@ export function DisputaFormModal({
   // engolido em silêncio: o modal só ficava aberto de novo, sem nenhuma
   // pista do que aconteceu. Agora a mensagem aparece na tela.
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
-  // Situação do resultado (22/10): definitiva = tem "Homologado em". Só os
-  // resultados definitivos entram nos relatórios (por padrão).
-  const [situacaoDefinitiva, setSituacaoDefinitiva] = useState(false);
+  // Datas do processo (layout de 26/10): "Homologada em" torna o resultado
+  // DEFINITIVO; "Adjudicada em" registra a adjudicação.
   const [dataHomologacao, setDataHomologacao] = useState('');
+  const [dataAdjudicacao, setDataAdjudicacao] = useState('');
+  const [prazoAcaoTexto, setPrazoAcaoTexto] = useState('');
   const [carregandoLicitacao, setCarregandoLicitacao] = useState(false);
   const [licitacao, setLicitacao] = useState<Licitacao | null>(null);
   const [valoresPorLinha, setValoresPorLinha] = useState<Record<string, ValoresLinha>>({});
@@ -451,6 +587,22 @@ export function DisputaFormModal({
   // itemId.
   const [descricoesExpandidas, setDescricoesExpandidas] = useState<Set<string>>(new Set());
 
+  // Detalhe gravado antes desta tela (migração 054), por chave (itemId ou
+  // grupoId): é devolvido ao salvar para não ser apagado sem querer.
+  const detalhesLegados = useMemo(() => {
+    const mapa = new Map<string, DetalheLegado>();
+    (disputaEmEdicao?.itens ?? []).forEach((linha) => {
+      const chave = linha.itemId ?? linha.grupoId;
+      if (!chave) return;
+      mapa.set(chave, {
+        motivoPerdaHabilitacao: linha.motivoPerdaHabilitacao,
+        motivoPerdaEvitavel: linha.motivoPerdaEvitavel,
+        cnpjVencedor: linha.cnpjVencedor,
+      });
+    });
+    return mapa;
+  }, [disputaEmEdicao]);
+
   // Busca a licitação completa (com itens/grupos) assim que o modal abre —
   // a lista de DisputasPage não traz os itens, só buscarPorId traz.
   useEffect(() => {
@@ -475,42 +627,22 @@ export function DisputaFormModal({
           dataSessaoRealizada: disputaEmEdicao.dataSessaoRealizada,
           resultado: disputaEmEdicao.resultado,
           homologadoEm: disputaEmEdicao.homologadoEm,
+          // Disputa antiga, sem situação do processo: "homologada" se já tem
+          // data de homologação; senão, "em julgamento".
+          situacaoProcesso:
+            disputaEmEdicao.situacaoProcesso ?? (disputaEmEdicao.homologadoEm ? 'homologada' : 'em_julgamento'),
+          acaoPendente: disputaEmEdicao.acaoPendente ?? 'nenhuma',
+          prazoAcao: disputaEmEdicao.prazoAcao,
+          adjudicadaEm: disputaEmEdicao.adjudicadaEm,
           observacoes: disputaEmEdicao.observacoes,
           linkAtaSigaPregao: disputaEmEdicao.linkAtaSigaPregao,
-          itens: disputaEmEdicao.itens.map(
-            ({
-              itemId,
-              grupoId,
-              posicao,
-              valorFechado,
-              resultadoItem,
-              valorVencedor,
-              nomeVencedor,
-              observacao,
-              motivoPerdaHabilitacao,
-              motivoPerdaEvitavel,
-              vitoriaPorConvocacao,
-              cnpjVencedor,
-            }) => ({
-              itemId,
-              grupoId,
-              posicao,
-              valorFechado,
-              resultadoItem,
-              valorVencedor,
-              nomeVencedor,
-              observacao,
-              motivoPerdaHabilitacao,
-              motivoPerdaEvitavel,
-              vitoriaPorConvocacao,
-              cnpjVencedor,
-            })
-          ),
+          itens: [],
         }
       : criarFormularioVazio(licitacaoId);
     setForm(inicial);
-    setSituacaoDefinitiva(!!disputaEmEdicao?.homologadoEm);
     setDataHomologacao(isoParaDataLocal(disputaEmEdicao?.homologadoEm));
+    setDataAdjudicacao(disputaEmEdicao?.adjudicadaEm?.slice(0, 10) ?? '');
+    setPrazoAcaoTexto(isoParaDataHoraLocal(disputaEmEdicao?.prazoAcao));
     setErroSalvar(null);
     setModoEscolhidoManualmente(false); // reabriu o modal — libera a detecção automática de novo
 
@@ -526,9 +658,7 @@ export function DisputaFormModal({
         resultadoItem: linha.resultadoItem ?? '',
         valorVencedorTexto: numeroParaCampoDecimal(linha.valorVencedor, 2),
         nomeVencedor: linha.nomeVencedor ?? '',
-        cnpjVencedor: formatarCnpj(linha.cnpjVencedor ?? ''),
-        motivoEvitavel: linha.motivoPerdaEvitavel ?? '',
-        motivoHabilitacao: linha.motivoPerdaHabilitacao ?? '',
+        motivoPerda: linha.motivoPerda ?? '',
         convocacao: linha.vitoriaPorConvocacao ?? false,
       };
       if (linha.itemId) valoresItem[linha.itemId] = valoresLinha;
@@ -607,24 +737,29 @@ export function DisputaFormModal({
     setForm((atual) => ({ ...atual, [campo]: valor }));
   }
 
+  // Aplica uma alteração num conjunto de valores. Trocar o resultado ajusta a
+  // marca de convocação: "Convocado" liga; "Ganho (homologado)" mantém o que
+  // já estava (a vitória foi por convocação); qualquer outro desliga.
+  function aplicarAlteracao<K extends keyof ValoresLinha>(
+    atual: ValoresLinha | undefined,
+    campo: K,
+    valor: ValoresLinha[K],
+  ): ValoresLinha {
+    const base = atual ?? VALORES_VAZIOS;
+    const novo: ValoresLinha = { ...base, [campo]: valor };
+    if (campo === 'resultadoItem') {
+      const resultado = valor as ResultadoItemDisputa | '';
+      novo.convocacao = resultado === 'convocado' ? true : resultado === 'ganho' ? base.convocacao : false;
+    }
+    return novo;
+  }
+
   function atualizarValorLinha<K extends keyof ValoresLinha>(chave: string, campo: K, valor: ValoresLinha[K]) {
-    setValoresPorLinha((atual) => ({
-      ...atual,
-      [chave]: {
-        ...(atual[chave] ?? VALORES_VAZIOS),
-        [campo]: valor,
-      },
-    }));
+    setValoresPorLinha((atual) => ({ ...atual, [chave]: aplicarAlteracao(atual[chave], campo, valor) }));
   }
 
   function atualizarValorGrupo<K extends keyof ValoresLinha>(grupoId: string, campo: K, valor: ValoresLinha[K]) {
-    setValoresPorGrupo((atual) => ({
-      ...atual,
-      [grupoId]: {
-        ...(atual[grupoId] ?? VALORES_VAZIOS),
-        [campo]: valor,
-      },
-    }));
+    setValoresPorGrupo((atual) => ({ ...atual, [grupoId]: aplicarAlteracao(atual[grupoId], campo, valor) }));
   }
 
   function alternarGrupoColapsado(grupoId: string) {
@@ -659,17 +794,86 @@ export function DisputaFormModal({
     return algum ? soma : null;
   }
 
+  const situacaoProcesso = form.situacaoProcesso ?? 'em_julgamento';
+  // "Homologada em" só vale quando a situação do processo é "Homologada";
+  // "Adjudicada em" vale em "Adjudicada" e "Homologada".
+  const homologadaEmLiberada = situacaoProcesso === 'homologada';
+  const adjudicadaEmLiberada = situacaoProcesso === 'adjudicada' || situacaoProcesso === 'homologada';
+  const resultadoDefinitivo = homologadaEmLiberada && !!dataHomologacao;
+
+  // Itens/grupos ainda "em análise" — candidatos à conversão ao homologar.
+  function listarEmAnalise(): { onde: 'linha' | 'grupo'; chave: string; resultado: ResultadoItemDisputa }[] {
+    const lista: { onde: 'linha' | 'grupo'; chave: string; resultado: ResultadoItemDisputa }[] = [];
+    Object.entries(valoresPorLinha).forEach(([chave, v]) => {
+      if (v.resultadoItem === 'arrematado_analise' || v.resultadoItem === 'perdido_analise') {
+        lista.push({ onde: 'linha', chave, resultado: v.resultadoItem });
+      }
+    });
+    Object.entries(valoresPorGrupo).forEach(([chave, v]) => {
+      if (v.resultadoItem === 'arrematado_analise' || v.resultadoItem === 'perdido_analise') {
+        lista.push({ onde: 'grupo', chave, resultado: v.resultadoItem });
+      }
+    });
+    return lista;
+  }
+  const quantidadeEmAnalise = resultadoDefinitivo ? listarEmAnalise().length : 0;
+
+  function converterEmAnaliseParaHomologado() {
+    listarEmAnalise().forEach(({ onde, chave, resultado }) => {
+      const novo: ResultadoItemDisputa = resultado === 'arrematado_analise' ? 'ganho' : 'perdido';
+      if (onde === 'linha') atualizarValorLinha(chave, 'resultadoItem', novo);
+      else atualizarValorGrupo(chave, 'resultadoItem', novo);
+    });
+  }
+
+  // Dados que serão gravados para uma linha (item ou grupo).
+  function dadosDaLinha(valores: ValoresLinha | undefined, chaveLegada: string, posicaoFixa?: number) {
+    const resultadoItem = valores?.resultadoItem || undefined;
+    const emPerda = !!resultadoItem && RESULTADOS_DE_PERDA.includes(resultadoItem);
+    const legado = detalhesLegados.get(chaveLegada);
+    return {
+      posicao: posicaoFixa ?? (valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined),
+      valorFechado: valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined,
+      resultadoItem,
+      // Vencedor: só nos resultados de perda (o campo só abre quando o
+      // cliente não está em 1º ou quando o resultado é de perda).
+      valorVencedor: emPerda && valores ? campoParaNumeroDecimal(valores.valorVencedorTexto, 2) : undefined,
+      nomeVencedor: emPerda && valores?.nomeVencedor.trim() ? valores.nomeVencedor.trim() : undefined,
+      motivoPerda: emPerda && valores?.motivoPerda ? valores.motivoPerda : undefined,
+      vitoriaPorConvocacao:
+        resultadoItem === 'convocado' || (resultadoItem === 'ganho' && !!valores?.convocacao),
+      // Detalhe da migração 054, preservado se o resultado continua o mesmo tipo.
+      motivoPerdaHabilitacao: resultadoItem === 'perdido_habilitacao' ? legado?.motivoPerdaHabilitacao : undefined,
+      motivoPerdaEvitavel: resultadoItem === 'perdido' ? legado?.motivoPerdaEvitavel : undefined,
+      cnpjVencedor: emPerda ? legado?.cnpjVencedor : undefined,
+    };
+  }
+
+  function erroDaLinha(valores: ValoresLinha | undefined, nome: string): string | null {
+    if (!valores) return null;
+    const preencheu = !!valores.posicaoTexto || !!valores.valorOfertadoTexto.trim();
+    if (preencheu && !valores.resultadoItem) return `${nome}: informe o "Resultado do cliente".`;
+    if (valores.resultadoItem === 'perdido_habilitacao' && !valores.motivoPerda) {
+      return `${nome}: informe o "Motivo da perda".`;
+    }
+    return null;
+  }
+
   async function handleSalvar() {
     const itens: DisputaResultadoLinhaFormData[] = [];
     let erroPreenchimento: string | null = null;
 
-    // Situação definitiva exige a data de homologação e um resultado final.
-    if (situacaoDefinitiva && !dataHomologacao) {
-      setErroSalvar('Informe a data em "Homologado em" ou deixe a situação como Provisória.');
+    // Regras do processo (layout de 26/10).
+    if (adjudicadaEmLiberada && !dataAdjudicacao) {
+      setErroSalvar('Informe a data em "Adjudicada em" (a situação do processo é Adjudicada ou Homologada).');
       return;
     }
-    if (situacaoDefinitiva && form.resultado === 'em_andamento') {
-      setErroSalvar('Uma disputa definitiva precisa ter o resultado Ganho ou Perdido (não "Em andamento").');
+    if (homologadaEmLiberada && !dataHomologacao) {
+      setErroSalvar('Informe a data em "Homologada em" (a situação do processo é Homologada).');
+      return;
+    }
+    if (form.acaoPendente && form.acaoPendente !== 'nenhuma' && !prazoAcaoTexto) {
+      setErroSalvar('Informe o "Prazo da ação" para a ação pendente escolhida.');
       return;
     }
 
@@ -683,28 +887,13 @@ export function DisputaFormModal({
       if (tratarComoGrupo && bloco.grupoId) {
         const valores = valoresPorGrupo[bloco.grupoId];
         const emGrupoEItem = modoResultado === 'grupo_e_item';
-        const posicao = valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
+        const dados = dadosDaLinha(valores, bloco.grupoId);
         // Total do grupo: o que o Analista digitou; se deixou em branco no
         // modo "Grupo e item", vale a soma dos itens.
-        const valorFechado =
-          (valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined) ??
-          (emGrupoEItem ? somaItensDoBloco(bloco) ?? undefined : undefined);
-        const resultadoGrupo = valores?.resultadoItem || undefined;
-        erroPreenchimento = erroPreenchimento ?? erroDeComplementares(valores, bloco.grupoRotulo ?? 'Grupo');
-        const grupoPerdido = resultadoGrupo === 'perdido';
-        const valorVencedorGrupo =
-          grupoPerdido && valores ? campoParaNumeroDecimal(valores.valorVencedorTexto, 2) : undefined;
-        const nomeVencedorGrupo = grupoPerdido && valores?.nomeVencedor.trim() ? valores.nomeVencedor.trim() : undefined;
-        if (posicao != null || valorFechado != null || resultadoGrupo) {
-          itens.push({
-            grupoId: bloco.grupoId,
-            posicao,
-            valorFechado,
-            resultadoItem: resultadoGrupo,
-            valorVencedor: valorVencedorGrupo,
-            nomeVencedor: nomeVencedorGrupo,
-            ...camposComplementaresParaSalvar(valores),
-          });
+        const valorFechado = dados.valorFechado ?? (emGrupoEItem ? somaItensDoBloco(bloco) ?? undefined : undefined);
+        erroPreenchimento = erroPreenchimento ?? erroDaLinha(valores, bloco.grupoRotulo ?? 'Grupo');
+        if (dados.posicao != null || valorFechado != null || dados.resultadoItem) {
+          itens.push({ grupoId: bloco.grupoId, ...dados, valorFechado });
         }
         // Só no modo "Por grupo" os itens do grupo não são gravados. No modo
         // "Grupo e item" o grupo grava o total E cada item grava o seu
@@ -718,30 +907,14 @@ export function DisputaFormModal({
         // No modo "Grupo e item", a posição vale para o grupo inteiro e fica só
         // na linha do grupo — o item de um grupo grava apenas o valor.
         const posicaoSoNoGrupo = !!bloco.grupoId && modoResultado === 'grupo_e_item';
-        const posicao = !posicaoSoNoGrupo && valores?.posicaoTexto ? Number(valores.posicaoTexto) : undefined;
-        const valorFechado = valores ? campoParaNumeroDecimal(valores.valorOfertadoTexto, 2) : undefined;
-        const resultadoItem = valores?.resultadoItem || undefined;
-        erroPreenchimento = erroPreenchimento ?? erroDeComplementares(valores, `Item ${linha.item.numero}`);
-        // Vencedor só faz sentido quando perdemos o item: nos demais
-        // resultados (ganho, fracassado, deserto, cancelado) os dois campos
-        // são descartados, mesmo que tenham sido digitados antes de trocar o
-        // resultado.
-        const perdeu = resultadoItem === 'perdido';
-        const valorVencedor = perdeu && valores ? campoParaNumeroDecimal(valores.valorVencedorTexto, 2) : undefined;
-        const nomeVencedor = perdeu && valores?.nomeVencedor.trim() ? valores.nomeVencedor.trim() : undefined;
+        const dados = dadosDaLinha(valores, linha.chave);
+        const posicao = posicaoSoNoGrupo ? undefined : dados.posicao;
+        erroPreenchimento = erroPreenchimento ?? erroDaLinha(valores, `Item ${linha.item.numero}`);
         // Só grava linha que tenha algo preenchido — não polui o banco com
         // linhas vazias pra item que o analista ainda não chegou a
         // registrar.
-        if (posicao != null || valorFechado != null || resultadoItem) {
-          itens.push({
-            itemId: linha.itemId,
-            posicao,
-            valorFechado,
-            resultadoItem,
-            valorVencedor,
-            nomeVencedor,
-            ...camposComplementaresParaSalvar(valores),
-          });
+        if (posicao != null || dados.valorFechado != null || dados.resultadoItem) {
+          itens.push({ itemId: linha.itemId, ...dados, posicao });
         }
       });
     });
@@ -751,11 +924,32 @@ export function DisputaFormModal({
       return;
     }
 
+    // Resultado GERAL da disputa (usado para atualizar o status da licitação),
+    // calculado a partir dos resultados por item/grupo — não é mais um campo da
+    // tela: ganho se ao menos um item/grupo é "Ganho (homologado)"; perdido se
+    // todos os informados são perdas homologadas; senão, em andamento.
+    const informados = itens.map((i) => i.resultadoItem).filter((r): r is ResultadoItemDisputa => !!r);
+    let resultadoGeral: ResultadoDisputa = 'em_andamento';
+    if (informados.some((r) => r === 'ganho')) resultadoGeral = 'ganho';
+    else if (informados.length > 0 && informados.every((r) => r === 'perdido' || r === 'perdido_habilitacao')) {
+      resultadoGeral = 'perdido';
+    }
+    if (form.resultado === 'homologado' && resultadoGeral === 'ganho') resultadoGeral = 'homologado';
+
     setSalvando(true);
     setErroSalvar(null);
     try {
-      const homologadoEm = situacaoDefinitiva && dataHomologacao ? new Date(`${dataHomologacao}T12:00:00`).toISOString() : undefined;
-      await onSave({ ...form, homologadoEm, itens });
+      const homologadoEm = homologadaEmLiberada && dataHomologacao ? new Date(`${dataHomologacao}T12:00:00`).toISOString() : undefined;
+      await onSave({
+        ...form,
+        resultado: resultadoGeral,
+        situacaoProcesso,
+        acaoPendente: form.acaoPendente ?? 'nenhuma',
+        prazoAcao: prazoAcaoTexto ? new Date(prazoAcaoTexto).toISOString() : undefined,
+        adjudicadaEm: adjudicadaEmLiberada && dataAdjudicacao ? dataAdjudicacao : undefined,
+        homologadoEm,
+        itens,
+      });
       onClose();
     } catch (erro) {
       setErroSalvar(erro instanceof Error ? erro.message : 'Erro desconhecido ao salvar o resultado.');
@@ -763,41 +957,6 @@ export function DisputaFormModal({
       setSalvando(false);
     }
   }
-
-  const resultadoMudaStatus = form.resultado === 'ganho' || form.resultado === 'perdido';
-
-  // Sugestão do resultado GERAL a partir dos resultados por item/grupo (a
-  // pedido do Márcio, 08/10). Só um texto: nunca altera o campo sozinha.
-  //   - ao menos um item/grupo ganho  -> sugere "Ganho"
-  //   - todos perdidos                -> sugere "Perdido"
-  //   - demais casos (fracassado, deserto, cancelado, misturas sem ganho)
-  //                                   -> sem sugestão; decisão do Analista
-  // Conta as mesmas unidades que são gravadas em handleSalvar: o resultado do
-  // grupo quando o bloco é tratado como grupo (e, no modo "Grupo e item", os
-  // itens do grupo só entram se o grupo não tiver resultado); o resultado de
-  // cada item solto.
-  const resultadosInformados: ResultadoItemDisputa[] = [];
-  blocosVisuais.forEach((bloco) => {
-    const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
-    const doGrupo = tratarComoGrupo && bloco.grupoId ? valoresPorGrupo[bloco.grupoId]?.resultadoItem : '';
-    if (doGrupo) {
-      resultadosInformados.push(doGrupo);
-      return;
-    }
-    if (tratarComoGrupo && modoResultado === 'grupo') return;
-    bloco.linhas.forEach((linha) => {
-      const resultado = valoresPorLinha[linha.chave]?.resultadoItem;
-      if (resultado) resultadosInformados.push(resultado);
-    });
-  });
-  const sugestaoResultadoGeral: 'ganho' | 'perdido' | null =
-    resultadosInformados.length === 0
-      ? null
-      : resultadosInformados.some((r) => r === 'ganho')
-        ? 'ganho'
-        : resultadosInformados.every((r) => r === 'perdido' || r === 'perdido_habilitacao')
-          ? 'perdido'
-          : null;
 
   return (
     <Modal
@@ -816,143 +975,209 @@ export function DisputaFormModal({
         </>
       }
     >
-      <div className="space-y-5">
-        {/* Simplificado a pedido do Márcio (30/09): só o portal, sem o texto
-            explicativo completo. */}
-        <div className="rounded-lg border border-ink-soft/15 bg-forest-mist/30 px-4 py-3 font-body text-xs text-ink-soft">
-          Portal: <strong className="text-ink">{licitacao?.portal || '—'}</strong>
+      <div className="space-y-7">
+        {/* Selo calculado pelo sistema: provisório até haver a data de
+            homologação. */}
+        <div className="flex flex-wrap items-center gap-3.5">
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+              resultadoDefinitivo ? 'bg-[#DCEEE3] text-[#1E4D3A]' : 'bg-[#FDF0DC] text-[#7A4A06]'
+            }`}
+          >
+            {resultadoDefinitivo ? 'Resultado definitivo' : 'Resultado provisório'}
+          </span>
+          <span className="text-xs text-[#5E6863]">
+            calculado pelo sistema: vira “definitivo” quando houver data de homologação
+          </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <TextField
-            label="Data/hora da sessão realizada"
-            type="datetime-local"
-            value={form.dataSessaoRealizada?.slice(0, 16) ?? ''}
-            onChange={(e) =>
-              atualizarCampo('dataSessaoRealizada', e.target.value ? new Date(e.target.value).toISOString() : undefined)
-            }
-          />
-          <div>
-            <SelectField
-              label="Resultado *"
-              required
-              value={form.resultado}
-              onChange={(e) => atualizarCampo('resultado', e.target.value as ResultadoDisputa)}
-              options={Object.entries(RESULTADO_DISPUTA_LABEL)
-                // "Homologado" deixou de ser um resultado: virou a Situação
-                // Definitiva (campo "Homologado em"). Só aparece se a
-                // disputa já estiver gravada assim.
-                .filter(([value]) => value !== 'homologado' || form.resultado === 'homologado')
-                .map(([value, label]) => ({ value, label }))}
-            />
-            {resultadoMudaStatus && (
-              <p className="mt-1 font-body text-xs text-ink-soft">
-                Isso vai atualizar automaticamente o status da licitação.
-              </p>
-            )}
-            {resultadosInformados.length > 0 && (
-              <p
-                className={`mt-1 font-body text-xs ${
-                  sugestaoResultadoGeral && sugestaoResultadoGeral !== form.resultado
-                    ? 'font-semibold text-brass'
-                    : 'text-ink-soft'
-                }`}
+        <div className="rounded-md border border-[#E1E7E3] bg-[#F4F6F4] px-4 py-3 text-[13px]">
+          <span className="text-[#5E6863]">Portal:</span> <strong>{licitacao?.portal || '—'}</strong>
+        </div>
+
+        {/* ------------------------------------------------------------------
+            1. Acompanhamento do processo
+           ------------------------------------------------------------------ */}
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="font-display text-lg text-[#1E4D3A]">1. Acompanhamento do processo</h2>
+            <span className="text-[13px] text-[#5E6863]">em que fase a licitação está no órgão</span>
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-[18px]">
+            <label className="flex flex-col gap-1.5">
+              <span className={CLASSE_ROTULO}>Data/hora da sessão</span>
+              <input
+                type="datetime-local"
+                value={isoParaDataHoraLocal(form.dataSessaoRealizada)}
+                onChange={(e) =>
+                  atualizarCampo('dataSessaoRealizada', e.target.value ? new Date(e.target.value).toISOString() : undefined)
+                }
+                className={CLASSE_CAMPO}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className={CLASSE_ROTULO}>Situação do processo *</span>
+              <select
+                value={situacaoProcesso}
+                onChange={(e) => atualizarCampo('situacaoProcesso', e.target.value as SituacaoProcesso)}
+                className={`${CLASSE_CAMPO} !border-2 !border-[#1E4D3A]`}
               >
-                {sugestaoResultadoGeral === 'ganho' &&
-                  (form.resultado === 'ganho'
-                    ? 'Coerente com os resultados: ao menos um item/grupo foi ganho.'
-                    : 'Sugestão pelos resultados dos itens: "Ganho" (ao menos um item/grupo foi ganho).')}
-                {sugestaoResultadoGeral === 'perdido' &&
-                  (form.resultado === 'perdido'
-                    ? 'Coerente com os resultados: todos os itens/grupos foram perdidos.'
-                    : 'Sugestão pelos resultados dos itens: "Perdido" (todos os itens/grupos foram perdidos).')}
-                {sugestaoResultadoGeral === null &&
-                  'Sem sugestão: os resultados dos itens não indicam ganho nem perda total — decisão do Analista.'}
-              </p>
+                {(Object.keys(SITUACAO_PROCESSO_LABEL) as SituacaoProcesso[]).map((valor) => (
+                  <option key={valor} value={valor}>
+                    {SITUACAO_PROCESSO_LABEL[valor]}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-[#5E6863]">substitui “Resultado: Em andamento”</span>
+            </label>
+
+            {/* Como a disputa aconteceu — define se o Valor ofertado é
+                preenchido por GRUPO inteiro (um valor só, já total) ou por
+                ITEM (preço unitário, somado automaticamente). A pedido do
+                Márcio (05/10). */}
+            {!!licitacao && licitacao.grupos.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className={CLASSE_ROTULO}>Como a disputa aconteceu</span>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { valor: 'grupo', rotulo: 'Por grupo' },
+                      { valor: 'item', rotulo: 'Por item' },
+                      { valor: 'grupo_e_item', rotulo: 'Grupo e item' },
+                    ] as { valor: ModoResultado; rotulo: string }[]
+                  ).map((opcao) => (
+                    <button
+                      key={opcao.valor}
+                      type="button"
+                      onClick={() => escolherModoResultado(opcao.valor)}
+                      className={`min-h-11 rounded-md border px-4 text-[13px] ${
+                        modoResultado === opcao.valor
+                          ? 'border-[#1E4D3A] bg-[#1E4D3A] font-bold text-white'
+                          : 'border-[#C9D3CD] bg-white text-ink'
+                      }`}
+                    >
+                      {opcao.rotulo}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs text-[#5E6863]">
+                  {modoResultado === 'grupo' && 'O valor ofertado é preenchido uma vez, já total, no card do grupo.'}
+                  {modoResultado === 'item' && 'O valor ofertado é preenchido por item (preço unitário).'}
+                  {modoResultado === 'grupo_e_item' &&
+                    'O grupo recebe a posição e o valor total; cada item recebe o valor unitário.'}
+                </span>
+              </div>
             )}
           </div>
-        </div>
 
-        {/* Situação do resultado (22/10): Provisória até a homologação;
-            Definitiva quando "Homologado em" é preenchido. Só os resultados
-            definitivos entram nos relatórios (por padrão). */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <SelectField
-              label="Situação do resultado"
-              value={situacaoDefinitiva ? 'definitiva' : 'provisoria'}
-              onChange={(e) => {
-                const definitiva = (e.target.value as SituacaoDisputa) === 'definitiva';
-                setSituacaoDefinitiva(definitiva);
-                if (!definitiva) setDataHomologacao('');
-              }}
-              options={Object.entries(SITUACAO_DISPUTA_LABEL).map(([value, label]) => ({ value, label }))}
-            />
-            <p className="mt-1 font-body text-xs text-ink-soft">
-              Provisória: ainda pode mudar (recurso, desclassificação). Definitiva: homologada.
-            </p>
-          </div>
-          {situacaoDefinitiva && (
-            <TextField
-              label="Homologado em *"
-              type="date"
-              value={dataHomologacao}
-              onChange={(e) => setDataHomologacao(e.target.value)}
-            />
-          )}
-        </div>
-
-        {/* Como a disputa aconteceu — define se o Valor ofertado é
-            preenchido por GRUPO inteiro (um valor só, já total) ou por ITEM
-            (preço unitário, somado automaticamente). A pedido do Márcio
-            (05/10): essa licitação tem grupo E item solto ao mesmo tempo,
-            então a tela precisa deixar escolher em vez de assumir um dos
-            dois. Sugerido automaticamente pela estrutura da licitação (ou
-            pelo que já está salvo, se a disputa já existe), mas pode trocar
-            a qualquer momento. */}
-        {!!licitacao && (licitacao.grupos.length > 0) && (
-          <div className="rounded-xl border border-ink-soft/15 p-4">
-            <p className="mb-3 font-body text-sm font-semibold text-ink">Como a disputa aconteceu?</p>
-            <div className="flex gap-2">
-              {(
-                [
-                  { valor: 'grupo', rotulo: 'Por grupo' },
-                  { valor: 'item', rotulo: 'Por item' },
-                  { valor: 'grupo_e_item', rotulo: 'Grupo e item' },
-                ] as { valor: ModoResultado; rotulo: string }[]
-              ).map((opcao) => (
-                <button
-                  key={opcao.valor}
-                  type="button"
-                  onClick={() => escolherModoResultado(opcao.valor)}
-                  className={`rounded-lg border px-3.5 py-2 font-body text-sm font-semibold transition-colors ${
-                    modoResultado === opcao.valor
-                      ? 'border-forest bg-forest text-white'
-                      : 'border-ink-soft/25 text-ink-soft hover:border-forest/50'
-                  }`}
-                >
-                  {opcao.rotulo}
-                </button>
-              ))}
+          {/* Ação pendente + prazo: transformam a tela em acompanhamento. */}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-[18px] rounded-lg border border-[#F0D9AE] bg-[#FFF8EC] p-[18px]">
+            <label className="flex flex-col gap-1.5">
+              <span className={`${CLASSE_ROTULO} !text-[#6B4206]`}>Ação pendente</span>
+              <select
+                value={form.acaoPendente ?? 'nenhuma'}
+                onChange={(e) => {
+                  const acao = e.target.value as AcaoPendente;
+                  atualizarCampo('acaoPendente', acao);
+                  if (acao === 'nenhuma') setPrazoAcaoTexto('');
+                }}
+                className={CLASSE_CAMPO}
+              >
+                {(Object.keys(ACAO_PENDENTE_LABEL) as AcaoPendente[]).map((valor) => (
+                  <option key={valor} value={valor}>
+                    {ACAO_PENDENTE_LABEL[valor]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={`${CLASSE_ROTULO} !text-[#6B4206]`}>
+                Prazo da ação {form.acaoPendente && form.acaoPendente !== 'nenhuma' ? '*' : ''}
+              </span>
+              <input
+                type="datetime-local"
+                value={prazoAcaoTexto}
+                onChange={(e) => setPrazoAcaoTexto(e.target.value)}
+                disabled={!form.acaoPendente || form.acaoPendente === 'nenhuma'}
+                className={CLASSE_CAMPO}
+              />
+            </label>
+            <div className="flex flex-col justify-end">
+              <span className="text-[13px] leading-snug text-[#6B4206]">
+                <strong>Alerta:</strong> o prazo fica registrado na disputa. O aviso automático no painel de
+                pendências será ativado em uma próxima etapa.
+              </span>
             </div>
-            <p className="mt-2 font-body text-xs text-ink-soft">
-              {modoResultado === 'grupo' &&
-                'O "Valor ofertado" é preenchido uma vez, já total, no card do grupo.'}
-              {modoResultado === 'item' &&
-                'O "Valor ofertado" é preenchido por item (preço unitário) — o total do grupo e o total geral somam automaticamente (valor × quantidade).'}
-              {modoResultado === 'grupo_e_item' &&
-                'Cada grupo recebe a posição e o valor total; abaixo dele, cada item recebe apenas o valor ofertado (preço unitário). Itens soltos (fora de grupo) recebem posição e valor individualmente.'}
-            </p>
           </div>
-        )}
 
-        {/* Resultado por item — um card por item, ou um card por grupo
-            inteiro quando `modoResultado` tratar o bloco como grupo (ver
-            `tratarComoGrupo` abaixo). Valor de referência e Mínimo (c/
-            frete) vêm calculados, só pra referência durante o
-            preenchimento. */}
-        <div>
-          <h3 className="mb-2 font-display text-sm font-semibold text-ink">Resultado por item</h3>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-[18px]">
+            <label className="flex flex-col gap-1.5">
+              <span className={CLASSE_ROTULO}>Adjudicada em {adjudicadaEmLiberada ? '*' : ''}</span>
+              <input
+                type="date"
+                value={adjudicadaEmLiberada ? dataAdjudicacao : ''}
+                onChange={(e) => setDataAdjudicacao(e.target.value)}
+                disabled={!adjudicadaEmLiberada}
+                className={CLASSE_CAMPO}
+              />
+              <span className="text-xs text-[#5E6863]">liberado quando a situação for Adjudicada ou Homologada</span>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={CLASSE_ROTULO}>Homologada em {homologadaEmLiberada ? '*' : ''}</span>
+              <input
+                type="date"
+                value={homologadaEmLiberada ? dataHomologacao : ''}
+                onChange={(e) => setDataHomologacao(e.target.value)}
+                disabled={!homologadaEmLiberada}
+                className={CLASSE_CAMPO}
+              />
+              <span className="text-xs text-[#5E6863]">obrigatório só quando a situação for Homologada</span>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={CLASSE_ROTULO}>Observação</span>
+              <input
+                type="text"
+                value={form.observacoes}
+                onChange={(e) => atualizarCampo('observacoes', e.target.value)}
+                className={CLASSE_CAMPO}
+              />
+            </label>
+          </div>
+
+          {quantidadeEmAnalise > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#F0D9AE] bg-[#FFF8EC] px-4 py-3 text-[13px] text-[#6B4206]">
+              <span>
+                Com a homologação, {quantidadeEmAnalise}{' '}
+                {quantidadeEmAnalise === 1 ? 'resultado ainda está' : 'resultados ainda estão'} "em análise". Converter
+                "Arrematado" em "Ganho (homologado)" e "Perdido" em "Perdido (homologado)"?
+              </span>
+              <button
+                type="button"
+                onClick={converterEmAnaliseParaHomologado}
+                className="min-h-11 rounded-md bg-[#1E4D3A] px-4 text-[13px] font-bold text-white"
+              >
+                Converter
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* ------------------------------------------------------------------
+            2. Resultado do cliente por grupo/item
+           ------------------------------------------------------------------ */}
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="font-display text-lg text-[#1E4D3A]">2. Resultado do cliente por grupo/item</h2>
+            <span className="text-[13px] text-[#5E6863]">como o cliente ficou em cada grupo ou item</span>
+          </div>
+
+          {!resultadoDefinitivo && (
+            <p className="text-xs text-[#5E6863]">
+              "Ganho (homologado)" e "Perdido (homologado)" ficam liberados quando houver a data em "Homologada em".
+            </p>
+          )}
           {carregandoLicitacao && <p className="font-body text-xs text-ink-soft">Carregando itens da licitação...</p>}
           {!carregandoLicitacao && linhasResultado.length === 0 && (
             <p className="font-body text-xs text-ink-soft">
@@ -962,7 +1187,7 @@ export function DisputaFormModal({
             </p>
           )}
           {!carregandoLicitacao && foraDaDisputa.length > 0 && (
-            <div className="mb-3 rounded-lg border border-brass/40 bg-brass-pale px-3 py-2 font-body text-xs text-brass">
+            <div className="rounded-lg border border-brass/40 bg-brass-pale px-3 py-2 font-body text-xs text-brass">
               <p className="font-semibold">Fora da disputa por estarem acima da referência:</p>
               <ul className="mt-1 list-disc pl-4">
                 {foraDaDisputa.map((texto) => (
@@ -971,42 +1196,21 @@ export function DisputaFormModal({
               </ul>
             </div>
           )}
+
           {!carregandoLicitacao && linhasResultado.length > 0 && (
             <div className="space-y-4">
               {blocosVisuais.map((bloco, indiceBloco) => {
                 const colapsado = bloco.grupoId ? gruposColapsados.has(bloco.grupoId) : false;
                 // "Tratar como grupo" = o modo escolhido pede uma linha só
                 // pro grupo inteiro — Posição/Valor ofertado ficam editáveis
-                // no card do grupo, e os itens abaixo viram só conferência.
-                // Item solto (sem grupo) nunca entra aqui.
+                // no card do grupo. Item solto (sem grupo) nunca entra aqui.
                 const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
                 const valoresGrupo = bloco.grupoId ? valoresPorGrupo[bloco.grupoId] : undefined;
-                // Itens do grupo ficam travados ("preenchido no grupo acima")
-                // só no modo "Por grupo". No modo "Grupo e item" o grupo tem
-                // o total e os itens continuam abertos para preenchimento
-                // individual (pedido do Márcio, 06/10).
+                // Itens do grupo ficam só para conferência no modo "Por
+                // grupo". No modo "Grupo e item" continuam abertos para
+                // preenchimento individual (pedido do Márcio, 06/10).
                 const itensTravados = tratarComoGrupo && modoResultado === 'grupo';
 
-                // Total ofertado do grupo: quando tratado como grupo, é o
-                // próprio valor digitado (já é o total do lote, não
-                // unitário). Quando os itens é que são preenchidos, cada
-                // "Valor ofertado" é unitário — o total do grupo é a soma
-                // de (valor × quantidade) de cada item, igual à mesma conta
-                // já usada pra "Total de referência"/"Mínimo" logo abaixo
-                // (antes desta correção, 05/10, a soma não multiplicava
-                // pela quantidade — subestimava o total sempre que o preço
-                // ofertado não era "1" por unidade).
-                const totalOfertadoGrupo = tratarComoGrupo
-                  ? campoParaNumeroDecimal(valoresGrupo?.valorOfertadoTexto ?? '', 2) ?? 0
-                  : bloco.linhas.reduce((soma, linha) => {
-                      const unitario = campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2);
-                      return soma + (unitario ?? 0) * linha.item.quantidade;
-                    }, 0);
-                const algumOfertadoPreenchido = tratarComoGrupo
-                  ? campoParaNumeroDecimal(valoresGrupo?.valorOfertadoTexto ?? '', 2) != null
-                  : bloco.linhas.some(
-                      (linha) => campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2) != null,
-                    );
                 const totalReferenciaGrupo = bloco.linhas.reduce(
                   (soma, linha) => soma + linha.item.precoReferencia * linha.item.quantidade,
                   0,
@@ -1016,460 +1220,156 @@ export function DisputaFormModal({
                   0,
                 );
                 const algumMinimoPreenchido = bloco.linhas.some((linha) => linha.precoMinimoComFreteUnitario > 0);
-                // Posição do grupo: na disputa/lance do pregão, todos os
-                // itens de um mesmo grupo/lote saem com a MESMA posição
-                // (é o grupo inteiro que disputa, não cada item) — por
-                // isso mostra a primeira posição já preenchida entre os
-                // itens, em vez de somar (não faria sentido somar posição).
-                const posicaoGrupoTexto = tratarComoGrupo
-                  ? valoresGrupo?.posicaoTexto ?? ''
-                  : bloco.linhas
-                      .map((linha) => valoresPorLinha[linha.chave]?.posicaoTexto)
-                      .find((texto) => texto && texto.trim() !== '') ?? '';
+                const somaItens = somaItensDoBloco(bloco);
 
                 return (
-                  <div key={bloco.grupoId ?? `sem-grupo-${indiceBloco}`}>
+                  <div key={bloco.grupoId ?? `sem-grupo-${indiceBloco}`} className="space-y-3">
                     {bloco.grupoId && (
                       <>
                         <button
                           type="button"
                           onClick={() => alternarGrupoColapsado(bloco.grupoId!)}
-                          className="mb-2 flex items-center gap-1.5 text-left font-display text-sm font-semibold text-ink"
+                          className="flex items-center gap-1.5 text-left font-display text-sm font-semibold text-ink"
                         >
                           <span className="text-ink-soft">{colapsado ? '▸' : '▾'}</span>
                           {bloco.grupoRotulo}
-                          <span className="font-body text-xs font-normal text-ink-soft">
-                            ({bloco.linhas.length} itens)
-                          </span>
+                          <span className="font-body text-xs font-normal text-ink-soft">({bloco.linhas.length} itens)</span>
                         </button>
 
-                        {/* Card de totais do grupo — mesmo layout dos cards
-                            de item, a pedido do Márcio (30/09), em vez de um
-                            texto simples. Fica sempre visível, mesmo com o
-                            grupo colapsado, já que é um resumo (não tem
-                            campo editável — quem se edita são os itens
-                            abaixo). */}
-                        <div className="mb-3 rounded-2xl border border-forest/25 bg-forest-mist/40 p-5 font-body shadow-soft">
-                          <div className="flex items-stretch gap-6">
-                            <div className="w-[340px] shrink-0">
-                              <p className="text-sm font-semibold text-ink">Total do grupo</p>
-                              <p className="mt-1 text-xs text-ink-soft">{bloco.linhas.length} itens</p>
-                            </div>
-
-                            <div className="w-px shrink-0 self-stretch bg-forest/15" />
-
-                            <div className="flex flex-1 flex-wrap items-center gap-5">
-                              <div className="flex flex-col items-center gap-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                  Posição
-                                </span>
-                                {tratarComoGrupo ? (
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={valoresGrupo?.posicaoTexto ?? ''}
-                                    onChange={(e) =>
-                                      atualizarValorGrupo(bloco.grupoId!, 'posicaoTexto', e.target.value)
-                                    }
-                                    placeholder="—"
-                                    className="w-14 rounded-lg border border-ink-soft/20 bg-white px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
-                                  />
-                                ) : (
-                                  <span className="flex items-center justify-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 w-14">
-                                    <span className="text-sm font-semibold text-ink">
-                                      {posicaoGrupoTexto || '—'}
-                                    </span>
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                  Valor de referência
-                                </span>
-                                <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
-                                  <span className="text-sm font-semibold text-ink">
-                                    {formatarMoeda(totalReferenciaGrupo)}
-                                  </span>
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                  Mínimo (c/ frete)
-                                </span>
-                                <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
-                                  <span className="text-sm font-semibold text-ink">
-                                    {algumMinimoPreenchido ? formatarMoeda(totalMinimoComFreteGrupo) : '—'}
-                                  </span>
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                  Valor ofertado
-                                </span>
-                                {tratarComoGrupo ? (
-                                  <>
-                                  <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
-                                    <span className="text-xs text-ink-soft">R$</span>
-                                    <input
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={
-                                        valoresGrupo?.valorOfertadoTexto ||
-                                        (modoResultado === 'grupo_e_item' && somaItensDoBloco(bloco) != null
-                                          ? numeroParaCampoDecimal(somaItensDoBloco(bloco), 2)
-                                          : '')
-                                      }
-                                      onChange={(e) =>
-                                        atualizarValorGrupo(bloco.grupoId!, 'valorOfertadoTexto', e.target.value)
-                                      }
-                                      onBlur={() =>
-                                        atualizarValorGrupo(
-                                          bloco.grupoId!,
-                                          'valorOfertadoTexto',
-                                          numeroParaCampoDecimal(
-                                            campoParaNumeroDecimal(valoresGrupo?.valorOfertadoTexto ?? '', 2),
-                                            2
-                                          )
-                                        )
-                                      }
-                                      placeholder="0,00"
-                                      className="w-24 text-sm font-semibold text-ink focus:outline-none"
-                                    />
-                                  </span>
-                                  {modoResultado === 'grupo_e_item' &&
-                                    valoresGrupo?.valorOfertadoTexto &&
-                                    somaItensDoBloco(bloco) != null &&
-                                    campoParaNumeroDecimal(valoresGrupo.valorOfertadoTexto, 2) !== somaItensDoBloco(bloco) && (
-                                      <span className="text-[11px] text-ink-soft">
-                                        soma dos itens: {formatarMoeda(somaItensDoBloco(bloco) ?? 0)}
-                                      </span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
-                                    <span className="text-sm font-semibold text-ink">
-                                      {algumOfertadoPreenchido ? formatarMoeda(totalOfertadoGrupo) : '—'}
-                                    </span>
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Resultado do GRUPO (migração 036): quando o grupo é
-                                  disputado como um todo, o resultado e o vencedor
-                                  também são do grupo — valores em TOTAL, como o
-                                  Valor ofertado ao lado. */}
-                              {tratarComoGrupo && (
-                                <>
-                                  <label className="flex flex-col gap-1">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                      Resultado do grupo
-                                    </span>
-                                    <select
-                                      value={valoresGrupo?.resultadoItem ?? ''}
-                                      onChange={(e) =>
-                                        atualizarValorGrupo(
-                                          bloco.grupoId!,
-                                          'resultadoItem',
-                                          e.target.value as ResultadoItemDisputa | ''
-                                        )
-                                      }
-                                      className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm font-semibold text-ink focus:border-forest focus:outline-none"
-                                    >
-                                      <option value="">—</option>
-                                      {Object.entries(RESULTADO_ITEM_DISPUTA_LABEL).map(([valor, rotulo]) => (
-                                        <option key={valor} value={valor}>
-                                          {rotulo}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-
-                                  {valoresGrupo?.resultadoItem === 'perdido' && (
-                                    <>
-                                      <label className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                          Valor do vencedor <span className="normal-case font-normal text-ink-soft/70">(total)</span>
-                                        </span>
-                                        <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
-                                          <span className="text-xs text-ink-soft">R$</span>
-                                          <input
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={valoresGrupo.valorVencedorTexto}
-                                            onChange={(e) =>
-                                              atualizarValorGrupo(bloco.grupoId!, 'valorVencedorTexto', e.target.value)
-                                            }
-                                            onBlur={() =>
-                                              atualizarValorGrupo(
-                                                bloco.grupoId!,
-                                                'valorVencedorTexto',
-                                                numeroParaCampoDecimal(
-                                                  campoParaNumeroDecimal(valoresGrupo.valorVencedorTexto, 2),
-                                                  2
-                                                )
-                                              )
-                                            }
-                                            placeholder="0,00"
-                                            className="w-24 text-sm font-semibold text-ink focus:outline-none"
-                                          />
-                                        </span>
-                                      </label>
-                                      <label className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                          Vencedor
-                                        </span>
-                                        <input
-                                          type="text"
-                                          value={valoresGrupo.nomeVencedor}
-                                          onChange={(e) => atualizarValorGrupo(bloco.grupoId!, 'nomeVencedor', e.target.value)}
-                                          placeholder="Nome da empresa"
-                                          className="w-48 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none"
-                                        />
-                                      </label>
-                                    </>
-                                  )}
-                                  {valoresGrupo && (
-                                    <CamposComplementares
-                                      valores={valoresGrupo}
-                                      onChange={(campo, valor) => atualizarValorGrupo(bloco.grupoId!, campo, valor)}
-                                    />
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                        {tratarComoGrupo ? (
+                          <CartaoResultado
+                            titulo={
+                              <>
+                                {bloco.grupoRotulo} — Total do grupo{' '}
+                                <span className="text-[13px] font-normal text-[#5E6863]">· {bloco.linhas.length} itens</span>
+                              </>
+                            }
+                            valores={valoresGrupo ?? VALORES_VAZIOS}
+                            onChange={(campo, valor) => atualizarValorGrupo(bloco.grupoId!, campo, valor)}
+                            referencia={totalReferenciaGrupo}
+                            minimo={algumMinimoPreenchido ? totalMinimoComFreteGrupo : null}
+                            baseValor="total"
+                            ofertadoAjuda={
+                              modoResultado === 'grupo_e_item' && somaItens != null
+                                ? `soma dos itens: ${formatarMoeda(somaItens)}`
+                                : undefined
+                            }
+                            homologada={resultadoDefinitivo}
+                          />
+                        ) : (
+                          <CartaoResultado
+                            titulo={
+                              <>
+                                {bloco.grupoRotulo} — Total do grupo{' '}
+                                <span className="text-[13px] font-normal text-[#5E6863]">· {bloco.linhas.length} itens</span>
+                              </>
+                            }
+                            valores={{
+                              ...VALORES_VAZIOS,
+                              posicaoTexto:
+                                bloco.linhas
+                                  .map((linha) => valoresPorLinha[linha.chave]?.posicaoTexto)
+                                  .find((texto) => texto && texto.trim() !== '') ?? '',
+                              valorOfertadoTexto: somaItens != null ? numeroParaCampoDecimal(somaItens, 2) : '',
+                            }}
+                            onChange={() => undefined}
+                            referencia={totalReferenciaGrupo}
+                            minimo={algumMinimoPreenchido ? totalMinimoComFreteGrupo : null}
+                            baseValor="total"
+                            posicaoSomenteLeitura={
+                              bloco.linhas
+                                .map((linha) => valoresPorLinha[linha.chave]?.posicaoTexto)
+                                .find((texto) => texto && texto.trim() !== '') ?? ''
+                            }
+                            ofertadoSomenteLeitura={somaItens != null ? formatarMoeda(somaItens) : '—'}
+                            ofertadoAjuda="soma dos itens (valor × quantidade)"
+                            homologada={resultadoDefinitivo}
+                          />
+                        )}
                       </>
                     )}
 
-                    {!colapsado && (
-                      <div className="space-y-3">
-                        {bloco.linhas.map((linha) => {
-                          const valores = valoresPorLinha[linha.chave] ?? VALORES_VAZIOS;
-                          const descricaoExpandida = descricoesExpandidas.has(linha.chave);
+                    {!colapsado &&
+                      bloco.linhas.map((linha) => {
+                        const valores = valoresPorLinha[linha.chave] ?? VALORES_VAZIOS;
+                        const descricaoExpandida = descricoesExpandidas.has(linha.chave);
+                        const descricao = (
+                          <>
+                            <span className={`block ${descricaoExpandida ? '' : 'line-clamp-2'}`}>{linha.rotulo}</span>
+                            {linha.rotulo.length > LIMITE_DESCRICAO_CURTA && (
+                              <button
+                                type="button"
+                                onClick={() => alternarDescricaoExpandida(linha.chave)}
+                                className="mt-0.5 text-xs font-semibold text-forest-deep hover:underline"
+                              >
+                                {descricaoExpandida ? 'ver menos' : 'ver mais'}
+                              </button>
+                            )}
+                          </>
+                        );
+                        const subtitulo = `${linha.item.propostaCliente?.marca || '—'} · ${
+                          linha.item.propostaCliente?.modelo || '—'
+                        } · Qtd. ${formatarNumero(linha.item.quantidade)}`;
 
+                        // Modo "Por grupo": o item é só conferência (linha
+                        // compacta), como no layout aprovado.
+                        if (itensTravados) {
                           return (
                             <div
                               key={linha.chave}
-                              // Item dentro de um grupo ganha um tom verde claro
-                              // (com faixa lateral) para se diferenciar do item
-                              // solto, que continua branco (pedido do Márcio, 06/10).
-                              className={`rounded-2xl border p-5 font-body shadow-soft ${
-                                bloco.grupoId
-                                  ? 'border-forest/20 border-l-4 border-l-forest/50 bg-forest-mist/25'
-                                  : 'border-ink-soft/15 bg-white'
-                              }`}
+                              className="grid grid-cols-[minmax(220px,2fr)_repeat(3,minmax(110px,1fr))] items-center gap-3 border-t border-dashed border-[#C9D9CF] px-1 pt-3 text-[13px]"
                             >
-                              <div className="flex items-stretch gap-6">
-                                {/* Item */}
-                                <div className="w-[340px] shrink-0">
-                                  <p className={`text-sm font-semibold text-ink ${descricaoExpandida ? '' : 'line-clamp-2'}`}>
-                                    {linha.rotulo}
-                                  </p>
-                                  {linha.rotulo.length > LIMITE_DESCRICAO_CURTA && (
-                                    <button
-                                      type="button"
-                                      onClick={() => alternarDescricaoExpandida(linha.chave)}
-                                      className="mt-0.5 text-xs font-semibold text-forest-deep hover:underline"
-                                    >
-                                      {descricaoExpandida ? 'ver menos' : 'ver mais'}
-                                    </button>
-                                  )}
-                                  <p className="mt-1 text-xs text-ink-soft">
-                                    {linha.item.propostaCliente?.marca || '—'} ·{' '}
-                                    {linha.item.propostaCliente?.modelo || '—'} ·{' '}
-                                    Qtd. {formatarNumero(linha.item.quantidade)}
-                                  </p>
-                                </div>
-
-                                <div className="w-px shrink-0 self-stretch bg-ink-soft/10" />
-
-                                {/* Posição / Valor de referência / Mínimo / Valor ofertado */}
-                                <div className="flex flex-1 flex-wrap items-center gap-5">
-                                  <label className="flex flex-col items-center gap-1">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                      Posição
-                                    </span>
-                                    {itensTravados || (bloco.grupoId && modoResultado === 'grupo_e_item') ? (
-                                      // Posição do grupo: só se preenche no card do grupo.
-                                      <span className="flex items-center justify-center rounded-lg border border-ink-soft/10 bg-paper-2/50 px-2.5 py-1.5 w-14">
-                                        <span className="text-sm text-ink-soft">
-                                          {!itensTravados && valoresGrupo?.posicaoTexto ? valoresGrupo.posicaoTexto : '—'}
-                                        </span>
-                                      </span>
-                                    ) : (
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={valores.posicaoTexto}
-                                        onChange={(e) => atualizarValorLinha(linha.chave, 'posicaoTexto', e.target.value)}
-                                        placeholder="—"
-                                        className="w-14 rounded-lg border border-ink-soft/20 bg-white px-2 py-1.5 text-center text-sm font-semibold text-ink focus:border-forest focus:outline-none"
-                                      />
-                                    )}
-                                  </label>
-
-                                  <div className="flex flex-col gap-1">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                      Valor de referência
-                                    </span>
-                                    <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
-                                      <span className="text-sm font-semibold text-ink">
-                                        {formatarMoeda(linha.item.precoReferencia)}
-                                      </span>
-                                    </span>
-                                  </div>
-
-                                  <div className="flex flex-col gap-1">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                      Mínimo (c/ frete)
-                                    </span>
-                                    <span className="flex items-center rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5">
-                                      {linha.precoMinimoComFreteUnitario > 0 ? (
-                                        <span className="text-sm font-semibold text-ink">
-                                          {formatarMoeda(linha.precoMinimoComFreteUnitario)}
-                                        </span>
-                                      ) : (
-                                        <span className="text-sm text-ink-soft">—</span>
-                                      )}
-                                    </span>
-                                  </div>
-
-                                  <label className="flex flex-col gap-1">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                      Valor ofertado {!itensTravados && <span className="normal-case font-normal text-ink-soft/70">(unit.)</span>}
-                                    </span>
-                                    {itensTravados ? (
-                                      <span className="flex items-center rounded-lg border border-ink-soft/10 bg-paper-2/50 px-2.5 py-1.5">
-                                        <span className="text-sm text-ink-soft">preenchido no grupo acima</span>
-                                      </span>
-                                    ) : (
-                                      <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
-                                        <span className="text-xs text-ink-soft">R$</span>
-                                        <input
-                                          type="text"
-                                          inputMode="decimal"
-                                          value={valores.valorOfertadoTexto}
-                                          onChange={(e) =>
-                                            atualizarValorLinha(linha.chave, 'valorOfertadoTexto', e.target.value)
-                                          }
-                                          onBlur={() =>
-                                            atualizarValorLinha(
-                                              linha.chave,
-                                              'valorOfertadoTexto',
-                                              numeroParaCampoDecimal(
-                                                campoParaNumeroDecimal(valores.valorOfertadoTexto, 2),
-                                                2
-                                              )
-                                            )
-                                          }
-                                          placeholder="0,00"
-                                          className="w-20 text-sm font-semibold text-ink focus:outline-none"
-                                        />
-                                      </span>
-                                    )}
-                                  </label>
-
-                                  {/* Resultado do item (migração 036) — alimenta os
-                                      relatórios. Em "Por grupo" os itens ficam
-                                      travados e não têm resultado próprio. */}
-                                  {!itensTravados && (
-                                    <>
-                                      <label className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                          Resultado do item
-                                        </span>
-                                        <select
-                                          value={valores.resultadoItem}
-                                          onChange={(e) =>
-                                            atualizarValorLinha(
-                                              linha.chave,
-                                              'resultadoItem',
-                                              e.target.value as ResultadoItemDisputa | ''
-                                            )
-                                          }
-                                          className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm font-semibold text-ink focus:border-forest focus:outline-none"
-                                        >
-                                          <option value="">—</option>
-                                          {Object.entries(RESULTADO_ITEM_DISPUTA_LABEL).map(([valor, rotulo]) => (
-                                            <option key={valor} value={valor}>
-                                              {rotulo}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-
-                                      {valores.resultadoItem === 'perdido' && (
-                                        <>
-                                          <label className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                              Valor do vencedor <span className="normal-case font-normal text-ink-soft/70">(unit.)</span>
-                                            </span>
-                                            <span className="flex items-center gap-1 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 focus-within:border-forest">
-                                              <span className="text-xs text-ink-soft">R$</span>
-                                              <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={valores.valorVencedorTexto}
-                                                onChange={(e) =>
-                                                  atualizarValorLinha(linha.chave, 'valorVencedorTexto', e.target.value)
-                                                }
-                                                onBlur={() =>
-                                                  atualizarValorLinha(
-                                                    linha.chave,
-                                                    'valorVencedorTexto',
-                                                    numeroParaCampoDecimal(
-                                                      campoParaNumeroDecimal(valores.valorVencedorTexto, 2),
-                                                      2
-                                                    )
-                                                  )
-                                                }
-                                                placeholder="0,00"
-                                                className="w-20 text-sm font-semibold text-ink focus:outline-none"
-                                              />
-                                            </span>
-                                          </label>
-                                          <label className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                              Vencedor
-                                            </span>
-                                            <input
-                                              type="text"
-                                              value={valores.nomeVencedor}
-                                              onChange={(e) => atualizarValorLinha(linha.chave, 'nomeVencedor', e.target.value)}
-                                              placeholder="Nome da empresa"
-                                              className="w-48 rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 text-sm text-ink focus:border-forest focus:outline-none"
-                                            />
-                                          </label>
-                                        </>
-                                      )}
-                                      <CamposComplementares
-                                        valores={valores}
-                                        onChange={(campo, valor) => atualizarValorLinha(linha.chave, campo, valor)}
-                                      />
-                                    </>
-                                  )}
-                                </div>
-                              </div>
+                              <span>
+                                <strong className="block font-semibold">{descricao}</strong>
+                                <span className="text-[#5E6863]">{subtitulo}</span>
+                              </span>
+                              <span>Ref.: {linha.item.precoReferencia > 0 ? formatarMoeda(linha.item.precoReferencia) : '—'}</span>
+                              <span>
+                                Mín.:{' '}
+                                {linha.precoMinimoComFreteUnitario > 0
+                                  ? formatarMoeda(linha.precoMinimoComFreteUnitario)
+                                  : '—'}
+                              </span>
+                              <span className="text-[#5E6863]">ofertado no grupo</span>
                             </div>
                           );
-                        })}
-                      </div>
-                    )}
+                        }
+
+                        const posicaoDoGrupo =
+                          bloco.grupoId && modoResultado === 'grupo_e_item' ? valoresGrupo?.posicaoTexto ?? '' : undefined;
+
+                        return (
+                          <CartaoResultado
+                            key={linha.chave}
+                            titulo={descricao}
+                            subtitulo={subtitulo}
+                            valores={valores}
+                            onChange={(campo, valor) => atualizarValorLinha(linha.chave, campo, valor)}
+                            referencia={linha.item.precoReferencia}
+                            minimo={linha.precoMinimoComFreteUnitario > 0 ? linha.precoMinimoComFreteUnitario : null}
+                            baseValor="unit."
+                            posicaoSomenteLeitura={posicaoDoGrupo}
+                            homologada={resultadoDefinitivo}
+                            dentroDeGrupo={!!bloco.grupoId}
+                          />
+                        );
+                      })}
                   </div>
                 );
               })}
 
-              {/* Resumo geral — Total de referência (vem da licitação), Mínimo
-                  (c/ frete) (vem da Proposta Comercial do Cliente), Total
-                  ofertado (soma conforme o Analista preenche: grupos pelo
-                  total do grupo, itens soltos por unitário × quantidade) e
-                  o percentual do ofertado sobre o mínimo (c/ frete). A
-                  pedido do Márcio (06/10). */}
+              {/* Resumo geral da disputa — mantido da versão anterior (não
+                  consta no layout aprovado; fica ao final da seção 2). */}
               {(() => {
+                const ofertadoDoBloco = (bloco: (typeof blocosVisuais)[number]): number | null => {
+                  const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
+                  if (tratarComoGrupo && bloco.grupoId) {
+                    const valorGrupo = campoParaNumeroDecimal(valoresPorGrupo[bloco.grupoId]?.valorOfertadoTexto ?? '', 2);
+                    if (valorGrupo != null) return valorGrupo;
+                    if (modoResultado === 'grupo') return null;
+                  }
+                  return somaItensDoBloco(bloco);
+                };
                 const totalReferenciaGeral = blocosVisuais.reduce(
                   (soma, bloco) =>
                     soma + bloco.linhas.reduce((s2, linha) => s2 + linha.item.precoReferencia * linha.item.quantidade, 0),
@@ -1483,34 +1383,11 @@ export function DisputaFormModal({
                 const algumMinimoGeral = blocosVisuais.some((bloco) =>
                   bloco.linhas.some((linha) => linha.precoMinimoComFreteUnitario > 0),
                 );
-
-                // Valor ofertado de um bloco (null = Analista ainda não
-                // preencheu nada nele). Grupo com total digitado usa o total;
-                // no modo "Grupo e item", sem total digitado, usa a soma dos
-                // itens (unitário × quantidade).
-                const ofertadoDoBloco = (bloco: (typeof blocosVisuais)[number]): number | null => {
-                  const tratarComoGrupo = !!bloco.grupoId && (modoResultado === 'grupo' || modoResultado === 'grupo_e_item');
-                  if (tratarComoGrupo && bloco.grupoId) {
-                    const valorGrupo = campoParaNumeroDecimal(valoresPorGrupo[bloco.grupoId]?.valorOfertadoTexto ?? '', 2);
-                    if (valorGrupo != null) return valorGrupo;
-                    if (modoResultado === 'grupo') return null;
-                  }
-                  let algum = false;
-                  const soma = bloco.linhas.reduce((acc, linha) => {
-                    const unitario = campoParaNumeroDecimal(valoresPorLinha[linha.chave]?.valorOfertadoTexto ?? '', 2);
-                    if (unitario == null) return acc;
-                    algum = true;
-                    return acc + unitario * linha.item.quantidade;
-                  }, 0);
-                  return algum ? soma : null;
-                };
-
                 let totalOfertadoGeral = 0;
                 let algumPreenchido = false;
                 // Mínimo (c/ frete) só dos blocos já preenchidos — para o
                 // percentual comparar o que foi ofertado com o mínimo do
-                // MESMO conjunto (senão, com a disputa preenchida pela
-                // metade, o percentual ficaria falsamente negativo).
+                // MESMO conjunto.
                 let minimoDosPreenchidos = 0;
                 blocosVisuais.forEach((bloco) => {
                   const ofertado = ofertadoDoBloco(bloco);
@@ -1522,11 +1399,8 @@ export function DisputaFormModal({
                     0,
                   );
                 });
-
                 const percentualSobreMinimo =
                   algumPreenchido && minimoDosPreenchidos > 0 ? (totalOfertadoGeral / minimoDosPreenchidos - 1) * 100 : null;
-                // Diferença em R$ entre o ofertado e o mínimo (c/ frete) do
-                // mesmo conjunto de grupos/itens preenchidos.
                 const diferencaReais =
                   algumPreenchido && minimoDosPreenchidos > 0 ? totalOfertadoGeral - minimoDosPreenchidos : null;
                 const diferencaTexto =
@@ -1557,15 +1431,11 @@ export function DisputaFormModal({
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
                           Mínimo (c/ frete)
                         </span>
-                        {/* Vai somando conforme o Analista preenche: só entra o
-                            mínimo dos grupos/itens que já têm valor ofertado. */}
                         <span className="text-base font-semibold text-forest-deep">
                           {algumPreenchido && minimoDosPreenchidos > 0 ? formatarMoeda(minimoDosPreenchidos) : '—'}
                         </span>
                         {algumMinimoGeral && (
-                          <span className="text-[11px] text-ink-soft">
-                            de {formatarMoeda(totalMinimoGeral)} no total
-                          </span>
+                          <span className="text-[11px] text-ink-soft">de {formatarMoeda(totalMinimoGeral)} no total</span>
                         )}
                       </div>
                       <div className="flex flex-col gap-1">
@@ -1610,15 +1480,15 @@ export function DisputaFormModal({
                       </div>
                     </div>
                     <p className="mt-3 text-xs text-ink-soft">
-                      O percentual e a diferença em R$ comparam o total ofertado com o mínimo (c/ frete) apenas dos grupos/itens já preenchidos.
-                      Positivo = acima do mínimo; negativo = abaixo do mínimo.
+                      O percentual e a diferença em R$ comparam o total ofertado com o mínimo (c/ frete) apenas dos
+                      grupos/itens já preenchidos. Positivo = acima do mínimo; negativo = abaixo do mínimo.
                     </p>
                   </div>
                 );
               })()}
             </div>
           )}
-        </div>
+        </section>
 
         {erroSalvar && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-body text-xs text-red-700">

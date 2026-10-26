@@ -32,7 +32,7 @@ import {
 import type { DadosBaseIndicadores, FiltrosIndicadores } from '../../../types/indicadores'
 import { formatarNumero } from '../../../utils/prazoUtils'
 
-export function IndicadoresPage() {
+export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {}) {
   const { user } = useAuth()
   const ehCliente = user?.role === 'cliente'
   const { carregando: carregandoPermissoes, ehAdmin, restricaoDados } = usePermissoes()
@@ -110,9 +110,13 @@ export function IndicadoresPage() {
   const opcoesOrgaos = useMemo(() => (dados ? listarOpcoesOrgaos(dados.licitacoes) : []), [dados])
   const opcoesMarcas = useMemo(() => (dados ? listarOpcoesMarcas(dados.licitacoes) : []), [dados])
 
+  // Há algum filtro de recorte ativo (a caixa de provisórios não conta).
+  const { incluirProvisorios: _provisorios, ...recortes } = filtros
+  const filtrando = Object.values(recortes).some(Boolean)
+
   return (
-    <div className="min-h-screen space-y-5 bg-paper p-8">
-      <header>
+    <div className={embutido ? 'space-y-5' : 'min-h-screen space-y-5 bg-paper p-8'}>
+      <header className={embutido ? 'hidden' : undefined}>
         <h1 className="font-display text-2xl text-ink">Indicadores</h1>
         <p className="font-body text-sm text-ink-soft">
           {ehAdmin
@@ -156,7 +160,12 @@ export function IndicadoresPage() {
             {formatarNumero(indicadores.totalLicitacoes)}{' '}
             {indicadores.totalLicitacoes === 1 ? 'licitação considerada' : 'licitações consideradas'} nos filtros escolhidos.
           </p>
-          <IndicadoresGraficos indicadores={indicadores} visiveis={visiveis} />
+          {filtrando && indicadores.totalLicitacoes === 0 && (
+            <p className="rounded-xl border border-ink-soft/15 bg-white p-6 text-center font-body text-sm text-ink-soft shadow-soft">
+              Nenhuma licitação atende a todos os filtros escolhidos ao mesmo tempo. Ajuste ou limpe os filtros.
+            </p>
+          )}
+          <IndicadoresGraficos indicadores={indicadores} visiveis={visiveis} ocultarVazios={filtrando} />
         </>
       )}
 

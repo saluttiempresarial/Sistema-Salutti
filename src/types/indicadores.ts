@@ -9,7 +9,7 @@
 
 import type { Licitacao, EsferaLicitacao } from './licitacao';
 import type { ChaveMotivoIndicador, GrupoMotivo } from './motivoNaoParticipacao';
-import type { Disputa, ResultadoItemDisputa, MotivoPerdaHabilitacao } from './disputa';
+import type { Disputa, ResultadoItemDisputa, MotivoPerdaHabilitacao, MotivoPerda } from './disputa';
 import type { FamiliaProduto } from '../services/familiaProdutoService';
 
 /** Valor do filtro de esfera para licitações sem esfera informada. */
@@ -69,7 +69,18 @@ export interface ClienteResumo {
 }
 
 /** Tudo o que os cálculos precisam, carregado de uma vez. */
+/** Reabertura da decisão do cliente pelo Administrador (histórico da licitação). */
+export interface ReaberturaDecisao {
+  licitacaoId: string;
+  /** ISO do momento em que o Administrador reabriu. */
+  em: string;
+}
+
 export interface DadosBaseIndicadores {
+  /** Faixas de inatividade de Configurações; ausente = padrão (7/14/21). */
+  faixasInatividade?: { faixa1Dias: number; faixa2Dias: number; faixa3Dias: number };
+  /** Reaberturas de decisão (só o Administrador as enxerga); ausente = não carregadas. */
+  reaberturas?: ReaberturaDecisao[];
   licitacoes: Licitacao[]; // com grupos e itens
   disputas: Disputa[]; // com as linhas de resultado
   familias: FamiliaProduto[]; // inclusive inativas (para exibir nomes antigos)
@@ -94,6 +105,19 @@ export interface TaxaVitoria {
   valorAdjudicado: number; // valor ofertado dos ganhos
   valorDisputado: number; // valor ofertado dos ganhos + perdidos
   percentualQuantidade: number | null; // null = nada disputado
+  percentualValor: number | null;
+  /** Leitura "1 a cada X participações": (ganhos + perdidos) ÷ ganhos.
+   *  null = nenhum ganho. Ex.: taxa de 28% = 1 a cada 3,6. */
+  umACada: number | null;
+}
+
+/** Taxa de vitória de um mês (mês da sessão), para a evolução mês a mês. */
+export interface TaxaVitoriaMes {
+  mes: string; // yyyy-mm
+  rotulo: string;
+  ganhos: number;
+  perdidos: number;
+  percentualQuantidade: number | null;
   percentualValor: number | null;
 }
 
@@ -137,9 +161,37 @@ export interface GanhoSobreMinimoFamilia {
   quantidade: number; // itens (ou grupos) ganhos que entraram no cálculo
 }
 
+export interface GanhoSobreMinimoMarca {
+  chave: string;
+  nome: string;
+  percentual: number | null;
+  /** Ganho em reais: valor fechado − mínimo c/ frete, somado nos itens ganhos. */
+  valorGanho: number;
+  quantidade: number;
+}
+
+/** Faixas do ganho sobre o mínimo, por item/grupo ganho:
+ *  até 3% = "no limite" (rever o preço mínimo); de 3% a 10% = saudável;
+ *  acima de 10% = forte. Ganho abaixo do mínimo cai em "no limite". */
+export interface FaixasGanhoSobreMinimo {
+  noLimite: number;
+  saudavel: number;
+  forte: number;
+}
+
 export interface GanhoSobreMinimo {
+  /** Percentual ponderado pelo valor. */
   geral: number | null;
+  /** Ganho em reais: valor fechado − mínimo c/ frete, somado nos ganhos com mínimo. */
+  valorGanho: number;
+  /** Total fechado nos itens/grupos ganhos com mínimo informado. */
+  valorFechado: number;
+  faixas: FaixasGanhoSobreMinimo;
+  /** Itens/grupos ganhos SEM preço mínimo informado (ficam fora do cálculo). */
+  semMinimo: number;
   porFamilia: GanhoSobreMinimoFamilia[];
+  /** Só marcas com preço próprio (itens soltos); cestas e kits não entram. */
+  porMarca: GanhoSobreMinimoMarca[];
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +270,26 @@ export interface ItemForaDeMercado {
   valorMinimo: number; // mínimo c/ frete (total)
   /** (mínimo − vencedor) ÷ mínimo, em %: quanto o vencedor ficou abaixo. */
   percentualAbaixo: number;
+  /** Vencedor 30% ou mais abaixo do mínimo: preço possivelmente inexequível
+   *  (referência interna, não é critério legal). */
+  possivelmenteInexequivel: boolean;
+}
+
+/** Composição das perdas definitivas. */
+export interface ComposicaoPerdas {
+  total: number;
+  foraDeMercado: number; // vencedor abaixo do nosso mínimo
+  perdaEvitavel: number; // vencedor igual ou acima do nosso mínimo
+  perdidaHabilitacao: number; // perdida na aceitação/habilitação
+  semPrecoVencedor: number; // sem valor do vencedor ou sem mínimo: não dá para classificar
+}
+
+export interface ForaDeMercadoGrupo {
+  chave: string;
+  nome: string;
+  quantidade: number; // recorrência: itens/grupos fora de mercado
+  /** (mínimo − vencedor) ÷ mínimo, ponderado por valor. */
+  distanciaMedia: number | null;
 }
 
 /** Perdidos em que o vencedor ficou ABAIXO do mínimo c/ frete do cliente: o
@@ -231,6 +303,13 @@ export interface ForaDeMercado {
   /** Distância média abaixo do mínimo, ponderada por valor; null = sem itens. */
   distanciaMedia: number | null;
   linhas: ItemForaDeMercado[];
+  /** Quantos estão 30% ou mais abaixo do mínimo. */
+  possivelmenteInexequiveis: number;
+  composicao: ComposicaoPerdas;
+  /** Famílias mais recorrentes em fora de mercado. */
+  porFamilia: ForaDeMercadoGrupo[];
+  /** Marcas (itens com marca) em fora de mercado. */
+  porMarca: ForaDeMercadoGrupo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -240,12 +319,30 @@ export interface BarraOrgao {
   orgao: string;
   participacoes: number; // licitações em que o cliente confirmou participação
   vitorias: number; // licitações com ao menos um item/grupo ganho
+  /** CNPJ (14 dígitos) e UASG do órgão, quando informados no cadastro da licitação. */
+  cnpj?: string;
+  uasg?: string;
+  /** Recorrência: licitações do mesmo órgão no período (com ou sem participação). */
+  licitacoes: number;
+  /** vitorias ÷ participacoes, em %; null = sem participação. */
+  taxaVitoria: number | null;
+  /** Valor adjudicado (itens e grupos ganhos) nas licitações do órgão. */
+  valorAdjudicado: number;
 }
 
 export interface Concorrente {
   nome: string;
+  /** CNPJ (14 dígitos), quando lançado junto com o nome; usado para unir grafias diferentes. */
+  cnpj?: string;
   vitorias: number; // itens/grupos que ele ganhou de nós
+  /** Licitações distintas em que ele ganhou de nós. */
+  licitacoes: number;
   valorTotal: number; // soma dos valores dele nesses itens/grupos
+  /** Em média, quanto ele fechou abaixo do nosso preço (ponderado por valor);
+   *  null = sem nosso preço informado nessas perdas. */
+  distanciaMedia: number | null;
+  /** Famílias em que ele vence, da que mais perdemos para a que menos. */
+  familias: ConcorrenteNaFamilia[];
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +357,15 @@ export interface TaxaFamilia {
   nome: string;
   ganhos: number;
   disputados: number; // ganhos + perdidos
-  percentual: number | null; // ganhos ÷ disputados
+  percentual: number | null; // ganhos ÷ disputados (quantidade)
+  /** Valor ganho ÷ valor disputado, em %. */
+  percentualValor: number | null;
+  /** Menos de 5 disputados: mostrar o número absoluto, sem percentual em destaque. */
+  amostraPequena: boolean;
+  /** Ganho sobre o mínimo da família (%, ponderado); null = sem ganho com mínimo. */
+  ganhoSobreMinimo: number | null;
+  /** Leitura cruzando taxa × ganho sobre o mínimo; null = amostra pequena ou sem base. */
+  leitura: 'forte' | 'no_limite' | 'preco_alto' | 'dificil' | null;
 }
 
 /** Taxa de vitória por quantidade, por família: só itens e grupos ganhos ou
@@ -391,24 +496,71 @@ export interface TempoRespostaCliente {
   chave: string;
   nome: string;
   mediaDias: number;
+  medianaDias: number;
   quantidade: number;
 }
 
-/** Tempo entre o cadastro da licitação e a decisão do cliente (participar ou
- *  recusar). Ainda não existe a data de envio da análise: usa-se a data de
- *  cadastro, que é quando a licitação fica visível para o cliente. */
+/** Medida de tempo em dias úteis: mediana como número principal, média ao lado. */
+export interface MedidaTempo {
+  quantidade: number;
+  medianaDias: number | null;
+  mediaDias: number | null;
+}
+
+export interface TemposEnvio {
+  /** Liberação ao cliente → sessão. */
+  antecedencia: MedidaTempo;
+  /** Liberação → prazo do cliente (sessão − 3 dias úteis). */
+  janelaCliente: MedidaTempo;
+  /** Licitações com janela menor que 2 dias úteis (inclui as já sem janela). */
+  janelaCurta: number;
+  /** Quantas vezes o Administrador reabriu a decisão depois do prazo do cliente. */
+  reaberturasForaDoPrazo: number | null;
+}
+
+/** Tempo entre a LIBERAÇÃO da licitação ao cliente e a decisão dele (participar
+ *  ou recusar). Licitações ainda não liberadas não entram. */
 export interface TempoResposta {
   quantidade: number; // licitações com decisão e data da decisão
+  /** Tudo em DIAS ÚTEIS. */
   mediaDias: number | null;
   medianaDias: number | null;
   aguardando: number; // ainda sem decisão
-  /** Até 10 clientes, dos mais lentos para os mais rápidos. */
+  /** Todos os clientes, dos mais lentos para os mais rápidos (pela mediana). */
   porCliente: TempoRespostaCliente[];
+  /** Por analista (quem liberou). Só o Administrador vê. */
+  porAnalista: TempoRespostaCliente[];
+  envio: TemposEnvio;
 }
+
+/** Situação de inatividade (item 15 do documento). */
+export type SituacaoInatividade = 'ok' | 'sem_envio' | 'sem_resposta' | 'sem_participacao';
+
+export const SITUACAO_INATIVIDADE_LABEL: Record<SituacaoInatividade, { nome: string; significa: string; acao: string }> = {
+  ok: { nome: 'Ativo', significa: 'Dentro das faixas', acao: '' },
+  sem_envio: { nome: 'Sem envio', significa: 'A Salutti não enviou licitações', acao: 'Rever prospecção e triagem' },
+  sem_resposta: { nome: 'Sem resposta', significa: 'Enviamos, o cliente não decide', acao: 'Contato comercial' },
+  sem_participacao: {
+    nome: 'Sem participação',
+    significa: 'O cliente responde, mas sempre recusa',
+    acao: 'Rever o perfil de oportunidades',
+  },
+};
 
 export interface ClienteSemAtividade {
   clienteId: string;
   nome: string;
+  situacao: SituacaoInatividade;
+  /** 0 = dentro das faixas; 1, 2 e 3 = faixa 1, 2 ou 3 (configuráveis). */
+  nivel: 0 | 1 | 2 | 3;
+  /** Dias da situação (sem envio, sem resposta ou sem participação); null = nunca. */
+  diasDaSituacao: number | null;
+  /** Data da última atividade de cada tipo (ISO), quando houver. */
+  ultimoEnvio?: string;
+  ultimaResposta?: string;
+  ultimaParticipacao?: string;
+  /** Valor adjudicado do cliente (cruza com o risco na ordenação). */
+  valorAdjudicado: number;
   /** ISO da última atividade (cadastro de licitação ou decisão); undefined = nunca teve licitação. */
   ultimaAtividade?: string;
   /** Dias desde a última atividade; null = nunca teve licitação. */
@@ -416,6 +568,8 @@ export interface ClienteSemAtividade {
 }
 
 export interface ClientesSemAtividade {
+  /** Faixas em dias (Configurações): padrão 7, 14 e 21. */
+  faixas: { faixa1Dias: number; faixa2Dias: number; faixa3Dias: number };
   /** Todos os clientes visíveis, dos mais parados para os mais ativos. O filtro
    *  de "X dias" é feito na tela. */
   linhas: ClienteSemAtividade[];
@@ -443,6 +597,14 @@ export interface ValorCliente {
   /** Valor dos itens e grupos ganhos (não é faturamento). */
   valorAdjudicado: number;
   licitacoesGanhas: number;
+  /** Licitações liberadas ao cliente. */
+  enviadas: number;
+  /** Licitações em que o cliente decidiu participar. */
+  participacoes: number;
+  /** Itens/grupos ganhos ÷ (ganhos + perdidos), em %; null = nada disputado. */
+  taxaVitoria: number | null;
+  /** Ganho sobre o mínimo (%, ponderado); null = sem ganho com mínimo. */
+  ganhoSobreMinimo: number | null;
 }
 
 export interface DesempenhoModalidade {
@@ -492,14 +654,178 @@ export interface GrupoMotivoNaoParticipacao {
 
 /** Licitações em que o cliente não participou (recusou ou deixou a sessão
  *  passar sem decidir), por motivo. */
+export interface TextoMotivoOutro {
+  licitacaoId: string;
+  numeroPregao: string;
+  cliente: string;
+  texto: string;
+}
+
 export interface MotivosNaoParticipacao {
   total: number;
+  /** Valor de referência das oportunidades descartadas (soma das licitações). */
+  valorReferenciaDescartado: number;
+  /** "Sem resposta": falha de processo, separada das decisões do cliente. */
+  semResposta: { quantidade: number; valorReferencia: number; percentual: number };
+  /** Recusas decididas pelo cliente (base do "Outro" e da leitura de triagem). */
+  recusasCliente: number;
+  /** Textos digitados em "Outro". */
+  textosOutro: TextoMotivoOutro[];
+  /** "Outro" ÷ recusas do cliente, em %; acima de 15% = sinal de motivo faltante. */
+  percentualOutro: number | null;
+  /** "Produto não trabalhado" + "especificação não atendida" ÷ recusas, em %:
+   *  valor alto indica falha na triagem da Salutti. null = sem recusas. */
+  percentualTriagem: number | null;
   /** Só os motivos com ao menos 1 licitação, do mais frequente ao menos. */
   motivos: LinhaMotivoNaoParticipacao[];
   porGrupo: GrupoMotivoNaoParticipacao[];
 }
 
+// ---------------------------------------------------------------------------
+// Relatório principal — total de licitações e funil (item 1 do documento)
+// ---------------------------------------------------------------------------
+export interface RelatorioPrincipal {
+  /** Licitações cadastradas no período/filtros (inclui as ainda não liberadas). */
+  cadastradas: number;
+  /** Cadastradas e ainda NÃO liberadas ao cliente (em preparação pela Salutti). */
+  emPreparacao: number;
+  /** Analisadas pela Salutti e liberadas ao cliente para decisão. */
+  enviadas: number;
+  /** Enviadas em que o cliente respondeu (participar ou não participar). */
+  retornadas: number;
+  /** Enviadas − retornadas: oportunidades paradas com o cliente. */
+  semRetorno: number;
+  /** Recusa do cliente + bloqueio do sistema (ex.: ME/EPP). */
+  naoParticipacao: number;
+  naoParticipacaoRecusa: number;
+  naoParticipacaoBloqueio: number;
+  /** Enviadas em que o cliente decidiu participar. */
+  participou: number;
+  /** Participou, ficamos em 1º no lance e falta homologação. */
+  arrematadasEmAnalise: number;
+  /** Participou, outro ficou em 1º e falta homologação. */
+  perdidasEmAnalise: number;
+  /** Homologadas com ao menos um item/grupo ganho. */
+  ganhas: number;
+  /** Homologadas sem nenhum item/grupo ganho. */
+  perdidas: number;
+  /** Participou e ainda sem resultado lançado. */
+  aguardandoResultado: number;
+}
+
+// ---------------------------------------------------------------------------
+// Perdas na habilitação, vitórias por convocação e alerta de acompanhamento
+// ---------------------------------------------------------------------------
+export interface LinhaPerdaHabilitacao {
+  licitacaoId: string;
+  numeroPregao: string;
+  orgao: string;
+  cliente: string;
+  rotulo: string;
+  ehGrupo: boolean;
+  /** Valor que deixou de ser adjudicado (preço fechado × quantidade). */
+  valor: number | null;
+  etapa: string;
+  motivo: string;
+  origem: string;
+  definitiva: boolean;
+}
+
+export interface OrigemPerdaHabilitacaoResumo {
+  origem: string;
+  quantidade: number;
+  valor: number;
+}
+
+export interface PerdasHabilitacao {
+  quantidade: number;
+  valorPerdido: number;
+  porOrigem: OrigemPerdaHabilitacaoResumo[];
+  linhas: LinhaPerdaHabilitacao[];
+}
+
+export interface LinhaVitoriaConvocacao {
+  licitacaoId: string;
+  numeroPregao: string;
+  orgao: string;
+  cliente: string;
+  rotulo: string;
+  ehGrupo: boolean;
+  valor: number | null;
+  definitiva: boolean;
+}
+
+export interface VitoriasConvocacao {
+  quantidade: number;
+  valor: number;
+  linhas: LinhaVitoriaConvocacao[];
+}
+
+/** Perdidas em análise (sem homologação) com o cliente em 2º ou 3º lugar:
+ *  ainda pode haver convocação se o 1º for desclassificado. */
+export interface LinhaAlertaAcompanhamento {
+  licitacaoId: string;
+  numeroPregao: string;
+  orgao: string;
+  cliente: string;
+  rotulo: string;
+  ehGrupo: boolean;
+  posicao: number;
+  valorNosso: number | null;
+  valorVencedor: number | null;
+  nomeVencedor: string;
+}
+
+// ---------------------------------------------------------------------------
+// Distância da derrota (item 5): extensão do IndicadorPercentual
+// ---------------------------------------------------------------------------
+/** Faixas, por perda: até 3%, de 3% a 10% e acima de 10% acima do vencedor. */
+export interface FaixasDistanciaDerrota {
+  ate3: number;
+  de3a10: number;
+  acima10: number;
+}
+
+export interface DistanciaMarca {
+  chave: string;
+  nome: string;
+  /** (nosso ÷ vencedor − 1), ponderado pelo valor. */
+  percentual: number | null;
+  /** Reais acima do vencedor, somados. */
+  valorAcima: number;
+  quantidade: number;
+}
+
+/** Perda por até 3%: quase ganhamos. */
+export interface PerdaPorPouco {
+  licitacaoId: string;
+  numeroPregao: string;
+  orgao: string;
+  cliente: string;
+  rotulo: string;
+  ehGrupo: boolean;
+  valorNosso: number;
+  valorVencedor: number;
+  percentual: number;
+  nomeVencedor: string;
+}
+
+export interface DistanciaDerrota extends IndicadorPercentual {
+  /** Reais acima do vencedor, somados no período. */
+  valorAcima: number;
+  faixas: FaixasDistanciaDerrota;
+  /** Só itens com marca informada (ranking por marca perdida). */
+  porMarca: DistanciaMarca[];
+  /** Perdas por até 3% acima do vencedor, da mais próxima para a mais distante. */
+  perdasPorPouco: PerdaPorPouco[];
+}
+
 export interface IndicadoresAdmin {
+  taxaVitoriaPorMes: TaxaVitoriaMes[];
+  perdasHabilitacao: PerdasHabilitacao;
+  vitoriasConvocacao: VitoriasConvocacao;
+  alertaAcompanhamento: LinhaAlertaAcompanhamento[];
+  relatorioPrincipal: RelatorioPrincipal;
   funil: EtapaFunil[];
   taxaVitoria: TaxaVitoriaComparada;
   volumePorMes: VolumeMes[];
@@ -509,7 +835,7 @@ export interface IndicadoresAdmin {
   valorAdjudicado: ValorAdjudicado;
   foraDeMercado: ForaDeMercado;
   /** (nosso valor ÷ valor do vencedor) − 1, só nas perdas por preço. */
-  distanciaDerrota: IndicadorPercentual;
+  distanciaDerrota: DistanciaDerrota;
   /** 1 − (ofertado ÷ referência do edital), só nos ganhos. */
   descontoMedio: IndicadorPercentual;
   orgaos: BarraOrgao[]; // top 10
@@ -570,4 +896,11 @@ export interface UnidadeResultado {
   vitoriaPorConvocacao?: boolean;
   motivoPerdaHabilitacao?: MotivoPerdaHabilitacao;
   cnpjVencedor?: string;
+  /** Marcas da composição de cestas e kits (só itens): contam como presença
+   *  nas vitórias por marca, mas não têm valor individual. */
+  marcasComposicao?: string[];
+  /** Classificação do cliente no lance (1, 2, 3...). */
+  posicao?: number;
+  /** Motivo simples da perda (migração 059). */
+  motivoPerda?: MotivoPerda;
 }

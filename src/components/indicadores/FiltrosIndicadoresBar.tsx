@@ -174,14 +174,14 @@ export function FiltrosIndicadoresBar({
     [],
   )
 
-  // Aviso sob os filtros: o Resultado escolhe LICITAÇÕES; os itens dentro
-  // delas continuam contados nos indicadores por item (taxa de vitória etc.).
+  // Aviso sob os filtros: com Ganho ou Perdido, os indicadores por item
+  // consideram só os itens e grupos com esse resultado.
   const avisoResultado: string | null = !filtros.resultado
     ? null
     : filtros.resultado === 'ganho'
-      ? 'Filtrando licitações ganhas: os itens dentro delas continuam contados, inclusive os perdidos.'
+      ? 'Filtrando só o que foi ganho: licitações com ao menos um item ou grupo ganho, e apenas os itens e grupos ganhos.'
       : filtros.resultado === 'perdido'
-        ? 'Filtrando licitações perdidas: os itens dentro delas continuam contados, inclusive os ganhos.'
+        ? 'Filtrando só o que foi perdido: licitações sem nenhum ganho, e apenas os itens e grupos perdidos.'
         : `Filtrando licitações com resultado "${ROTULO_RESULTADO_LICITACAO[filtros.resultado].toLowerCase()}": os indicadores por item consideram só os itens dessas licitações.`
 
   function escolherAtalho(novo: AtalhoPeriodo) {

@@ -68,7 +68,9 @@ export function AdminSidebar({ aberta = false, onFechar }: AdminSidebarProps) {
     ...(isAdmin || podeAcessarModulo('relatorios')
       ? [{ label: 'Relatórios', to: '/admin/relatorios', icon: <IconeGrafico /> }]
       : []),
-    ...(isAdmin || podeAcessarModulo('relatorios')
+    // O Administrador acessa os Indicadores pela aba de Relatórios; o Analista
+    // mantém o item próprio.
+    ...(!isAdmin && podeAcessarModulo('relatorios')
       ? [{ label: 'Indicadores', to: '/admin/indicadores', icon: <IconeTendencia /> }]
       : []),
     ...(isAdmin || podeAcessarModulo('licitacoes')

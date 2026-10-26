@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../Button'
 import {
   CATALOGO_INDICADORES,
+  INDICADORES_VETADOS_FUNCIONARIO,
   PERFIS_LIBERACAO,
   liberacaoIndicadoresService,
   type LiberacaoIndicadores,
@@ -55,15 +56,18 @@ export function LiberacaoIndicadoresSecao() {
       <h2 className="font-display text-lg font-semibold text-forest-deep">Liberação de Indicadores</h2>
       <p className="mt-1 font-body text-sm text-ink-soft">
         Escolha quais indicadores cada perfil pode ver. A regra vale para todos os clientes, e o
-        Administrador sempre vê todos. Indicadores desligados aqui também ficam fechados para os
-        usuários do cliente, mesmo que o Responsável tenha liberado.
+        Administrador sempre vê todos. O que você liga para o Cliente é o limite máximo: dentro dele,
+        o Responsável do cliente escolhe o que cada funcionário vê. Indicadores desligados aqui
+        também ficam fechados para os usuários do cliente, mesmo que o Responsável tenha liberado.
+        O Analista vê apenas os clientes da própria carteira. A coluna "Funcionário do cliente"
+        mostra o que o Responsável pode ou não repassar.
       </p>
 
       {carregando && <p className="mt-4 font-body text-sm text-ink-soft">Carregando liberação...</p>}
 
       {liberacao && (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-left font-body text-sm">
+          <table className="w-full min-w-[640px] text-left font-body text-sm">
             <thead>
               <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
                 <th className="py-2 pr-3 font-normal">Indicador</th>
@@ -72,6 +76,7 @@ export function LiberacaoIndicadoresSecao() {
                     {p.rotulo}
                   </th>
                 ))}
+                <th className="w-40 py-2 text-center font-normal">Funcionário do cliente</th>
               </tr>
             </thead>
             <tbody>
@@ -92,6 +97,9 @@ export function LiberacaoIndicadoresSecao() {
                       />
                     </td>
                   ))}
+                  <td className="py-3 text-center text-xs text-ink-soft">
+                    {INDICADORES_VETADOS_FUNCIONARIO.has(ind.chave) ? 'Não recebe' : 'Responsável decide'}
+                  </td>
                 </tr>
               ))}
             </tbody>

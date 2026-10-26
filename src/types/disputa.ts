@@ -53,6 +53,9 @@ export const RESULTADO_DISPUTA_LABEL: Record<ResultadoDisputa, string> = {
  *  (produtos ganhos, perdas evitáveis, distância da derrota etc.). Preenchido
  *  pelo Analista/Admin; o sistema não deduz. */
 export type ResultadoItemDisputa =
+  | 'arrematado_analise'
+  | 'perdido_analise'
+  | 'convocado'
   | 'ganho'
   | 'perdido'
   | 'perdido_habilitacao'
@@ -60,15 +63,89 @@ export type ResultadoItemDisputa =
   | 'deserto'
   | 'cancelado';
 
+// Ordem e textos conforme o layout aprovado em 26/10 (migração 059). "Em
+// análise" e "Convocado" são resultados PROVISÓRIOS; "Ganho/Perdido
+// (homologado)" só valem com a data de homologação.
 export const RESULTADO_ITEM_DISPUTA_LABEL: Record<ResultadoItemDisputa, string> = {
-  ganho: 'Ganho',
-  perdido: 'Perdido',
+  arrematado_analise: 'Arrematado – em análise',
+  perdido_analise: 'Perdido – em análise',
+  convocado: 'Convocado',
+  ganho: 'Ganho (homologado)',
+  perdido: 'Perdido (homologado)',
   // Ganho no lance, mas perdido depois: desclassificação na aceitação da
   // proposta, inabilitação ou recurso (migração 054, 22/10).
   perdido_habilitacao: 'Ganho no lance, perdido na aceitação/habilitação',
-  fracassado: 'Fracassado',
-  deserto: 'Deserto',
-  cancelado: 'Cancelado',
+  fracassado: 'Item fracassado',
+  deserto: 'Item deserto',
+  cancelado: 'Item cancelado',
+};
+
+/** Resultados que ainda dependem da homologação (provisórios). */
+export const RESULTADOS_EM_ANALISE: ResultadoItemDisputa[] = ['arrematado_analise', 'perdido_analise', 'convocado'];
+
+/** Resultados de perda (para exibir o "Motivo da perda"). */
+export const RESULTADOS_DE_PERDA: ResultadoItemDisputa[] = ['perdido_analise', 'perdido', 'perdido_habilitacao'];
+
+/** Motivo da perda (migração 059). */
+export type MotivoPerda =
+  | 'preco'
+  | 'desclassificado_proposta'
+  | 'inabilitado'
+  | 'item_cancelado'
+  | 'desistencia_cliente';
+
+export const MOTIVO_PERDA_LABEL: Record<MotivoPerda, string> = {
+  preco: 'Preço',
+  desclassificado_proposta: 'Desclassificado na proposta',
+  inabilitado: 'Inabilitado',
+  item_cancelado: 'Item cancelado',
+  desistencia_cliente: 'Desistência do cliente',
+};
+
+/** Situação do PROCESSO no órgão (migração 059). */
+export type SituacaoProcesso =
+  | 'em_julgamento'
+  | 'em_habilitacao'
+  | 'em_fase_recursal'
+  | 'adjudicada'
+  | 'homologada'
+  | 'suspensa'
+  | 'deserta'
+  | 'fracassada'
+  | 'revogada'
+  | 'anulada';
+
+export const SITUACAO_PROCESSO_LABEL: Record<SituacaoProcesso, string> = {
+  em_julgamento: 'Em julgamento (aceitação da proposta)',
+  em_habilitacao: 'Em habilitação',
+  em_fase_recursal: 'Em fase recursal',
+  adjudicada: 'Adjudicada',
+  homologada: 'Homologada',
+  suspensa: 'Suspensa',
+  deserta: 'Deserta',
+  fracassada: 'Fracassada',
+  revogada: 'Revogada',
+  anulada: 'Anulada',
+};
+
+/** Ação pendente do processo (migração 059). */
+export type AcaoPendente =
+  | 'nenhuma'
+  | 'enviar_proposta_ajustada'
+  | 'enviar_amostra'
+  | 'responder_diligencia'
+  | 'enviar_documentos_complementares'
+  | 'apresentar_recurso'
+  | 'apresentar_contrarrazoes';
+
+export const ACAO_PENDENTE_LABEL: Record<AcaoPendente, string> = {
+  nenhuma: 'Nenhuma',
+  enviar_proposta_ajustada: 'Enviar proposta ajustada',
+  enviar_amostra: 'Enviar amostra',
+  responder_diligencia: 'Responder diligência',
+  enviar_documentos_complementares: 'Enviar documentos complementares',
+  apresentar_recurso: 'Apresentar recurso',
+  apresentar_contrarrazoes: 'Apresentar contrarrazões',
 };
 
 /** Motivo da perda na aceitação/habilitação (migração 054). A ETAPA e a
@@ -152,6 +229,8 @@ export interface DisputaResultadoLinha {
   motivoPerdaEvitavel?: MotivoPerdaEvitavel; // só quando resultadoItem = 'perdido'
   vitoriaPorConvocacao?: boolean; // só quando resultadoItem = 'ganho'
   cnpjVencedor?: string; // 14 dígitos, sem pontuação — só quando resultadoItem = 'perdido'
+  /** Motivo da perda (migração 059): resultados de perda. */
+  motivoPerda?: MotivoPerda;
 }
 
 export type DisputaResultadoLinhaFormData = Omit<DisputaResultadoLinha, 'id' | 'disputaId'>;
@@ -164,6 +243,13 @@ export interface Disputa {
   resultado: ResultadoDisputa;
   /** Data da homologação. Vazio = resultado provisório; preenchido = definitivo (migração 054). */
   homologadoEm?: string;
+  /** Situação do processo no órgão (migração 059). */
+  situacaoProcesso?: SituacaoProcesso;
+  acaoPendente?: AcaoPendente;
+  /** ISO datetime — prazo da ação pendente. */
+  prazoAcao?: string;
+  /** Data da adjudicação (yyyy-mm-dd). */
+  adjudicadaEm?: string;
   observacoes: string;
   linkAtaSigaPregao?: string; // link/registro da ata no app do SIGA Pregão
 

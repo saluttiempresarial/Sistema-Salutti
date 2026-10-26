@@ -27,6 +27,9 @@ import {
   ResultadoItemDisputa,
   MotivoPerdaHabilitacao,
   MotivoPerdaEvitavel,
+  MotivoPerda,
+  SituacaoProcesso,
+  AcaoPendente,
 } from '../types/disputa'
 import { licitacaoService } from './licitacaoService'
 
@@ -37,6 +40,11 @@ interface DisputaRow {
   data_sessao_realizada: string | null
   resultado: ResultadoDisputa
   homologado_em?: string | null
+  // Migração 059 — opcionais porque a função do portal do cliente não as devolve.
+  situacao_processo?: SituacaoProcesso | null
+  acao_pendente?: AcaoPendente | null
+  prazo_acao?: string | null
+  adjudicada_em?: string | null
   observacoes: string | null
   link_ata_siga_pregao: string | null
   criado_em: string
@@ -61,6 +69,7 @@ interface DisputaItemRow {
   motivo_perda_evitavel?: MotivoPerdaEvitavel | null
   vitoria_por_convocacao?: boolean | null
   cnpj_vencedor?: string | null
+  motivo_perda?: MotivoPerda | null
   criado_em: string
   atualizado_em: string
 }
@@ -82,6 +91,7 @@ function paraDisputaResultadoLinha(row: DisputaItemRow): DisputaResultadoLinha {
     motivoPerdaEvitavel: row.motivo_perda_evitavel ?? undefined,
     vitoriaPorConvocacao: row.vitoria_por_convocacao ?? false,
     cnpjVencedor: row.cnpj_vencedor ?? undefined,
+    motivoPerda: row.motivo_perda ?? undefined,
   }
 }
 
@@ -92,6 +102,10 @@ function paraDisputa(row: DisputaRow, itensRows: DisputaItemRow[]): Disputa {
     dataSessaoRealizada: row.data_sessao_realizada ?? undefined,
     resultado: row.resultado,
     homologadoEm: row.homologado_em ?? undefined,
+    situacaoProcesso: row.situacao_processo ?? undefined,
+    acaoPendente: row.acao_pendente ?? undefined,
+    prazoAcao: row.prazo_acao ?? undefined,
+    adjudicadaEm: row.adjudicada_em ?? undefined,
     observacoes: row.observacoes ?? '',
     linkAtaSigaPregao: row.link_ata_siga_pregao ?? undefined,
     itens: itensRows.map(paraDisputaResultadoLinha),
@@ -111,6 +125,10 @@ function paraColunasDisputa(dados: Partial<Omit<DisputaFormData, 'itens'>>) {
   // 'in' (e não !== undefined) para permitir LIMPAR a data: voltar uma
   // disputa de definitiva para provisória grava null.
   if ('homologadoEm' in dados) colunas.homologado_em = dados.homologadoEm || null
+  if ('situacaoProcesso' in dados) colunas.situacao_processo = dados.situacaoProcesso || null
+  if ('acaoPendente' in dados) colunas.acao_pendente = dados.acaoPendente || null
+  if ('prazoAcao' in dados) colunas.prazo_acao = dados.prazoAcao || null
+  if ('adjudicadaEm' in dados) colunas.adjudicada_em = dados.adjudicadaEm || null
   if (dados.observacoes !== undefined) colunas.observacoes = dados.observacoes
   if (dados.linkAtaSigaPregao !== undefined) colunas.link_ata_siga_pregao = dados.linkAtaSigaPregao || null
   return colunas
@@ -132,6 +150,7 @@ function paraColunasItem(linha: DisputaResultadoLinhaFormData, disputaId: string
     motivo_perda_evitavel: linha.motivoPerdaEvitavel ?? null,
     vitoria_por_convocacao: linha.vitoriaPorConvocacao ?? false,
     cnpj_vencedor: linha.cnpjVencedor ?? null,
+    motivo_perda: linha.motivoPerda ?? null,
   }
 }
 
