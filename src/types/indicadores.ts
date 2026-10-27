@@ -9,7 +9,7 @@
 
 import type { Licitacao, EsferaLicitacao } from './licitacao';
 import type { ChaveMotivoIndicador, GrupoMotivo } from './motivoNaoParticipacao';
-import type { Disputa, ResultadoItemDisputa, MotivoPerdaHabilitacao, MotivoPerda } from './disputa';
+import type { Disputa, ResultadoItemDisputa, MotivoPerdaHabilitacao, MotivoPerdaEvitavel, MotivoPerda } from './disputa';
 import type { FamiliaProduto } from '../services/familiaProdutoService';
 
 /** Valor do filtro de esfera para licitações sem esfera informada. */
@@ -33,6 +33,8 @@ export interface FiltrosIndicadores {
   uf?: string;
   /** Esfera do órgão, ou FILTRO_SEM_ESFERA para as sem esfera informada. */
   esfera?: EsferaLicitacao | typeof FILTRO_SEM_ESFERA;
+  /** Analista (só o Administrador): licitações dos clientes da carteira dele. */
+  analistaId?: string;
   /** Resultado da licitação (ver ResultadoLicitacaoFiltro). */
   resultado?: ResultadoLicitacaoFiltro;
   /** Fase no pipeline — filtro "Status", só para Administrador e Analista. */
@@ -76,7 +78,33 @@ export interface ReaberturaDecisao {
   em: string;
 }
 
+/** Analista da Salutti e os clientes da sua carteira (aba Permissões do
+ *  Funcionário). Só o Administrador recebe esta lista. */
+export interface AnalistaCarteira {
+  id: string;
+  nome: string;
+  clienteIds: string[];
+}
+
+/** Uma linha do quadro de performance por analista. */
+export interface PerformanceAnalista {
+  id: string; // id do analista ou 'sem_analista'
+  nome: string;
+  clientes: number;
+  enviadas: number;
+  participacoes: number;
+  ganhos: number;
+  perdidos: number;
+  /** Ganhos ÷ (ganhos + perdidos), por item/grupo; null sem resultados. */
+  taxaVitoria: number | null;
+  valorAdjudicado: number;
+  perdasEvitaveis: number;
+  valorPerdasEvitaveis: number;
+}
+
 export interface DadosBaseIndicadores {
+  /** Analistas e carteiras (só o Administrador); ausente = sem filtro por analista. */
+  analistas?: AnalistaCarteira[];
   /** Faixas de inatividade de Configurações; ausente = padrão (7/14/21). */
   faixasInatividade?: { faixa1Dias: number; faixa2Dias: number; faixa3Dias: number };
   /** Reaberturas de decisão (só o Administrador as enxerga); ausente = não carregadas. */
@@ -199,6 +227,7 @@ export interface GanhoSobreMinimo {
 // ---------------------------------------------------------------------------
 export interface PerdaEvitavel {
   licitacaoId: string;
+  clienteId: string;
   numeroPregao: string;
   cliente: string;
   rotulo: string; // "3 — Café..." ou "Grupo 2"
@@ -207,6 +236,17 @@ export interface PerdaEvitavel {
   valorVencedor: number; // valor do vencedor (total)
   valorMinimo: number; // mínimo c/ frete (total)
   nomeVencedor: string;
+  /** Motivo registrado na Disputa; ausente = ainda não informado. */
+  motivo?: MotivoPerdaEvitavel;
+}
+
+/** Uma linha do ranking dos motivos das perdas evitáveis. */
+export interface MotivoPerdaEvitavelRanking {
+  /** Chave do motivo, ou 'nao_informado'. */
+  chave: MotivoPerdaEvitavel | 'nao_informado';
+  nome: string;
+  quantidade: number;
+  valorVencedor: number;
 }
 
 export interface PerdasEvitaveis {
@@ -214,6 +254,10 @@ export interface PerdasEvitaveis {
   /** Soma dos valores dos vencedores nesses itens: o que teria sido adjudicado
    *  com um lance até esse valor. */
   totalVencedor: number;
+  /** Ranking dos principais motivos (mais frequentes primeiro). */
+  porMotivo: MotivoPerdaEvitavelRanking[];
+  /** Ranking por analista (só o Administrador): quantidade e valor dos vencedores. */
+  porAnalista?: { nome: string; quantidade: number; valorVencedor: number }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -605,6 +649,10 @@ export interface ValorCliente {
   taxaVitoria: number | null;
   /** Ganho sobre o mínimo (%, ponderado); null = sem ganho com mínimo. */
   ganhoSobreMinimo: number | null;
+  /** Valor de referência de todas as licitações do cliente no período. */
+  valorCarteira: number;
+  /** Peso do cliente na carteira (% do valor de referência total); destaque acima de 30%. */
+  pesoCarteira: number;
 }
 
 export interface DesempenhoModalidade {
@@ -821,6 +869,8 @@ export interface DistanciaDerrota extends IndicadorPercentual {
 }
 
 export interface IndicadoresAdmin {
+  /** Quadro de performance por analista (vazio fora do Administrador). */
+  performanceAnalistas: PerformanceAnalista[];
   taxaVitoriaPorMes: TaxaVitoriaMes[];
   perdasHabilitacao: PerdasHabilitacao;
   vitoriasConvocacao: VitoriasConvocacao;
@@ -895,6 +945,8 @@ export interface UnidadeResultado {
   procedimento: 'srp' | 'convencional';
   vitoriaPorConvocacao?: boolean;
   motivoPerdaHabilitacao?: MotivoPerdaHabilitacao;
+  /** Por que a perda foi evitável (só perdas com vencedor igual ou acima do mínimo). */
+  motivoPerdaEvitavel?: MotivoPerdaEvitavel;
   cnpjVencedor?: string;
   /** Marcas da composição de cestas e kits (só itens): contam como presença
    *  nas vitórias por marca, mas não têm valor individual. */

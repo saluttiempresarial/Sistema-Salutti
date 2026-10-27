@@ -50,6 +50,8 @@ import {
   RESULTADOS_DE_PERDA,
   MotivoPerda,
   MOTIVO_PERDA_LABEL,
+  MotivoPerdaEvitavel,
+  MOTIVO_PERDA_EVITAVEL_LABEL,
   SituacaoProcesso,
   SITUACAO_PROCESSO_LABEL,
   AcaoPendente,
@@ -239,6 +241,9 @@ interface ValoresLinha {
   valorVencedorTexto: string;
   nomeVencedor: string;
   motivoPerda: MotivoPerda | '';
+  // Por que a perda foi evitável (só quando o vencedor ficou igual ou acima do
+  // nosso mínimo). '' = ainda não informado.
+  motivoPerdaEvitavel: MotivoPerdaEvitavel | '';
   // Marca de vitória por convocação: liga ao escolher "Convocado" e é mantida
   // quando o resultado passa a "Ganho (homologado)" (relatório de vitórias por
   // convocação).
@@ -252,6 +257,7 @@ const VALORES_VAZIOS: ValoresLinha = {
   valorVencedorTexto: '',
   nomeVencedor: '',
   motivoPerda: '',
+  motivoPerdaEvitavel: '',
   convocacao: false,
 };
 
@@ -336,6 +342,14 @@ function CartaoResultado({
 
   const resultado = valores.resultadoItem;
   const mostrarMotivo = resultado !== '' && RESULTADOS_DE_PERDA.includes(resultado);
+  // Perda evitável: perdemos e o vencedor ficou igual ou acima do nosso mínimo
+  // (c/ frete) — mesma regra do card "Perdas evitáveis" dos Indicadores.
+  const perdaEvitavel =
+    (resultado === 'perdido_analise' || resultado === 'perdido') &&
+    vencedor != null &&
+    minimo != null &&
+    minimo > 0 &&
+    vencedor >= minimo;
   const vencedorLiberado = atrasDoPrimeiro || (resultado !== '' && RESULTADOS_DE_PERDA.includes(resultado));
   const textoVencedorBloqueado = emPrimeiro ? '— (cliente em 1º)' : '— (informe a posição)';
 
@@ -504,6 +518,25 @@ function CartaoResultado({
             <span className="text-xs text-[#5E6863]">aparece só quando o resultado é de perda</span>
           </div>
         )}
+        {perdaEvitavel && (
+          <div className="flex flex-col gap-1.5">
+            <span className={CLASSE_ROTULO}>Por que foi evitável</span>
+            <select
+              aria-label="Por que a perda foi evitável"
+              value={valores.motivoPerdaEvitavel}
+              onChange={(e) => onChange('motivoPerdaEvitavel', e.target.value as MotivoPerdaEvitavel | '')}
+              className={CLASSE_CAMPO}
+            >
+              <option value="">Selecione</option>
+              {(Object.keys(MOTIVO_PERDA_EVITAVEL_LABEL) as MotivoPerdaEvitavel[]).map((valor) => (
+                <option key={valor} value={valor}>
+                  {MOTIVO_PERDA_EVITAVEL_LABEL[valor]}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-[#5E6863]">o vencedor ficou igual ou acima do nosso mínimo</span>
+          </div>
+        )}
       </div>
 
       {children}
@@ -659,6 +692,7 @@ export function DisputaFormModal({
         valorVencedorTexto: numeroParaCampoDecimal(linha.valorVencedor, 2),
         nomeVencedor: linha.nomeVencedor ?? '',
         motivoPerda: linha.motivoPerda ?? '',
+        motivoPerdaEvitavel: linha.motivoPerdaEvitavel ?? '',
         convocacao: linha.vitoriaPorConvocacao ?? false,
       };
       if (linha.itemId) valoresItem[linha.itemId] = valoresLinha;
@@ -844,7 +878,12 @@ export function DisputaFormModal({
         resultadoItem === 'convocado' || (resultadoItem === 'ganho' && !!valores?.convocacao),
       // Detalhe da migração 054, preservado se o resultado continua o mesmo tipo.
       motivoPerdaHabilitacao: resultadoItem === 'perdido_habilitacao' ? legado?.motivoPerdaHabilitacao : undefined,
-      motivoPerdaEvitavel: resultadoItem === 'perdido' ? legado?.motivoPerdaEvitavel : undefined,
+      // Só nas perdas por preço (provisória ou definitiva); vale como registro mesmo
+      // se o vencedor mudar depois: o indicador só lê as perdas que seguem evitáveis.
+      motivoPerdaEvitavel:
+        (resultadoItem === 'perdido' || resultadoItem === 'perdido_analise') && valores?.motivoPerdaEvitavel
+          ? valores.motivoPerdaEvitavel
+          : undefined,
       cnpjVencedor: emPerda ? legado?.cnpjVencedor : undefined,
     };
   }
@@ -1106,8 +1145,8 @@ export function DisputaFormModal({
             </label>
             <div className="flex flex-col justify-end">
               <span className="text-[13px] leading-snug text-[#6B4206]">
-                <strong>Alerta:</strong> o prazo fica registrado na disputa. O aviso automático no painel de
-                pendências será ativado em uma próxima etapa.
+                <strong>Alerta:</strong> o prazo fica registrado na disputa e gera aviso no sino e no cartão de
+                prazos do painel quando estiver vencido ou próximo.
               </span>
             </div>
           </div>

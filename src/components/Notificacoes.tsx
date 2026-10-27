@@ -8,6 +8,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLicitacoesInternas } from '@/hooks/useLicitacoesInternas'
+import { useAcoesDisputa } from '@/hooks/useAcoesDisputa'
+import { ROTULO_SITUACAO_ACAO } from '@/utils/acoesDisputa'
 import { alertasDePrazo, eventosDasLicitacoes, formatarHora, rotuloDia } from '@/utils/eventosPainel'
 import { Etiqueta } from '@/components/dashboard/Etiqueta'
 import { IconeSino } from '@/components/icones'
@@ -19,6 +21,7 @@ export function Notificacoes() {
   const [aberto, setAberto] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  const { alertas: acoes, carregando: carregandoAcoes } = useAcoesDisputa()
   const alertas = useMemo(() => alertasDePrazo(eventosDasLicitacoes(licitacoes)), [licitacoes])
   const aguardandoDecisao = useMemo(
     () => licitacoes.filter((l) => l.decisaoCliente === 'pendente').length,
@@ -40,7 +43,8 @@ export function Notificacoes() {
     }
   }, [])
 
-  const total = alertas.length
+  const totalAcoes = acoes.length
+  const total = alertas.length + totalAcoes
   const agora = new Date()
 
   return (
@@ -48,7 +52,7 @@ export function Notificacoes() {
       <button
         type="button"
         onClick={() => setAberto((valor) => !valor)}
-        aria-label={total > 0 ? `Notificações: ${total} prazos vencidos ou próximos` : 'Notificações'}
+        aria-label={total > 0 ? `Notificações: ${total} prazos e ações vencidos ou próximos` : 'Notificações'}
         aria-expanded={aberto}
         className="relative flex h-10 w-10 items-center justify-center rounded-xl text-forest-deep transition-colors hover:bg-forest-mist"
       >
@@ -68,14 +72,51 @@ export function Notificacoes() {
 
           {carregando && <p className="px-4 py-5 text-center font-body text-sm text-ink-soft">Carregando...</p>}
 
-          {!carregando && total === 0 && aguardandoDecisao === 0 && (
+          {!carregando && !carregandoAcoes && total === 0 && aguardandoDecisao === 0 && (
             <p className="px-4 py-5 text-center font-body text-sm text-ink-soft">Nenhuma notificação por enquanto.</p>
           )}
 
-          {!carregando && total > 0 && (
+          {totalAcoes > 0 && (
             <div>
               <p className="px-4 pb-1 pt-3 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-                Prazos vencidos ou próximos ({total})
+                Ações da disputa ({totalAcoes})
+              </p>
+              <ul>
+                {acoes.slice(0, MAXIMO_NA_LISTA).map((acao) => (
+                  <li key={acao.disputaId}>
+                    <Link
+                      to="/admin/disputas"
+                      onClick={() => setAberto(false)}
+                      className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-paper-2/60"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-body text-sm font-semibold text-ink">
+                          {acao.acaoRotulo} • Nº {acao.numeroPregao}
+                        </span>
+                        <span className="block truncate font-body text-xs text-ink-soft">
+                          {acao.prazo ? `${rotuloDia(acao.prazo, agora)} • ${formatarHora(acao.prazo)}` : 'Prazo não informado'}
+                        </span>
+                      </span>
+                      <Etiqueta
+                        rotulo={ROTULO_SITUACAO_ACAO[acao.situacao]}
+                        tom={acao.situacao === 'vencida' ? 'danger' : 'warning'}
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {totalAcoes > MAXIMO_NA_LISTA && (
+                <p className="px-4 pb-2 font-body text-xs text-ink-soft">
+                  e mais {totalAcoes - MAXIMO_NA_LISTA} {totalAcoes - MAXIMO_NA_LISTA === 1 ? 'ação' : 'ações'}
+                </p>
+              )}
+            </div>
+          )}
+
+          {!carregando && alertas.length > 0 && (
+            <div>
+              <p className="px-4 pb-1 pt-3 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                Prazos vencidos ou próximos ({alertas.length})
               </p>
               <ul>
                 {alertas.slice(0, MAXIMO_NA_LISTA).map((alerta) => (
@@ -98,9 +139,9 @@ export function Notificacoes() {
                   </li>
                 ))}
               </ul>
-              {total > MAXIMO_NA_LISTA && (
+              {alertas.length > MAXIMO_NA_LISTA && (
                 <p className="px-4 pb-2 font-body text-xs text-ink-soft">
-                  e mais {total - MAXIMO_NA_LISTA} {total - MAXIMO_NA_LISTA === 1 ? 'prazo' : 'prazos'}
+                  e mais {alertas.length - MAXIMO_NA_LISTA} {alertas.length - MAXIMO_NA_LISTA === 1 ? 'prazo' : 'prazos'}
                 </p>
               )}
             </div>

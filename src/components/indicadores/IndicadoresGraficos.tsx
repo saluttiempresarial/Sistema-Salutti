@@ -26,7 +26,6 @@ import {
 } from 'recharts'
 import type {
   ClientesSemAtividade,
-  ConcentracaoCarteira,
   DesempenhoModalidade,
   MercadoUfEsfera,
   MotivosNaoParticipacao,
@@ -51,6 +50,7 @@ import type {
   ValorAdjudicado,
 } from '../../types/indicadores'
 import { FILTRO_SEM_ESFERA, SITUACAO_INATIVIDADE_LABEL } from '../../types/indicadores'
+import { MOTIVO_PERDA_EVITAVEL_LABEL } from '../../types/disputa'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '../../utils/prazoUtils'
 
 const COR_GANHO = '#0B5C3C' // forest
@@ -523,6 +523,73 @@ function GanhoSobreMinimoBloco({ dados }: { dados: IndicadoresAdmin['ganhoSobreM
 }
 
 // ---------------------------------------------------------------------------
+// Performance por analista (só o Administrador)
+// ---------------------------------------------------------------------------
+const AMOSTRA_MINIMA_ANALISTA = 5
+
+function PerformanceAnalistasBloco({ dados }: { dados: IndicadoresAdmin['performanceAnalistas'] }) {
+  if (dados.length === 0) return <SemDados />
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left font-body text-sm">
+          <thead>
+            <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
+              <th className="py-2 pr-3 font-normal">Analista</th>
+              <th className="py-2 pr-3 text-right font-normal">Enviadas</th>
+              <th className="py-2 pr-3 text-right font-normal">Participações</th>
+              <th className="py-2 pr-3 text-right font-normal">Taxa de vitória</th>
+              <th className="py-2 pr-3 text-right font-normal">Adjudicado</th>
+              <th className="py-2 text-right font-normal">Perdas evitáveis</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dados.map((a) => {
+              const disputados = a.ganhos + a.perdidos
+              return (
+                <tr key={a.id} className="border-b border-ink-soft/10 align-top">
+                  <td className="py-2 pr-3 text-ink">
+                    {a.nome}
+                    <div className="text-xs text-ink-soft">
+                      {formatarNumero(a.clientes)} {a.clientes === 1 ? 'cliente' : 'clientes'}
+                    </div>
+                  </td>
+                  <td className="py-2 pr-3 text-right text-ink">{formatarNumero(a.enviadas)}</td>
+                  <td className="py-2 pr-3 text-right text-ink">{formatarNumero(a.participacoes)}</td>
+                  <td className="py-2 pr-3 text-right text-ink">
+                    {formatarPercentual(a.taxaVitoria)}
+                    <div className="text-xs text-ink-soft">
+                      {formatarNumero(a.ganhos)} de {formatarNumero(disputados)}
+                    </div>
+                    {disputados > 0 && disputados < AMOSTRA_MINIMA_ANALISTA && (
+                      <div className="text-xs" style={{ color: COR_ALERTA }}>
+                        amostra pequena
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-2 pr-3 text-right text-ink">{formatarMoeda(a.valorAdjudicado)}</td>
+                  <td className="py-2 text-right text-ink">
+                    {formatarNumero(a.perdasEvitaveis)}
+                    {a.perdasEvitaveis > 0 && (
+                      <div className="text-xs text-ink-soft">{formatarMoeda(a.valorPerdasEvitaveis)}</div>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 font-body text-xs text-ink-soft">
+        Cada analista aparece com os clientes da sua carteira (aba Permissões do Funcionário); a taxa de vitória conta
+        itens e grupos. Com menos de {AMOSTRA_MINIMA_ANALISTA} disputados, o percentual oscila muito. Valor adjudicado
+        não é faturamento.
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // 6. Perdas evitáveis
 // ---------------------------------------------------------------------------
 function PerdasEvitaveisBloco({ dados }: { dados: IndicadoresAdmin['perdasEvitaveis'] }) {
@@ -539,7 +606,8 @@ function PerdasEvitaveisBloco({ dados }: { dados: IndicadoresAdmin['perdasEvitav
               <th className="py-2 pr-3 font-normal">Item / grupo</th>
               <th className="py-2 pr-3 text-right font-normal">Nosso valor</th>
               <th className="py-2 pr-3 text-right font-normal">Vencedor</th>
-              <th className="py-2 text-right font-normal">Mínimo c/ frete</th>
+              <th className="py-2 pr-3 text-right font-normal">Mínimo c/ frete</th>
+              <th className="py-2 font-normal">Por que foi evitável</th>
             </tr>
           </thead>
           <tbody>
@@ -555,12 +623,45 @@ function PerdasEvitaveisBloco({ dados }: { dados: IndicadoresAdmin['perdasEvitav
                   {formatarMoeda(l.valorVencedor)}
                   <div className="text-xs text-ink-soft">{l.nomeVencedor || 'não informado'}</div>
                 </td>
-                <td className="py-2 text-right text-ink">{formatarMoeda(l.valorMinimo)}</td>
+                <td className="py-2 pr-3 text-right text-ink">{formatarMoeda(l.valorMinimo)}</td>
+                <td className="py-2 text-ink">
+                  {l.motivo ? MOTIVO_PERDA_EVITAVEL_LABEL[l.motivo] : <span className="text-ink-soft">não informado</span>}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {dados.porMotivo.length > 0 && (
+        <div className="mt-4">
+          <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Principais motivos</h4>
+          <ul className="mt-2 space-y-1">
+            {dados.porMotivo.map((m) => (
+              <li key={m.chave} className="flex justify-between font-body text-sm text-ink">
+                <span>
+                  {m.nome} <span className="text-ink-soft">({formatarNumero(m.quantidade)})</span>
+                </span>
+                <strong>{formatarMoeda(m.valorVencedor)}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {dados.porAnalista && dados.porAnalista.length > 0 && (
+        <div className="mt-4">
+          <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Ranking por analista (carteira)</h4>
+          <ul className="mt-2 space-y-1">
+            {dados.porAnalista.map((a) => (
+              <li key={a.nome} className="flex justify-between font-body text-sm text-ink">
+                <span>
+                  {a.nome} <span className="text-ink-soft">({formatarNumero(a.quantidade)})</span>
+                </span>
+                <strong>{formatarMoeda(a.valorVencedor)}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="mt-3 font-body text-sm text-ink">
         Total que teria sido adjudicado com um lance até o valor do vencedor:{' '}
         <strong style={{ color: COR_ALERTA }}>{formatarMoeda(dados.totalVencedor)}</strong>
@@ -1466,11 +1567,14 @@ function ClientesSemAtividadeBloco({ dados }: { dados: ClientesSemAtividade }) {
       <p className="font-body text-xs text-ink-soft">
         Faixas (Configurações): {formatarNumero(dados.faixas.faixa1Dias)}, {formatarNumero(dados.faixas.faixa2Dias)} e{' '}
         {formatarNumero(dados.faixas.faixa3Dias)} dias, da mais leve para a mais grave. Ordem pelo risco: faixa mais grave primeiro e,
-        dentro dela, maior valor adjudicado. Só o filtro de cliente vale aqui.
+        dentro dela, maior valor adjudicado. Só os filtros de cliente e de analista valem aqui.
       </p>
     </div>
   )
 }
+
+/** Acima desse peso (%), o cliente é destacado como concentração da carteira. */
+const LIMITE_CONCENTRACAO = 30
 
 function FatiasBarras({ fatias, destacarAcimaDe }: { fatias: FatiaCarteira[]; destacarAcimaDe?: number }) {
   return (
@@ -1500,30 +1604,16 @@ function FatiasBarras({ fatias, destacarAcimaDe }: { fatias: FatiaCarteira[]; de
   )
 }
 
-function ConcentracaoBloco({ dados }: { dados: ConcentracaoCarteira }) {
-  if (dados.total <= 0) return <SemDados />
-  return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div>
-        <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Por cliente</p>
-        <FatiasBarras fatias={dados.porCliente} destacarAcimaDe={30} />
-      </div>
-      <div>
-        <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Por segmento</p>
-        <FatiasBarras fatias={dados.porSegmento} />
-      </div>
-    </div>
-  )
-}
-
-function ValorPorClienteBloco({ dados }: { dados: ValorCliente[] }) {
+function ValorPorClienteBloco({ dados, segmentos }: { dados: ValorCliente[]; segmentos: FatiaCarteira[] }) {
   if (dados.length === 0) return <SemDados />
   return (
+    <div>
     <div className="max-h-[28rem] overflow-auto">
-      <table className="w-full min-w-[720px] font-body text-sm">
+      <table className="w-full min-w-[800px] font-body text-sm">
         <thead className="sticky top-0 bg-white">
           <tr className="border-b border-ink-soft/15 text-left font-mono text-[11px] uppercase tracking-wide text-ink-soft">
             <th className="py-2 pr-3 font-semibold">Cliente</th>
+            <th className="py-2 pr-3 text-right font-semibold">Peso na carteira</th>
             <th className="py-2 pr-3 text-right font-semibold">Enviadas</th>
             <th className="py-2 pr-3 text-right font-semibold">Participações</th>
             <th className="py-2 pr-3 text-right font-semibold">Taxa de vitória</th>
@@ -1536,6 +1626,14 @@ function ValorPorClienteBloco({ dados }: { dados: ValorCliente[] }) {
           {dados.map((c) => (
             <tr key={c.chave}>
               <td className="max-w-[220px] truncate py-2 pr-3 text-ink">{c.nome}</td>
+              <td className="py-2 pr-3 text-right text-ink-soft">
+                {formatarPercentual(c.pesoCarteira)}
+                {c.pesoCarteira > LIMITE_CONCENTRACAO && (
+                  <div className="text-xs font-semibold" style={{ color: COR_ALERTA }}>
+                    acima de {LIMITE_CONCENTRACAO}%
+                  </div>
+                )}
+              </td>
               <td className="py-2 pr-3 text-right text-ink-soft">{formatarNumero(c.enviadas)}</td>
               <td className="py-2 pr-3 text-right text-ink-soft">{formatarNumero(c.participacoes)}</td>
               <td className="py-2 pr-3 text-right text-ink-soft">{c.taxaVitoria !== null ? formatarPercentual(c.taxaVitoria) : '—'}</td>
@@ -1550,8 +1648,16 @@ function ValorPorClienteBloco({ dados }: { dados: ValorCliente[] }) {
         </tbody>
       </table>
       <p className="mt-2 font-body text-xs text-ink-soft">
-        Em disputa = valor de referência das licitações com participação confirmada e sem resultado. Adjudicado não é faturamento.
+        Em disputa = valor de referência das licitações com participação confirmada e sem resultado. Adjudicado não é
+        faturamento. Peso na carteira = valor de referência das licitações do cliente ÷ total do período.
       </p>
+    </div>
+    {segmentos.length > 0 && (
+      <div className="mt-5">
+        <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Por segmento</p>
+        <FatiasBarras fatias={segmentos} />
+      </div>
+    )}
     </div>
   )
 }
@@ -1740,6 +1846,7 @@ export type ChaveIndicador =
   | 'familias'
   | 'ganho_sobre_minimo'
   | 'perdas_evitaveis'
+  | 'performance_analista'
   | 'perdas_habilitacao'
   | 'vitorias_convocacao'
   | 'alerta_acompanhamento'
@@ -1757,7 +1864,6 @@ export type ChaveIndicador =
   | 'produtos_nunca_ganhos'
   | 'tempo_resposta'
   | 'clientes_sem_atividade'
-  | 'concentracao_carteira'
   | 'valor_por_cliente'
   | 'desempenho_modalidade'
   | 'mercado_uf_esfera'
@@ -1838,18 +1944,18 @@ export function IndicadoresGraficos({ indicadores, visiveis, ocultarVazios = fal
       )}
 
       {ver('valor_por_cliente') && (
-        <Cartao titulo="Valor por cliente" subtitulo="Valor em disputa e valor adjudicado (todos os clientes, do maior valor adjudicado para o menor)">
-          <ValorPorClienteBloco dados={indicadores.valorPorCliente} />
+        <Cartao titulo="Valor por cliente" subtitulo="Valor em disputa, valor adjudicado e peso na carteira (todos os clientes, do maior valor adjudicado para o menor)">
+          <ValorPorClienteBloco dados={indicadores.valorPorCliente} segmentos={indicadores.concentracaoCarteira.porSegmento} />
         </Cartao>
       )}
 
-      {ver('concentracao_carteira') && (
+      {ver('performance_analista') && indicadores.performanceAnalistas.length > 0 && (
         <Cartao
-          titulo="Concentração da carteira"
-          subtitulo="Peso de cada cliente e de cada segmento no valor de referência das licitações"
+          titulo="Performance por analista"
+          subtitulo="Resultado da carteira de cada analista, dentro dos filtros escolhidos (uso interno)"
           className="lg:col-span-2"
         >
-          <ConcentracaoBloco dados={indicadores.concentracaoCarteira} />
+          <PerformanceAnalistasBloco dados={indicadores.performanceAnalistas} />
         </Cartao>
       )}
 

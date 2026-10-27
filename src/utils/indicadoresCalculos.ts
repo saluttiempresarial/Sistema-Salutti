@@ -47,6 +47,7 @@ import {
   situacaoDaDisputa,
   ETAPA_ORIGEM_PERDA_HABILITACAO,
   MOTIVO_PERDA_HABILITACAO_LABEL,
+  MOTIVO_PERDA_EVITAVEL_LABEL,
   MOTIVO_PERDA_LABEL,
 } from '../types/disputa';
 import { GRUPO_MOTIVO_LABEL, definicaoDoMotivo } from '../types/motivoNaoParticipacao';
@@ -90,6 +91,7 @@ import {
   type OpcaoFiltro,
   type ResultadoLicitacaoFiltro,
   type PerdaEvitavel,
+  type MotivoPerdaEvitavelRanking,
   type PerdasEvitaveis,
   type ProdutoNuncaGanho,
   type ProdutosNuncaGanhos,
@@ -113,6 +115,8 @@ import {
   type TaxaVitoria,
   type TaxaVitoriaFamilia,
   type UnidadeResultado,
+  type AnalistaCarteira,
+  type PerformanceAnalista,
   type ValorAdjudicado,
   type ValorAdjudicadoMes,
   type VolumeMes,
@@ -246,13 +250,16 @@ export function filtrarLicitacoes(
   licitacoes: Licitacao[],
   filtros: FiltrosIndicadores,
   disputas: Disputa[] = [],
-  agora: Date = new Date()
+  agora: Date = new Date(),
+  /** Clientes da carteira do analista escolhido (undefined = sem restrição). */
+  clientesPermitidos?: ReadonlySet<string>
 ): Licitacao[] {
   const disputaPorLicitacao =
     filtros.resultado || filtros.fase ? new Map(disputas.map((d) => [d.licitacaoId, d])) : null;
   const passou = licitacoes.filter((l) => {
     if (!dentroDoPeriodo(dataDaLicitacao(l), filtros.dataDe, filtros.dataAte)) return false;
     if (filtros.clienteId && l.clienteId !== filtros.clienteId) return false;
+    if (clientesPermitidos && !clientesPermitidos.has(l.clienteId)) return false;
     if (filtros.modalidade && l.modalidade !== filtros.modalidade) return false;
     if (filtros.familiaId) {
       const alvo = filtros.familiaId;
@@ -403,6 +410,7 @@ export function montarUnidades(
           nomeVencedor: linha.nomeVencedor,
           vitoriaPorConvocacao: linha.vitoriaPorConvocacao,
           motivoPerdaHabilitacao: linha.motivoPerdaHabilitacao,
+          motivoPerdaEvitavel: linha.motivoPerdaEvitavel,
           cnpjVencedor: linha.cnpjVencedor,
           posicao: linha.posicao,
           motivoPerda: linha.motivoPerda,
@@ -439,6 +447,7 @@ export function montarUnidades(
           nomeVencedor: linha.nomeVencedor,
           vitoriaPorConvocacao: linha.vitoriaPorConvocacao,
           motivoPerdaHabilitacao: linha.motivoPerdaHabilitacao,
+          motivoPerdaEvitavel: linha.motivoPerdaEvitavel,
           cnpjVencedor: linha.cnpjVencedor,
           posicao: linha.posicao,
           motivoPerda: linha.motivoPerda,
@@ -913,7 +922,8 @@ export function calcularGanhoSobreMinimo(
 export function calcularPerdasEvitaveis(
   licitacoes: Licitacao[],
   unidades: UnidadeResultado[],
-  nomeDoCliente: (id: string) => string
+  nomeDoCliente: (id: string) => string,
+  analistas?: AnalistaCarteira[]
 ): PerdasEvitaveis {
   const licitacaoPorId = new Map(licitacoes.map((l) => [l.id, l]));
   const linhas: PerdaEvitavel[] = unidades
@@ -927,6 +937,7 @@ export function calcularPerdasEvitaveis(
     )
     .map((u) => ({
       licitacaoId: u.licitacaoId,
+      clienteId: u.clienteId,
       numeroPregao: licitacaoPorId.get(u.licitacaoId)?.numeroPregao ?? '—',
       cliente: nomeDoCliente(u.clienteId),
       rotulo: u.rotulo,
@@ -935,10 +946,101 @@ export function calcularPerdasEvitaveis(
       valorVencedor: u.valorVencedor as number,
       valorMinimo: u.valorMinimoComFrete as number,
       nomeVencedor: u.nomeVencedor?.trim() || 'não informado',
+      motivo: u.motivoPerdaEvitavel,
     }))
     .sort((a, b) => b.valorVencedor - a.valorVencedor);
 
-  return { linhas, totalVencedor: linhas.reduce((s, l) => s + l.valorVencedor, 0) };
+  // Ranking dos motivos: mais frequentes primeiro; empate pelo valor perdido.
+  // "Não informado" sempre fica por último, para não esconder os motivos reais.
+  const motivos = new Map<string, MotivoPerdaEvitavelRanking>();
+  linhas.forEach((l) => {
+    const chave = l.motivo ?? 'nao_informado';
+    const atual = motivos.get(chave) ?? {
+      chave,
+      nome: l.motivo ? MOTIVO_PERDA_EVITAVEL_LABEL[l.motivo] : 'Motivo não informado',
+      quantidade: 0,
+      valorVencedor: 0,
+    };
+    atual.quantidade += 1;
+    atual.valorVencedor += l.valorVencedor;
+    motivos.set(chave, atual);
+  });
+  const porMotivo = [...motivos.values()].sort((a, b) => {
+    if ((a.chave === 'nao_informado') !== (b.chave === 'nao_informado')) return a.chave === 'nao_informado' ? 1 : -1;
+    return b.quantidade - a.quantidade || b.valorVencedor - a.valorVencedor;
+  });
+
+  const resultado: PerdasEvitaveis = {
+    linhas,
+    totalVencedor: linhas.reduce((s, l) => s + l.valorVencedor, 0),
+    porMotivo,
+  };
+
+  // Ranking por analista (carteira): um cliente em duas carteiras conta nas duas.
+  if (analistas && analistas.length > 0) {
+    const mapa = new Map<string, { nome: string; quantidade: number; valorVencedor: number }>();
+    linhas.forEach((l) => {
+      const donos = analistas.filter((a) => a.clienteIds.includes(l.clienteId));
+      const nomes = donos.length > 0 ? donos.map((a) => a.nome) : ['Sem analista'];
+      nomes.forEach((nome) => {
+        const atual = mapa.get(nome) ?? { nome, quantidade: 0, valorVencedor: 0 };
+        atual.quantidade += 1;
+        atual.valorVencedor += l.valorVencedor;
+        mapa.set(nome, atual);
+      });
+    });
+    resultado.porAnalista = [...mapa.values()].sort((a, b) => b.valorVencedor - a.valorVencedor);
+  }
+  return resultado;
+}
+
+/** Quadro de performance por analista: cada analista com os clientes da sua
+ *  carteira, já dentro dos filtros escolhidos. Clientes sem analista entram em
+ *  "Sem analista". Um cliente em duas carteiras conta nas duas. */
+export function calcularPerformanceAnalistas(
+  licitacoes: Licitacao[],
+  unidades: UnidadeResultado[],
+  analistas: AnalistaCarteira[],
+  perdas: PerdasEvitaveis,
+  somenteAnalistaId?: string
+): PerformanceAnalista[] {
+  if (analistas.length === 0) return [];
+  const comAnalista = new Set(analistas.flatMap((a) => a.clienteIds));
+  const grupos: { id: string; nome: string; clienteIds: Set<string> }[] = analistas.map((a) => ({
+    id: a.id,
+    nome: a.nome,
+    clienteIds: new Set(a.clienteIds),
+  }));
+  const semAnalista = new Set(licitacoes.map((l) => l.clienteId).filter((id) => !comAnalista.has(id)));
+  if (semAnalista.size > 0 && !somenteAnalistaId) {
+    grupos.push({ id: 'sem_analista', nome: 'Sem analista', clienteIds: semAnalista });
+  }
+
+  const adjudicado = valorAdjudicadoPorCliente(unidades);
+
+  return grupos
+    .filter((g) => !somenteAnalistaId || g.id === somenteAnalistaId)
+    .map((g) => {
+      const lics = licitacoes.filter((l) => g.clienteIds.has(l.clienteId));
+      const uns = unidades.filter((u) => g.clienteIds.has(u.clienteId));
+      const taxa = calcularTaxaVitoria(uns);
+      const perdasDoGrupo = perdas.linhas.filter((l) => g.clienteIds.has(l.clienteId));
+      return {
+        id: g.id,
+        nome: g.nome,
+        clientes: g.clienteIds.size,
+        enviadas: lics.filter((l) => l.liberadaAoClienteEm).length,
+        participacoes: lics.filter((l) => l.decisaoCliente === 'participar').length,
+        ganhos: taxa.ganhos,
+        perdidos: taxa.perdidos,
+        taxaVitoria: taxa.percentualQuantidade,
+        valorAdjudicado: [...g.clienteIds].reduce((s, id) => s + (adjudicado.get(id) ?? 0), 0),
+        perdasEvitaveis: perdasDoGrupo.length,
+        valorPerdasEvitaveis: perdasDoGrupo.reduce((s, l) => s + l.valorVencedor, 0),
+      };
+    })
+    .filter((a) => a.clientes > 0)
+    .sort((a, b) => b.valorAdjudicado - a.valorAdjudicado);
 }
 
 // ---------------------------------------------------------------------------
@@ -1978,6 +2080,8 @@ export function calcularValorPorCliente(
       participacoes: 0,
       taxaVitoria: null,
       ganhoSobreMinimo: null,
+      valorCarteira: 0,
+      pesoCarteira: 0,
     };
     mapa.set(id, novo);
     return novo;
@@ -1987,6 +2091,9 @@ export function calcularValorPorCliente(
     const cliente = garantir(l.clienteId);
     if (l.liberadaAoClienteEm) cliente.enviadas += 1;
     if (l.decisaoCliente === 'participar') cliente.participacoes += 1;
+    // Peso na carteira: valor de referência de todas as licitações (mesma base do
+    // antigo card "Concentração da carteira").
+    cliente.valorCarteira += valorReferenciaLicitacao(l);
     if (l.decisaoCliente !== 'participar') return;
     if (desfechoFinal(l, disputaPorLicitacao.get(l.id)) !== null) return;
     cliente.valorEmDisputa += valorReferenciaLicitacao(l);
@@ -2025,6 +2132,11 @@ export function calcularValorPorCliente(
   });
   ganhasPorCliente.forEach((conjunto, id) => {
     garantir(id).licitacoesGanhas = conjunto.size;
+  });
+
+  const totalCarteira = [...mapa.values()].reduce((soma, c) => soma + c.valorCarteira, 0);
+  mapa.forEach((c) => {
+    c.pesoCarteira = totalCarteira > 0 ? (c.valorCarteira / totalCarteira) * 100 : 0;
   });
 
   return [...mapa.values()]
@@ -2229,7 +2341,16 @@ export function calcularIndicadoresAdmin(
         ? us.filter((u) => ehPerdida(u))
         : us;
 
-  const licitacoes = filtrarLicitacoes(dados.licitacoes, filtros, dados.disputas, agora);
+  const clientesConhecidos = new Set(dados.clientes.map((c) => c.id));
+  const analistas = (dados.analistas ?? []).map((a) => ({
+    ...a,
+    clienteIds: a.clienteIds.filter((id) => clientesConhecidos.has(id)),
+  }));
+  const clientesDoAnalista = filtros.analistaId
+    ? new Set(analistas.find((a) => a.id === filtros.analistaId)?.clienteIds ?? [])
+    : undefined;
+
+  const licitacoes = filtrarLicitacoes(dados.licitacoes, filtros, dados.disputas, agora, clientesDoAnalista);
   const unidades = soResultado(
     montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios)
   );
@@ -2238,7 +2359,7 @@ export function calcularIndicadoresAdmin(
   const anterior = periodoAnterior(filtros);
   let taxaAnterior: TaxaVitoria | null = null;
   if (anterior) {
-    const licitacoesAnteriores = filtrarLicitacoes(dados.licitacoes, { ...filtros, ...anterior }, dados.disputas, agora);
+    const licitacoesAnteriores = filtrarLicitacoes(dados.licitacoes, { ...filtros, ...anterior }, dados.disputas, agora, clientesDoAnalista);
     taxaAnterior = calcularTaxaVitoria(
       soResultado(
         montarUnidades(licitacoesAnteriores, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios)
@@ -2251,7 +2372,10 @@ export function calcularIndicadoresAdmin(
     montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca, true)
   );
 
+  const perdasEvitaveis = calcularPerdasEvitaveis(licitacoes, unidades, nomeDoCliente, analistas);
+
   return {
+    performanceAnalistas: calcularPerformanceAnalistas(licitacoes, unidades, analistas, perdasEvitaveis, filtros.analistaId),
     taxaVitoriaPorMes: calcularTaxaVitoriaPorMes(unidades),
     perdasHabilitacao: calcularPerdasHabilitacao(licitacoes, unidades, nomeDoCliente),
     vitoriasConvocacao: calcularVitoriasConvocacao(licitacoes, unidades, nomeDoCliente),
@@ -2265,7 +2389,7 @@ export function calcularIndicadoresAdmin(
       (barra) => !filtros.familiaId || barra.chave === filtros.familiaId
     ),
     ganhoSobreMinimo: calcularGanhoSobreMinimo(unidades, nomeDaFamilia),
-    perdasEvitaveis: calcularPerdasEvitaveis(licitacoes, unidades, nomeDoCliente),
+    perdasEvitaveis,
     valorAdjudicado: calcularValorAdjudicado(licitacoes, unidades),
     foraDeMercado: calcularForaDeMercado(licitacoes, unidades, nomeDoCliente, nomeDaFamilia),
     distanciaDerrota: calcularDistanciaDerrota(licitacoes, unidades, nomeDaFamilia, nomeDoCliente),
@@ -2279,7 +2403,13 @@ export function calcularIndicadoresAdmin(
     pipeline: calcularPipeline(licitacoes, dados.disputas, agora),
     // Os prazos olham sempre a partir de agora: ignoram o filtro de período.
     prazosProximos: calcularPrazosProximos(
-      filtrarLicitacoes(dados.licitacoes, { ...filtros, dataDe: undefined, dataAte: undefined }, dados.disputas, agora),
+      filtrarLicitacoes(
+        dados.licitacoes,
+        { ...filtros, dataDe: undefined, dataAte: undefined },
+        dados.disputas,
+        agora,
+        clientesDoAnalista
+      ),
       dados.disputas,
       nomeDoCliente,
       agora
@@ -2287,10 +2417,14 @@ export function calcularIndicadoresAdmin(
     aproveitamento: calcularAproveitamento(licitacoes, nomeDoCliente),
     tempoResposta: calcularTempoResposta(licitacoes, nomeDoCliente, dados.reaberturas),
     // Olha sempre a atividade mais recente de cada cliente: ignora os filtros.
-    // Só o filtro de cliente vale aqui: com um cliente escolhido, mostra só ele.
+    // Só os filtros de cliente e de analista valem aqui.
     clientesSemAtividade: calcularClientesSemAtividade(
-      filtros.clienteId ? dados.licitacoes.filter((l) => l.clienteId === filtros.clienteId) : dados.licitacoes,
-      filtros.clienteId ? dados.clientes.filter((c) => c.id === filtros.clienteId) : dados.clientes,
+      dados.licitacoes.filter(
+        (l) => (!filtros.clienteId || l.clienteId === filtros.clienteId) && (!clientesDoAnalista || clientesDoAnalista.has(l.clienteId))
+      ),
+      dados.clientes.filter(
+        (c) => (!filtros.clienteId || c.id === filtros.clienteId) && (!clientesDoAnalista || clientesDoAnalista.has(c.id))
+      ),
       agora,
       dados.faixasInatividade,
       valorAdjudicadoPorCliente(montarUnidades(dados.licitacoes, dados.disputas))

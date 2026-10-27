@@ -21,14 +21,23 @@ import { useLicitacoesInternas } from '@/hooks/useLicitacoesInternas'
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { CabecalhoPainel } from '@/components/dashboard/CabecalhoPainel'
 import { CartaoResumo } from '@/components/dashboard/CartaoResumo'
+import { useAcoesDisputa } from '@/hooks/useAcoesDisputa'
 import { ProximosEventos } from '@/components/dashboard/ProximosEventos'
 import { PainelLicitacoesAtivas } from '@/components/dashboard/PainelLicitacoesAtivas'
 import { IconeCalendario, IconeCalendarioRelogio, IconeDocumento, IconePessoas } from '@/components/icones'
 import { classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 
+// Legenda do cartão de prazos: separa prazos de licitações e ações da disputa.
+function legendaPrazos(licitacoes: number, acoes: number): string {
+  if (acoes === 0) return 'requerem atenção'
+  const ac = `${acoes} ${acoes === 1 ? 'ação da disputa' : 'ações da disputa'}`
+  return licitacoes === 0 ? ac : `${licitacoes} ${licitacoes === 1 ? 'licitação' : 'licitações'} · ${ac}`
+}
+
 export function FuncionarioDashboard() {
   const { user } = useAuth()
   const { licitacoes, nomesClientes, carregando, podeEditar } = useLicitacoesInternas()
+  const { alertas: acoes, carregando: carregandoAcoes } = useAcoesDisputa()
 
   const comPrazoUrgente = useMemo(
     () =>
@@ -59,8 +68,8 @@ export function FuncionarioDashboard() {
         />
         <CartaoResumo
           titulo="Prazos vencidos ou próximos"
-          valor={carregando ? '—' : String(comPrazoUrgente.length)}
-          legenda="requerem atenção"
+          valor={carregando || carregandoAcoes ? '—' : String(comPrazoUrgente.length + acoes.length)}
+          legenda={legendaPrazos(comPrazoUrgente.length, acoes.length)}
           icone={<IconeCalendarioRelogio className="h-8 w-8" />}
           tom="dourado"
           to="/admin/calendario"

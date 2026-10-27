@@ -10,8 +10,9 @@ import { disputaService } from './disputaService'
 import { familiaProdutoService } from './familiaProdutoService'
 import { clienteService } from './clienteService'
 import { configuracaoService } from './configuracaoService'
+import { funcionarioService } from './funcionarioService'
 import { supabase } from '@/lib/supabaseClient'
-import type { DadosBaseIndicadores, ReaberturaDecisao } from '../types/indicadores'
+import type { AnalistaCarteira, DadosBaseIndicadores, ReaberturaDecisao } from '../types/indicadores'
 
 /** Reaberturas de decisão feitas pelo Administrador (histórico das licitações,
  *  gravado pela função reabrir_decisao_cliente, migração 053). Só o
@@ -31,13 +32,32 @@ async function carregarReaberturas(): Promise<ReaberturaDecisao[] | undefined> {
   }
 }
 
+/** Analistas ativos que têm clientes vinculados (aba Permissões do Funcionário).
+ *  Se não puder ler (ou falhar), devolve undefined e o filtro por analista não aparece. */
+async function carregarAnalistas(): Promise<AnalistaCarteira[] | undefined> {
+  try {
+    const resultado = await funcionarioService.list({ status: 'ativo', page: 1, pageSize: 200 })
+    return resultado.data
+      .filter((f) => f.permissoes.clientesVinculados.length > 0)
+      .map((f) => ({
+        id: f.id,
+        nome: f.pessoal.nomeCompleto,
+        clienteIds: [...f.permissoes.clientesVinculados],
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  } catch {
+    return undefined
+  }
+}
+
 async function carregarDadosBase(restricao: { clienteIds?: string[]; licitacaoIds?: string[] } = {}): Promise<DadosBaseIndicadores> {
-  const [licitacoes, disputas, familias, clientes, reaberturas, faixasInatividade] = await Promise.all([
+  const [licitacoes, disputas, familias, clientes, reaberturas, analistas, faixasInatividade] = await Promise.all([
     licitacaoService.listarCompletas(restricao),
     disputaService.listarTodas(),
     familiaProdutoService.listarTodas(),
     clienteService.list({ page: 1, pageSize: 500 }),
     carregarReaberturas(),
+    carregarAnalistas(),
     // Faixas de inatividade (Configurações). Se o perfil não puder ler, usa o padrão 7/14/21.
     configuracaoService.obter().then(
       (c) => c.faixasInatividade,
@@ -47,6 +67,7 @@ async function carregarDadosBase(restricao: { clienteIds?: string[]; licitacaoId
 
   return {
     reaberturas,
+    analistas,
     faixasInatividade,
     licitacoes,
     disputas,

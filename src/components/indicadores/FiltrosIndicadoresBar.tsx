@@ -79,6 +79,8 @@ interface FiltrosIndicadoresBarProps {
    *  e listarOpcoesMarcas em utils/indicadoresCalculos.ts). */
   orgaos?: OpcaoFiltro[]
   marcas?: OpcaoFiltro[]
+  /** Analistas (só o Administrador): sem lista, o filtro não aparece. */
+  analistas?: OpcaoFiltro[]
   /** Falso no painel do cliente (só existe a própria empresa). */
   mostrarCliente?: boolean
   /** Falso no painel do cliente: o status (fase do pipeline) é interno. */
@@ -92,6 +94,7 @@ export function FiltrosIndicadoresBar({
   familias,
   orgaos = [],
   marcas = [],
+  analistas = [],
   mostrarCliente = true,
   mostrarStatus = true,
 }: FiltrosIndicadoresBarProps) {
@@ -205,6 +208,7 @@ export function FiltrosIndicadoresBar({
     filtros.dataDe ||
       filtros.dataAte ||
       filtros.clienteId ||
+      filtros.analistaId ||
       filtros.modalidade ||
       filtros.familiaId ||
       filtros.orgao ||
@@ -277,6 +281,14 @@ export function FiltrosIndicadoresBar({
             value={filtros.clienteId ?? ''}
             options={opcoesClientes}
             onChange={(e) => alterarCliente(e.target.value)}
+          />
+        )}
+        {analistas.length > 0 && (
+          <SelectField
+            label="Analista"
+            value={filtros.analistaId ?? ''}
+            options={[{ value: '', label: 'Todos os analistas' }, ...analistas]}
+            onChange={(e) => onChange({ ...filtros, analistaId: e.target.value || undefined })}
           />
         )}
         <SelectField

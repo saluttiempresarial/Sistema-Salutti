@@ -108,6 +108,10 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
   // Opções dos filtros de órgão e marca: só o que existe nos dados que este
   // perfil enxerga (a carteira do Analista ou a própria empresa do Cliente).
   const opcoesOrgaos = useMemo(() => (dados ? listarOpcoesOrgaos(dados.licitacoes) : []), [dados])
+  const opcoesAnalistas = useMemo(
+    () => (!ehCliente && dados?.analistas ? dados.analistas.map((a) => ({ value: a.id, label: a.nome })) : []),
+    [dados, ehCliente],
+  )
   const opcoesMarcas = useMemo(() => (dados ? listarOpcoesMarcas(dados.licitacoes) : []), [dados])
 
   // Há algum filtro de recorte ativo (a caixa de provisórios não conta).
@@ -155,6 +159,7 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
             mostrarStatus={!ehCliente}
             orgaos={opcoesOrgaos}
             marcas={opcoesMarcas}
+            analistas={opcoesAnalistas}
           />
           <p className="font-body text-sm text-ink-soft">
             {formatarNumero(indicadores.totalLicitacoes)}{' '}

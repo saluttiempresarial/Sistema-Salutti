@@ -13,6 +13,7 @@ import { BuscaGlobal } from '@/components/BuscaGlobal'
 import { Notificacoes } from '@/components/Notificacoes'
 import { IconeMenu, IconeSair } from '@/components/icones'
 import { limparCacheLicitacoesInternas } from '@/hooks/useLicitacoesInternas'
+import { limparCacheAcoesDisputa } from '@/hooks/useAcoesDisputa'
 import { usePermissoes } from '@/hooks/usePermissoes'
 
 interface AdminTopBarProps {
@@ -33,6 +34,7 @@ export function AdminTopBar({ onAbrirMenu }: AdminTopBarProps) {
 
   function handleLogout() {
     limparCacheLicitacoesInternas()
+    limparCacheAcoesDisputa()
     logout()
     navigate('/login', { replace: true })
   }

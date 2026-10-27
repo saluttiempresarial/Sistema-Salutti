@@ -18,6 +18,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { usePermissoes } from '../../../hooks/usePermissoes';
+import { limparCacheAcoesDisputa } from '../../../hooks/useAcoesDisputa';
 import { StatusPill, StatusTone } from '../../../components/StatusPill';
 import { DisputaFormModal } from './DisputaFormModal';
 import { disputaService } from '../../../services/disputaService';
@@ -188,6 +189,7 @@ export function DisputasPage() {
     } else {
       await disputaService.criar(dados, usuarioAtual);
     }
+    limparCacheAcoesDisputa();
     await carregar();
   }
 
