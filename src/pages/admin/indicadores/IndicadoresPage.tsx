@@ -117,6 +117,10 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
   // Há algum filtro de recorte ativo (a caixa de provisórios não conta).
   const { incluirProvisorios: _provisorios, ...recortes } = filtros
   const filtrando = Object.values(recortes).some(Boolean)
+  // "Clientes sem atividade" só obedece cliente e analista: com qualquer outro
+  // recorte ativo (período, resultado, status etc.), o card some.
+  const { clienteId: _cliente, analistaId: _analista, ...outrosRecortes } = recortes
+  const filtrandoAlemDeClienteEAnalista = Object.values(outrosRecortes).some(Boolean)
 
   return (
     <div className={embutido ? 'space-y-5' : 'min-h-screen space-y-5 bg-paper p-8'}>
@@ -170,7 +174,13 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
               Nenhuma licitação atende a todos os filtros escolhidos ao mesmo tempo. Ajuste ou limpe os filtros.
             </p>
           )}
-          <IndicadoresGraficos indicadores={indicadores} visiveis={visiveis} ocultarVazios={filtrando} />
+          <IndicadoresGraficos
+            indicadores={indicadores}
+            visiveis={visiveis}
+            ocultarVazios={filtrando}
+            ocultarClientesSemAtividade={filtrandoAlemDeClienteEAnalista}
+            resultadoFiltro={filtros.resultado === 'ganho' || filtros.resultado === 'perdido' ? filtros.resultado : undefined}
+          />
         </>
       )}
 

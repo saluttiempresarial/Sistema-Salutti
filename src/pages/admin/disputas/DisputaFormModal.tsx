@@ -52,6 +52,7 @@ import {
   MOTIVO_PERDA_LABEL,
   MotivoPerdaEvitavel,
   MOTIVO_PERDA_EVITAVEL_LABEL,
+  MotivoPerdaHabilitacao,
   SituacaoProcesso,
   SITUACAO_PROCESSO_LABEL,
   AcaoPendente,
@@ -244,6 +245,10 @@ interface ValoresLinha {
   // Por que a perda foi evitável (só quando o vencedor ficou igual ou acima do
   // nosso mínimo). '' = ainda não informado.
   motivoPerdaEvitavel: MotivoPerdaEvitavel | '';
+  // Origem da desclassificação (só com o motivo "Desclassificado na proposta"):
+  // grava no motivo detalhado da migração 054, de onde o relatório "Perdas na
+  // habilitação" tira a origem. '' = ainda não informada.
+  origemDesclassificacao: OrigemDesclassificacao | '';
   // Marca de vitória por convocação: liga ao escolher "Convocado" e é mantida
   // quando o resultado passa a "Ganho (homologado)" (relatório de vitórias por
   // convocação).
@@ -258,8 +263,28 @@ const VALORES_VAZIOS: ValoresLinha = {
   nomeVencedor: '',
   motivoPerda: '',
   motivoPerdaEvitavel: '',
+  origemDesclassificacao: '',
   convocacao: false,
 };
+
+// Origem da desclassificação: cada opção corresponde a um motivo detalhado da
+// migração 054 (a etapa e a origem saem dele, sem coluna nova).
+type OrigemDesclassificacao = Extract<
+  MotivoPerdaHabilitacao,
+  'desclass_documentacao_produto' | 'desclass_amostra_especificacao' | 'desclass_erro_proposta'
+>;
+
+const ORIGEM_DESCLASSIFICACAO_LABEL: Record<OrigemDesclassificacao, string> = {
+  desclass_documentacao_produto: 'Indústria — documentação do produto (ficha técnica, catálogo, registro, certificação)',
+  desclass_amostra_especificacao: 'Produto — amostra reprovada ou especificação não atendida',
+  desclass_erro_proposta: 'Salutti — erro na proposta (preço, marca, modelo)',
+};
+
+function origemDesclassificacaoDe(
+  motivo: MotivoPerdaHabilitacao | undefined,
+): OrigemDesclassificacao | '' {
+  return motivo && motivo in ORIGEM_DESCLASSIFICACAO_LABEL ? (motivo as OrigemDesclassificacao) : '';
+}
 
 // Campos que só valem para a linha salva antes desta tela (migração 054):
 // preservados ao reabrir uma disputa, para não apagar o detalhe já gravado.
@@ -518,6 +543,25 @@ function CartaoResultado({
             <span className="text-xs text-[#5E6863]">aparece só quando o resultado é de perda</span>
           </div>
         )}
+        {mostrarMotivo && valores.motivoPerda === 'desclassificado_proposta' && (
+          <div className="flex flex-col gap-1.5">
+            <span className={CLASSE_ROTULO}>Origem da desclassificação</span>
+            <select
+              aria-label="Origem da desclassificação"
+              value={valores.origemDesclassificacao}
+              onChange={(e) => onChange('origemDesclassificacao', e.target.value as OrigemDesclassificacao | '')}
+              className={CLASSE_CAMPO}
+            >
+              <option value="">Não informada</option>
+              {(Object.keys(ORIGEM_DESCLASSIFICACAO_LABEL) as OrigemDesclassificacao[]).map((valor) => (
+                <option key={valor} value={valor}>
+                  {ORIGEM_DESCLASSIFICACAO_LABEL[valor]}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-[#5E6863]">de onde veio a causa; alimenta "Perdas na habilitação"</span>
+          </div>
+        )}
         {perdaEvitavel && (
           <div className="flex flex-col gap-1.5">
             <span className={CLASSE_ROTULO}>Por que foi evitável</span>
@@ -693,6 +737,7 @@ export function DisputaFormModal({
         nomeVencedor: linha.nomeVencedor ?? '',
         motivoPerda: linha.motivoPerda ?? '',
         motivoPerdaEvitavel: linha.motivoPerdaEvitavel ?? '',
+        origemDesclassificacao: origemDesclassificacaoDe(linha.motivoPerdaHabilitacao),
         convocacao: linha.vitoriaPorConvocacao ?? false,
       };
       if (linha.itemId) valoresItem[linha.itemId] = valoresLinha;
@@ -877,7 +922,14 @@ export function DisputaFormModal({
       vitoriaPorConvocacao:
         resultadoItem === 'convocado' || (resultadoItem === 'ganho' && !!valores?.convocacao),
       // Detalhe da migração 054, preservado se o resultado continua o mesmo tipo.
-      motivoPerdaHabilitacao: resultadoItem === 'perdido_habilitacao' ? legado?.motivoPerdaHabilitacao : undefined,
+      // Origem informada na tela (desclassificação na proposta); senão, preserva o
+      // detalhe gravado antes desta tela quando o resultado continua o mesmo tipo.
+      motivoPerdaHabilitacao:
+        emPerda && valores?.motivoPerda === 'desclassificado_proposta' && valores.origemDesclassificacao
+          ? valores.origemDesclassificacao
+          : resultadoItem === 'perdido_habilitacao' && valores?.motivoPerda !== 'desclassificado_proposta'
+            ? legado?.motivoPerdaHabilitacao
+            : undefined,
       // Só nas perdas por preço (provisória ou definitiva); vale como registro mesmo
       // se o vencedor mudar depois: o indicador só lê as perdas que seguem evitáveis.
       motivoPerdaEvitavel:

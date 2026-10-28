@@ -50,6 +50,7 @@ import type {
   ValorAdjudicado,
 } from '../../types/indicadores'
 import { FILTRO_SEM_ESFERA, SITUACAO_INATIVIDADE_LABEL } from '../../types/indicadores'
+import type { ResultadoLicitacaoFiltro } from '../../types/indicadores'
 import { MOTIVO_PERDA_EVITAVEL_LABEL } from '../../types/disputa'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '../../utils/prazoUtils'
 
@@ -110,7 +111,13 @@ function SemDados({ texto = 'Sem dados para os filtros escolhidos.' }: { texto?:
 // ---------------------------------------------------------------------------
 // 1. Relatório principal: total de licitações e funil
 // ---------------------------------------------------------------------------
-function RelatorioPrincipalBloco({ dados }: { dados: IndicadoresAdmin['relatorioPrincipal'] }) {
+function RelatorioPrincipalBloco({
+  dados,
+  resultadoFiltro,
+}: {
+  dados: IndicadoresAdmin['relatorioPrincipal']
+  resultadoFiltro?: ResultadoLicitacaoFiltro
+}) {
   if (dados.cadastradas === 0) return <SemDados />
   const pct = (parte: number, todo: number) => (todo > 0 ? formatarPercentual((parte / todo) * 100) : '—')
   const Numero = ({ valor, rotulo, nota, destaque }: { valor: number; rotulo: string; nota?: string; destaque?: boolean }) => (
@@ -124,7 +131,12 @@ function RelatorioPrincipalBloco({ dados }: { dados: IndicadoresAdmin['relatorio
     { chave: 'enviadas', rotulo: 'Enviadas', quantidade: dados.enviadas },
     { chave: 'retornadas', rotulo: 'Retornadas', quantidade: dados.retornadas },
     { chave: 'participou', rotulo: 'Participou', quantidade: dados.participou },
-    { chave: 'ganhas', rotulo: 'Ganhas (homologado)', quantidade: dados.ganhas },
+    // Com o filtro "Perdido", a última etapa do funil acompanha o que foi pedido.
+    resultadoFiltro === 'perdido'
+      ? { chave: 'perdidas', rotulo: 'Perdidas (homologadas e em análise)', quantidade: dados.perdidas + dados.perdidasEmAnalise }
+      : resultadoFiltro === 'ganho'
+        ? { chave: 'ganhas', rotulo: 'Ganhas (homologadas e arrematadas em análise)', quantidade: dados.ganhas + dados.arrematadasEmAnalise }
+        : { chave: 'ganhas', rotulo: 'Ganhas (homologado)', quantidade: dados.ganhas },
   ]
   const maximo = Math.max(...etapas.map((e) => e.quantidade), 1)
   return (
@@ -168,7 +180,7 @@ function RelatorioPrincipalBloco({ dados }: { dados: IndicadoresAdmin['relatorio
               <div className="mt-1 h-5 rounded bg-forest-mist">
                 <div
                   className="h-5 rounded"
-                  style={{ width: `${Math.max((etapa.quantidade / maximo) * 100, 2)}%`, backgroundColor: i === etapas.length - 1 ? COR_GANHO : COR_REFERENCIA }}
+                  style={{ width: `${Math.max((etapa.quantidade / maximo) * 100, 2)}%`, backgroundColor: i === etapas.length - 1 && resultadoFiltro !== 'perdido' ? COR_GANHO : COR_REFERENCIA }}
                 />
               </div>
             </li>
@@ -1394,7 +1406,7 @@ function Concorrentes({ lista }: { lista: Concorrente[] }) {
                   {c.cnpj && <span className="ml-2 text-xs text-ink-soft">{formatarCnpjExibicao(c.cnpj)}</span>}
                 </span>
                 <span className="shrink-0 text-ink">
-                  <strong>{formatarNumero(c.vitorias)}</strong> {c.vitorias === 1 ? 'item/grupo' : 'itens/grupos'} ·{' '}
+                  ganhou <strong>{formatarNumero(c.vitorias)}</strong> {c.vitorias === 1 ? 'item/grupo' : 'itens/grupos'} em{' '}
                   {formatarNumero(c.licitacoes)} {c.licitacoes === 1 ? 'licitação' : 'licitações'} · {formatarMoeda(c.valorTotal)}
                 </span>
               </div>
@@ -1567,7 +1579,7 @@ function ClientesSemAtividadeBloco({ dados }: { dados: ClientesSemAtividade }) {
       <p className="font-body text-xs text-ink-soft">
         Faixas (Configurações): {formatarNumero(dados.faixas.faixa1Dias)}, {formatarNumero(dados.faixas.faixa2Dias)} e{' '}
         {formatarNumero(dados.faixas.faixa3Dias)} dias, da mais leve para a mais grave. Ordem pelo risco: faixa mais grave primeiro e,
-        dentro dela, maior valor adjudicado. Só os filtros de cliente e de analista valem aqui.
+        dentro dela, maior valor adjudicado. Só os filtros de cliente e de analista valem aqui; com qualquer outro filtro ligado, este card some.
       </p>
     </div>
   )
@@ -1876,10 +1888,41 @@ interface IndicadoresGraficosProps {
   visiveis?: ReadonlySet<string>
   /** Esconde os cards sem dados (usado quando há filtro ativo). */
   ocultarVazios?: boolean
+  /** Esconde "Clientes sem atividade": esse card olha a atividade mais recente de cada
+   *  cliente e não segue os filtros de recorte, então some quando há filtro ativo. */
+  ocultarClientesSemAtividade?: boolean
+  /** Filtro "Resultado da licitação" ativo. Com Ganho ou Perdido, somem os cards que não
+   *  dizem respeito ao resultado pedido (processo, perdas num recorte de ganhos etc.). */
+  resultadoFiltro?: ResultadoLicitacaoFiltro
 }
 
-export function IndicadoresGraficos({ indicadores, visiveis, ocultarVazios = false }: IndicadoresGraficosProps) {
-  const ver = (chave: ChaveIndicador) => !visiveis || visiveis.has(chave)
+/** Cards que não fazem sentido num recorte só de ganhos ou só de perdas. */
+const CARDS_OCULTOS_POR_RESULTADO: Partial<Record<ResultadoLicitacaoFiltro, ReadonlySet<ChaveIndicador>>> = {
+  ganho: new Set<ChaveIndicador>([
+    'tempo_resposta', 'pipeline', 'prazos_proximos', 'motivos_nao_participacao',
+    'perdas_evitaveis', 'perdas_habilitacao', 'fora_de_mercado', 'distancia_derrota',
+    'alerta_acompanhamento', 'concorrentes', 'produtos_nunca_ganhos',
+  ]),
+  perdido: new Set<ChaveIndicador>([
+    'tempo_resposta', 'pipeline', 'prazos_proximos', 'motivos_nao_participacao',
+    'taxa_vitoria', 'taxa_vitoria_familia', 'volume_periodo', 'ganho_sobre_minimo',
+    'vitorias_convocacao', 'valor_adjudicado', 'ticket_medio', 'desconto_medio',
+  ]),
+}
+
+export function IndicadoresGraficos({
+  indicadores,
+  visiveis,
+  ocultarVazios = false,
+  ocultarClientesSemAtividade = false,
+  resultadoFiltro,
+}: IndicadoresGraficosProps) {
+  // Com filtro ativo, analista sem nenhuma licitação no recorte é só ruído.
+  const linhasAnalistas = ocultarVazios
+    ? indicadores.performanceAnalistas.filter((a) => a.licitacoes > 0)
+    : indicadores.performanceAnalistas
+  const ocultosPorResultado = resultadoFiltro ? CARDS_OCULTOS_POR_RESULTADO[resultadoFiltro] : undefined
+  const ver = (chave: ChaveIndicador) => (!visiveis || visiveis.has(chave)) && !ocultosPorResultado?.has(chave)
 
   if (visiveis && visiveis.size === 0) {
     return (
@@ -1895,7 +1938,7 @@ export function IndicadoresGraficos({ indicadores, visiveis, ocultarVazios = fal
       {/* Os três indicadores principais vêm primeiro, para todos os perfis. */}
       {ver('funil') && (
         <Cartao titulo="Relatório principal" subtitulo="Total de licitações do período: enviadas, retornadas, disputadas e resultado (por licitação)">
-          <RelatorioPrincipalBloco dados={indicadores.relatorioPrincipal} />
+          <RelatorioPrincipalBloco dados={indicadores.relatorioPrincipal} resultadoFiltro={resultadoFiltro} />
         </Cartao>
       )}
 
@@ -1937,7 +1980,7 @@ export function IndicadoresGraficos({ indicadores, visiveis, ocultarVazios = fal
         </Cartao>
       )}
 
-      {ver('clientes_sem_atividade') && (
+      {ver('clientes_sem_atividade') && !ocultarClientesSemAtividade && (
         <Cartao titulo="Clientes sem atividade" subtitulo="Risco de perder o cliente: do mais parado para o mais ativo">
           <ClientesSemAtividadeBloco dados={indicadores.clientesSemAtividade} />
         </Cartao>
@@ -1949,13 +1992,13 @@ export function IndicadoresGraficos({ indicadores, visiveis, ocultarVazios = fal
         </Cartao>
       )}
 
-      {ver('performance_analista') && indicadores.performanceAnalistas.length > 0 && (
+      {ver('performance_analista') && linhasAnalistas.length > 0 && (
         <Cartao
           titulo="Performance por analista"
           subtitulo="Resultado da carteira de cada analista, dentro dos filtros escolhidos (uso interno)"
           className="lg:col-span-2"
         >
-          <PerformanceAnalistasBloco dados={indicadores.performanceAnalistas} />
+          <PerformanceAnalistasBloco dados={linhasAnalistas} />
         </Cartao>
       )}
 

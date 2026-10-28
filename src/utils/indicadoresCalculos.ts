@@ -1029,6 +1029,7 @@ export function calcularPerformanceAnalistas(
         id: g.id,
         nome: g.nome,
         clientes: g.clienteIds.size,
+        licitacoes: lics.length,
         enviadas: lics.filter((l) => l.liberadaAoClienteEm).length,
         participacoes: lics.filter((l) => l.decisaoCliente === 'participar').length,
         ganhos: taxa.ganhos,

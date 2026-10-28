@@ -91,6 +91,8 @@ export interface PerformanceAnalista {
   id: string; // id do analista ou 'sem_analista'
   nome: string;
   clientes: number;
+  /** Licitações da carteira dentro dos filtros escolhidos. */
+  licitacoes: number;
   enviadas: number;
   participacoes: number;
   ganhos: number;
