@@ -953,6 +953,13 @@ export interface UnidadeResultado {
   /** Marcas da composição de cestas e kits (só itens): contam como presença
    *  nas vitórias por marca, mas não têm valor individual. */
   marcasComposicao?: string[];
+  /** Grupo a que a unidade pertence (grupo, ou item de grupo em detalhe). */
+  grupoId?: string;
+  /** Item de um grupo que já tem resultado próprio, com preço unitário lançado
+   *  (modo "Grupo e item"). É só detalhe: alimenta marca, produto e ganho sobre
+   *  o mínimo por marca, e fica fora de qualquer total, taxa ou valor, porque
+   *  o grupo já conta como 1. */
+  detalheDeGrupo?: boolean;
   /** Classificação do cliente no lance (1, 2, 3...). */
   posicao?: number;
   /** Motivo simples da perda (migração 059). */

@@ -283,7 +283,11 @@ export function filtrarLicitacoes(
   // resultados provisórios"). Ganho = ao menos 1 item/grupo ganho; Perdido =
   // nenhum ganho e ao menos 1 perdido. Sem resultado lançado, vale a regra
   // antiga (recusa, sessão passada sem decisão ou em andamento).
-  const unidades = montarUnidades(passou, disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios);
+  // Com filtro de família ou de marca, os itens de grupo (modo "Grupo e item") valem como
+  // unidades próprias: o grupo não tem marca nem família, mas os itens dele têm.
+  const unidades = montarUnidades(passou, disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios, true).filter(
+    (u) => !u.detalheDeGrupo || !!(filtros.familiaId || filtros.marca)
+  );
   const comGanho = new Set(unidades.filter((u) => u.resultado === 'ganho').map((u) => u.licitacaoId));
   const comPerda = new Set(unidades.filter((u) => ehPerdida(u)).map((u) => u.licitacaoId));
   return passou.filter((l) => {
@@ -351,7 +355,8 @@ export function montarUnidades(
   disputas: Disputa[],
   filtroFamilia?: string,
   filtroMarca?: string,
-  incluirProvisorios = false
+  incluirProvisorios = false,
+  incluirDetalheDeGrupo = false
 ): UnidadeResultado[] {
   const licitacaoPorId = new Map(licitacoes.map((l) => [l.id, l]));
   const unidades: UnidadeResultado[] = [];
@@ -385,24 +390,37 @@ export function montarUnidades(
       if (linha.itemId) {
         const item = licitacao.itens.find((i) => i.id === linha.itemId);
         if (!item) return;
-        if (item.grupoId && gruposComResultado.has(item.grupoId)) return;
+        // Item de grupo que já tem resultado: só entra como detalhe (marca,
+        // produto), e só quando o preço unitário foi lançado. Nunca nos totais.
+        const itemDeGrupoComResultado = !!item.grupoId && gruposComResultado.has(item.grupoId);
+        if (itemDeGrupoComResultado && (!incluirDetalheDeGrupo || linha.valorFechado == null)) return;
         if (filtroFamilia) {
           const combina = filtroFamilia === FILTRO_SEM_FAMILIA ? !item.familiaId : item.familiaId === filtroFamilia;
           if (!combina) return;
         }
         if (filtroMarca && marcaDoItem(item) !== filtroMarca) return;
         const minimoUnitario = calcularAnaliseItem(item, taxaFrete, true).precoComFrete;
+        // Sem resultado próprio no item, vale o do grupo.
+        const resultadoDoItem =
+          linha.resultadoItem ??
+          (itemDeGrupoComResultado
+            ? normalizarResultado(
+                disputa.itens.find((l) => !l.itemId && l.grupoId === item.grupoId)?.resultadoItem
+              ).resultado
+            : undefined);
         unidades.push({
           licitacaoId: licitacao.id,
           clienteId: licitacao.clienteId,
           tipo: 'item',
+          grupoId: itemDeGrupoComResultado ? item.grupoId : undefined,
+          detalheDeGrupo: itemDeGrupoComResultado || undefined,
           rotulo: `${item.numero} — ${item.descricao}`,
           familiaId: item.familiaId,
           marca: item.propostaCliente?.marca?.trim() || undefined,
           marcasComposicao: item.propostaCliente?.marcasComposicao?.filter((m) => m.trim()) ?? undefined,
           produtoChave: produtoDoItem(item)?.chave,
           produtoNome: produtoDoItem(item)?.nome,
-          resultado: linha.resultadoItem,
+          resultado: resultadoDoItem,
           valorOfertado: linha.valorFechado != null ? linha.valorFechado * item.quantidade : null,
           valorMinimoComFrete: minimoUnitario != null ? minimoUnitario * item.quantidade : null,
           valorReferencia: totalReferenciaItem(item) > 0 ? totalReferenciaItem(item) : null,
@@ -438,6 +456,7 @@ export function montarUnidades(
           licitacaoId: licitacao.id,
           clienteId: licitacao.clienteId,
           tipo: 'grupo',
+          grupoId: linha.grupoId,
           rotulo: rotuloDoGrupo(licitacao, linha.grupoId),
           resultado: linha.resultadoItem,
           valorOfertado: linha.valorFechado ?? null,
@@ -834,7 +853,10 @@ export function calcularFamilias(
 // ---------------------------------------------------------------------------
 export function calcularGanhoSobreMinimo(
   unidades: UnidadeResultado[],
-  nomeDaFamilia: (id: string) => string
+  nomeDaFamilia: (id: string) => string,
+  /** Itens de grupos (modo "Grupo e item") com preço unitário lançado: entram só no
+   *  ranking por marca, sem mexer no total, nas faixas nem na barra "Grupos". */
+  detalhesDeGrupo: UnidadeResultado[] = []
 ): GanhoSobreMinimo {
   const base = unidades.filter(
     (u) =>
@@ -866,7 +888,20 @@ export function calcularGanhoSobreMinimo(
   });
 
   const marcas = new Map<string, { nome: string; lista: UnidadeResultado[] }>();
-  base.forEach((u) => {
+  const naBase = new Set(base);
+  const baseDasMarcas = [
+    ...base,
+    ...detalhesDeGrupo.filter(
+      (u) =>
+        !naBase.has(u) &&
+        u.resultado === 'ganho' &&
+        u.valorOfertado != null &&
+        u.valorOfertado > 0 &&
+        u.valorMinimoComFrete != null &&
+        u.valorMinimoComFrete > 0
+    ),
+  ];
+  baseDasMarcas.forEach((u) => {
     if (u.tipo !== 'item') return;
     const nome = (u.marca ?? '').trim().replace(/\s+/g, ' ');
     if (!nome) return;
@@ -1517,7 +1552,9 @@ export function calcularMarcas(
   licitacoes: Licitacao[],
   unidades: UnidadeResultado[],
   filtroFamilia?: string,
-  filtroMarca?: string
+  filtroMarca?: string,
+  /** Itens de grupos (modo "Grupo e item") com preço unitário lançado. */
+  detalhesDeGrupo: UnidadeResultado[] = []
 ): BarraMarca[] {
   const mapa = new Map<string, BarraMarca>();
   function barra(marcaTexto: string | undefined): BarraMarca {
@@ -1545,8 +1582,25 @@ export function calcularMarcas(
           });
       });
   });
+  // Itens de grupo em detalhe: cada um conta como cotado (o loop acima só vê itens
+  // avulsos) e, se ganho, como ganho.
+  detalhesDeGrupo
+    .filter((u) => u.resultado === 'ganho' || ehPerdida(u))
+    .forEach((u) => {
+      const extras = (u.marcasComposicao ?? []).filter((m) => normalizarNome(m) !== normalizarNome(u.marca ?? ''));
+      barra(u.marca).cotadas += 1;
+      extras.forEach((m) => {
+        barra(m).cotadas += 1;
+      });
+      if (u.resultado === 'ganho') {
+        barra(u.marca).ganhas += 1;
+        extras.forEach((m) => {
+          barra(m).ganhas += 1;
+        });
+      }
+    });
   unidades
-    .filter((u) => u.tipo === 'item' && u.resultado === 'ganho')
+    .filter((u) => u.tipo === 'item' && u.resultado === 'ganho' && !u.detalheDeGrupo)
     .forEach((u) => {
       barra(u.marca).ganhas += 1;
       (u.marcasComposicao ?? [])
@@ -2352,9 +2406,17 @@ export function calcularIndicadoresAdmin(
     : undefined;
 
   const licitacoes = filtrarLicitacoes(dados.licitacoes, filtros, dados.disputas, agora, clientesDoAnalista);
-  const unidades = soResultado(
-    montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios)
+  // Itens de grupo (modo "Grupo e item") com preço unitário lançado ficam como detalhe: só
+  // alimentam marca e produto. Com filtro de família ou de marca, valem como unidades
+  // próprias em tudo, porque o grupo sai do recorte e os itens ficam.
+  const comFiltroDeItem = !!(filtros.familiaId || filtros.marca);
+  const semDetalheSalvoComFiltro = (us: UnidadeResultado[]) =>
+    comFiltroDeItem ? us : us.filter((u) => !u.detalheDeGrupo);
+  const todasUnidades = soResultado(
+    montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios, true)
   );
+  const unidades = semDetalheSalvoComFiltro(todasUnidades);
+  const detalhesDeGrupo = todasUnidades.filter((u) => u.detalheDeGrupo);
 
   // Período anterior (mesmos demais filtros) para a variação da taxa de vitória.
   const anterior = periodoAnterior(filtros);
@@ -2362,15 +2424,17 @@ export function calcularIndicadoresAdmin(
   if (anterior) {
     const licitacoesAnteriores = filtrarLicitacoes(dados.licitacoes, { ...filtros, ...anterior }, dados.disputas, agora, clientesDoAnalista);
     taxaAnterior = calcularTaxaVitoria(
-      soResultado(
-        montarUnidades(licitacoesAnteriores, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios)
+      semDetalheSalvoComFiltro(
+        soResultado(
+          montarUnidades(licitacoesAnteriores, dados.disputas, filtros.familiaId, filtros.marca, filtros.incluirProvisorios, true)
+        )
       )
     );
   }
 
   // Para o relatório principal: todos os resultados, definitivos e provisórios.
-  const unidadesComProvisorios = soResultado(
-    montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca, true)
+  const unidadesComProvisorios = semDetalheSalvoComFiltro(
+    soResultado(montarUnidades(licitacoes, dados.disputas, filtros.familiaId, filtros.marca, true, true))
   );
 
   const perdasEvitaveis = calcularPerdasEvitaveis(licitacoes, unidades, nomeDoCliente, analistas);
@@ -2389,7 +2453,7 @@ export function calcularIndicadoresAdmin(
     familias: calcularFamilias(licitacoes, unidades, nomeDaFamilia, filtros.marca).filter(
       (barra) => !filtros.familiaId || barra.chave === filtros.familiaId
     ),
-    ganhoSobreMinimo: calcularGanhoSobreMinimo(unidades, nomeDaFamilia),
+    ganhoSobreMinimo: calcularGanhoSobreMinimo(unidades, nomeDaFamilia, detalhesDeGrupo),
     perdasEvitaveis,
     valorAdjudicado: calcularValorAdjudicado(licitacoes, unidades),
     foraDeMercado: calcularForaDeMercado(licitacoes, unidades, nomeDoCliente, nomeDaFamilia),
@@ -2398,8 +2462,8 @@ export function calcularIndicadoresAdmin(
     orgaos: calcularOrgaos(licitacoes, unidades),
     concorrentes: calcularConcorrentes(unidades, nomeDaFamilia),
     taxaVitoriaFamilia: calcularTaxaVitoriaFamilia(unidades, nomeDaFamilia),
-    marcas: calcularMarcas(licitacoes, unidades, filtros.familiaId, filtros.marca),
-    produtosNuncaGanhos: calcularProdutosNuncaGanhos(unidades),
+    marcas: calcularMarcas(licitacoes, unidades, filtros.familiaId, filtros.marca, detalhesDeGrupo),
+    produtosNuncaGanhos: calcularProdutosNuncaGanhos([...new Set([...unidades, ...detalhesDeGrupo])]),
     concorrentesFamilia: calcularConcorrentesFamilia(unidades, nomeDaFamilia),
     pipeline: calcularPipeline(licitacoes, dados.disputas, agora),
     // Os prazos olham sempre a partir de agora: ignoram o filtro de período.
