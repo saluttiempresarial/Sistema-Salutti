@@ -119,6 +119,8 @@ interface ItemRow {
   proposta_modelo: string | null
   proposta_preco_minimo: number | null
   proposta_marcas_composicao?: string[] | null
+  proposta_categoria_servico?: string | null
+  proposta_observacoes?: string | null
   decisao_acima_referencia: DecisaoAcimaReferencia | null
   decisao_acima_referencia_por: string | null
   decisao_acima_referencia_em: string | null
@@ -142,7 +144,9 @@ function paraItem(row: ItemRow): ItemLicitacao {
     row.proposta_marca ||
     row.proposta_modelo ||
     row.proposta_preco_minimo != null ||
-    (row.proposta_marcas_composicao?.length ?? 0) > 0
+    (row.proposta_marcas_composicao?.length ?? 0) > 0 ||
+    row.proposta_categoria_servico ||
+    row.proposta_observacoes
       ? {
           codigoInterno: row.proposta_codigo_interno ?? undefined,
           descricaoProduto: row.proposta_descricao ?? undefined,
@@ -150,6 +154,8 @@ function paraItem(row: ItemRow): ItemLicitacao {
           modelo: row.proposta_modelo ?? undefined,
           precoMinimo: row.proposta_preco_minimo ?? undefined,
           marcasComposicao: row.proposta_marcas_composicao ?? undefined,
+          categoriaServico: row.proposta_categoria_servico ?? undefined,
+          observacoes: row.proposta_observacoes ?? undefined,
         }
       : undefined
 
@@ -322,6 +328,9 @@ async function substituirGruposEItens(
             precoMinimo: item.propostaCliente.precoMinimo ?? null,
             // Sem este campo o banco PRESERVA as marcas já gravadas (migração 056).
             marcasComposicao: item.propostaCliente.marcasComposicao ?? [],
+            // Serviços (migração 061): sem estes campos o banco preserva o que já está gravado.
+            categoriaServico: item.propostaCliente.categoriaServico ?? null,
+            observacoes: item.propostaCliente.observacoes ?? null,
           }
         : null,
     })),
@@ -685,6 +694,9 @@ export const licitacaoService = {
           p_preco_minimo: propostaCliente.precoMinimo ?? null,
           // Sempre enviado: a função do banco limpa as marcas se o parâmetro não vier (056).
           p_marcas_composicao: propostaCliente.marcasComposicao ?? [],
+          // Serviços (migração 061): a função do banco limpa os dois se não vierem.
+          p_categoria_servico: propostaCliente.categoriaServico || null,
+          p_observacoes: propostaCliente.observacoes || null,
         })
       )
     ).then((resultados) => {

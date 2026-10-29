@@ -1209,6 +1209,24 @@ function MarcasBloco({ barras }: { barras: IndicadoresAdmin['marcas'] }) {
   )
 }
 
+function CategoriasServicoBloco({ barras }: { barras: IndicadoresAdmin['categoriasServico'] }) {
+  return (
+    <div>
+      <BarrasDuplas
+        dados={barras.map((b) => ({ nome: b.nome, cotadas: b.cotadas, ganhas: b.ganhas }))}
+        chaveRotulo="nome"
+        chaveTotal="cotadas"
+        chaveGanho="ganhas"
+        rotuloTotal="Cotadas"
+        rotuloGanho="Ganhas"
+      />
+      <p className="mt-2 font-body text-xs text-ink-soft">
+        Só itens avulsos: o resultado de um grupo é do grupo inteiro e não tem categoria.
+      </p>
+    </div>
+  )
+}
+
 const LIMITE_PRODUTOS_NUNCA_GANHOS = 10
 
 function ProdutosNuncaGanhosBloco({ dados }: { dados: ProdutosNuncaGanhos }) {
@@ -2049,6 +2067,14 @@ export function IndicadoresGraficos({
       {ver('marcas') && (
         <Cartao titulo="Marcas" subtitulo="Itens cotados x itens ganhos por marca (10 maiores; inclui as marcas de cestas e kits)">
           <MarcasBloco barras={indicadores.marcas} />
+          {indicadores.categoriasServico.length > 0 && (
+            <div className="mt-6 border-t border-ink-soft/10 pt-4">
+              <p className="mb-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft">
+                Categorias de serviço (itens de licitações de Serviços)
+              </p>
+              <CategoriasServicoBloco barras={indicadores.categoriasServico} />
+            </div>
+          )}
         </Cartao>
       )}
 

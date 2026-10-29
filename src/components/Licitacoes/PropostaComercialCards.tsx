@@ -32,7 +32,15 @@
 // disso, Etapa 5: trocar de verdade nas telas.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Licitacao, ItemLicitacao, GrupoItens, PropostaClienteItem, DecisaoAcimaReferencia } from '@/types/licitacao'
+import {
+  Licitacao,
+  ItemLicitacao,
+  GrupoItens,
+  PropostaClienteItem,
+  DecisaoAcimaReferencia,
+  CATEGORIAS_SERVICO,
+  tipoDoObjeto,
+} from '@/types/licitacao'
 import { PorteEmpresa } from '@/types/cliente'
 import {
   calcularAnaliseItem,
@@ -93,6 +101,10 @@ interface FormProposta {
   modelo: string
   precoMinimo: string // string p/ aceitar vírgula decimal enquanto digita
   marcasComposicao: string[] // marcas de cestas/kits (opcional)
+  categoriaServico: string // só em Serviços (migração 061)
+  observacoes: string // só em Serviços (opcional)
+  codigoInterno: string // só em Serviços: Cód. Serviço (opcional)
+  descricaoProduto: string // só em Serviços: Descrição do Serviço (opcional)
 }
 
 interface FormReferencia {
@@ -163,6 +175,10 @@ function montarFormPropostaInicial(itens: ItemLicitacao[]): Record<string, FormP
       modelo: item.propostaCliente?.modelo ?? '',
       precoMinimo: numeroParaCampo(item.propostaCliente?.precoMinimo),
       marcasComposicao: item.propostaCliente?.marcasComposicao ?? [],
+      categoriaServico: item.propostaCliente?.categoriaServico ?? '',
+      observacoes: item.propostaCliente?.observacoes ?? '',
+      codigoInterno: item.propostaCliente?.codigoInterno ?? '',
+      descricaoProduto: item.propostaCliente?.descricaoProduto ?? '',
     }
   })
   return mapa
@@ -227,6 +243,9 @@ export function PropostaComercialCards({
   onDecidirAcimaReferencia,
 }: PropostaComercialCardsProps) {
   const blocos = useMemo(() => agruparItens(licitacao), [licitacao])
+  // Licitação de Serviços (29/10): o item não tem marca nem modelo; a proposta
+  // pede a categoria do serviço (obrigatória), código, descrição e observações.
+  const ehServico = tipoDoObjeto(licitacao.objeto) === 'servicos'
   const [grupoAberto, setGrupoAberto] = useState<string | null>(
     blocos[0] ? (blocos[0].grupo?.id ?? '__sem_grupo__') : null
   )
@@ -282,11 +301,16 @@ export function PropostaComercialCards({
         modelo: formProposta?.modelo ?? item.propostaCliente?.modelo ?? '',
         precoMinimo: formProposta ? campoParaNumero(formProposta.precoMinimo) : item.propostaCliente?.precoMinimo,
         marcasComposicao: formProposta?.marcasComposicao ?? item.propostaCliente?.marcasComposicao,
+        categoriaServico: formProposta ? formProposta.categoriaServico : item.propostaCliente?.categoriaServico,
+        observacoes: formProposta ? formProposta.observacoes : item.propostaCliente?.observacoes,
+        // Em Serviços, código e descrição são digitados aqui; em Produto continuam só preservados.
+        codigoInterno: ehServico && formProposta ? formProposta.codigoInterno : item.propostaCliente?.codigoInterno,
+        descricaoProduto: ehServico && formProposta ? formProposta.descricaoProduto : item.propostaCliente?.descricaoProduto,
       },
     }
   }
 
-  const itensAoVivo = useMemo(() => licitacao.itens.map(itemAoVivo), [licitacao.itens, formPorItem, formReferenciaPorItem, podeEditarItens])
+  const itensAoVivo = useMemo(() => licitacao.itens.map(itemAoVivo), [licitacao.itens, formPorItem, formReferenciaPorItem, podeEditarItens, ehServico])
 
   const totalItens = itensAoVivo.length
   const preenchidos = itensAoVivo.filter((item) => item.propostaCliente?.precoMinimo != null).length
@@ -446,21 +470,24 @@ export function PropostaComercialCards({
       return
     }
 
-    // Cliente: marca/fabricante e modelo/versão são obrigatórios nos itens que
+    // Cliente: marca/fabricante e modelo/versão (em Serviços, a categoria do
+    // serviço) são obrigatórios nos itens que
     // ele vai cotar (os que têm valor). Equipe (Admin/Analista) pode salvar
     // rascunho: o alerta "Falta marca/modelo" cobre o acompanhamento.
     if (!visaoEquipe) {
       const semIdentificacao = itensAoVivo.filter(
-        (item) => !(item.exclusivoMeEpp && porteCliente === 'demais') && faltaIdentificacaoDoItem(item) !== null
+        (item) => !(item.exclusivoMeEpp && porteCliente === 'demais') && faltaIdentificacaoDoItem(item, ehServico) !== null
       )
       if (semIdentificacao.length > 0) {
         const lista = semIdentificacao
           .slice(0, 5)
-          .map((item) => `${item.numero} (${ROTULO_FALTA_IDENTIFICACAO[faltaIdentificacaoDoItem(item) as keyof typeof ROTULO_FALTA_IDENTIFICACAO].toLowerCase()})`)
+          .map((item) => `${item.numero} (${ROTULO_FALTA_IDENTIFICACAO[faltaIdentificacaoDoItem(item, ehServico) as keyof typeof ROTULO_FALTA_IDENTIFICACAO].toLowerCase()})`)
           .join(', ')
         const resto = semIdentificacao.length > 5 ? ` e mais ${semIdentificacao.length - 5}` : ''
         setErro(
-          `Informe a marca/fabricante e o modelo/versão de todos os itens com valor preenchido. Itens pendentes: ${lista}${resto}.`
+          ehServico
+            ? `Informe a categoria do serviço de todos os itens com valor preenchido. Itens pendentes: ${lista}${resto}.`
+            : `Informe a marca/fabricante e o modelo/versão de todos os itens com valor preenchido. Itens pendentes: ${lista}${resto}.`
         )
         return
       }
@@ -479,6 +506,9 @@ export function PropostaComercialCards({
           modelo: item.propostaCliente?.modelo,
           precoMinimo: item.propostaCliente?.precoMinimo,
           marcasComposicao: item.propostaCliente?.marcasComposicao ?? [],
+          // Só Serviços usa estes dois (migração 061); em Produto vão vazios.
+          categoriaServico: ehServico ? item.propostaCliente?.categoriaServico : undefined,
+          observacoes: ehServico ? item.propostaCliente?.observacoes : undefined,
         } satisfies PropostaClienteItem,
       }))
 
@@ -598,10 +628,16 @@ export function PropostaComercialCards({
           ⚠ <strong>{pendenciaIdentificacao.mensagem}.</strong>{' '}
           {!visaoEquipe
             ? podeEditarPropostaComercial
-              ? 'Informe a marca/fabricante e o modelo/versão de todos os itens que você vai cotar. Sem isso, a proposta não pode ser salva.'
-              : 'Fale com a Salutti para completar a marca e o modelo dos itens cotados.'
+              ? ehServico
+                ? 'Informe a categoria do serviço de todos os itens que você vai cotar. Sem isso, a proposta não pode ser salva.'
+                : 'Informe a marca/fabricante e o modelo/versão de todos os itens que você vai cotar. Sem isso, a proposta não pode ser salva.'
+              : ehServico
+                ? 'Fale com a Salutti para completar a categoria dos serviços cotados.'
+                : 'Fale com a Salutti para completar a marca e o modelo dos itens cotados.'
             : pendenciaIdentificacao.urgencia === 'normal'
-              ? 'Marca/fabricante e modelo/versão são obrigatórios. Acompanhe com o cliente antes do prazo dele.'
+              ? ehServico
+                ? 'A categoria do serviço é obrigatória. Acompanhe com o cliente antes do prazo dele.'
+                : 'Marca/fabricante e modelo/versão são obrigatórios. Acompanhe com o cliente antes do prazo dele.'
               : pendenciaIdentificacao.urgencia === 'urgente'
                 ? 'O prazo do cliente está encerrando (4 dias úteis antes da sessão). Confira com o cliente ou complete direto na proposta.'
                 : 'O prazo definitivo já encerrou: só o Administrador consegue completar.'}
@@ -734,9 +770,18 @@ export function PropostaComercialCards({
                   const status = classificarStatusProposta(analise.percentualDiferenca)
                   const bloqueadoMeEpp = !!(itemVivo.exclusivoMeEpp && porteCliente === 'demais')
                   const itemAbertoAgora = itemAberto === itemVivo.id
-                  const formProposta = formPorItem[itemVivo.id] ?? { marca: '', modelo: '', precoMinimo: '', marcasComposicao: [] }
+                  const formProposta: FormProposta = formPorItem[itemVivo.id] ?? {
+                    marca: '',
+                    modelo: '',
+                    precoMinimo: '',
+                    marcasComposicao: [],
+                    categoriaServico: '',
+                    observacoes: '',
+                    codigoInterno: '',
+                    descricaoProduto: '',
+                  }
                   const formReferencia = formReferenciaPorItem[itemVivo.id]
-                  const faltaIdentificacao = bloqueadoMeEpp ? null : faltaIdentificacaoDoItem(itemVivo)
+                  const faltaIdentificacao = bloqueadoMeEpp ? null : faltaIdentificacaoDoItem(itemVivo, ehServico)
 
                   return (
                     <div key={itemVivo.id} className="rounded-xl border border-ink-soft/10 bg-paper-2/30">
@@ -759,7 +804,12 @@ export function PropostaComercialCards({
                               </span>
                             )}
                           </div>
-                          {(itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
+                          {ehServico && itemVivo.propostaCliente?.categoriaServico && (
+                            <div className="mt-1 font-body text-xs text-ink-soft">
+                              <span className="font-semibold">Categoria:</span> {itemVivo.propostaCliente.categoriaServico}
+                            </div>
+                          )}
+                          {!ehServico && (itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
                             <div className="mt-1 font-body text-xs text-ink-soft">
                               <span className="font-semibold">Marcas da composição:</span>{' '}
                               {(itemVivo.propostaCliente?.marcasComposicao ?? []).join(', ')}
@@ -829,24 +879,55 @@ export function PropostaComercialCards({
                                       )
                                     }
                                   />
-                                  <CampoEditavel
-                                    label="Marca/Fabricante"
-                                    valor={formProposta.marca}
-                                    placeholder="digite a marca e o fabricante"
-                                    onChange={(v) => atualizarCampoProposta(itemVivo.id, 'marca', v)}
-                                  />
-                                  <CampoEditavel
-                                    label="Modelo/Versão"
-                                    valor={formProposta.modelo}
-                                    placeholder="digite o modelo/versão"
-                                    onChange={(v) => atualizarCampoProposta(itemVivo.id, 'modelo', v)}
-                                  />
-                                  <div className="col-span-2 sm:col-span-4">
-                                    <CampoMarcasComposicao
-                                      marcas={formProposta.marcasComposicao}
-                                      onChange={(marcas) => atualizarMarcasComposicao(itemVivo.id, marcas)}
-                                    />
-                                  </div>
+                                  {ehServico ? (
+                                    <>
+                                      <CampoCategoriaServico
+                                        valor={formProposta.categoriaServico}
+                                        onChange={(v) => atualizarCampoProposta(itemVivo.id, 'categoriaServico', v)}
+                                      />
+                                      <CampoEditavel
+                                        label="Cód. Serviço (opcional)"
+                                        valor={formProposta.codigoInterno}
+                                        placeholder="código interno do serviço"
+                                        onChange={(v) => atualizarCampoProposta(itemVivo.id, 'codigoInterno', v)}
+                                      />
+                                      <CampoEditavel
+                                        label="Descrição do Serviço (opcional)"
+                                        valor={formProposta.descricaoProduto}
+                                        placeholder="descreva o serviço ofertado"
+                                        onChange={(v) => atualizarCampoProposta(itemVivo.id, 'descricaoProduto', v)}
+                                      />
+                                      <div className="col-span-2 sm:col-span-4">
+                                        <CampoEditavel
+                                          label="Observações (opcional)"
+                                          valor={formProposta.observacoes}
+                                          placeholder="observações sobre o serviço (se a categoria for Outro, descreva aqui)"
+                                          onChange={(v) => atualizarCampoProposta(itemVivo.id, 'observacoes', v)}
+                                        />
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CampoEditavel
+                                        label="Marca/Fabricante"
+                                        valor={formProposta.marca}
+                                        placeholder="digite a marca e o fabricante"
+                                        onChange={(v) => atualizarCampoProposta(itemVivo.id, 'marca', v)}
+                                      />
+                                      <CampoEditavel
+                                        label="Modelo/Versão"
+                                        valor={formProposta.modelo}
+                                        placeholder="digite o modelo/versão"
+                                        onChange={(v) => atualizarCampoProposta(itemVivo.id, 'modelo', v)}
+                                      />
+                                      <div className="col-span-2 sm:col-span-4">
+                                        <CampoMarcasComposicao
+                                          marcas={formProposta.marcasComposicao}
+                                          onChange={(marcas) => atualizarMarcasComposicao(itemVivo.id, marcas)}
+                                        />
+                                      </div>
+                                    </>
+                                  )}
                                 </>
                               ) : (
                                 <>
@@ -854,9 +935,24 @@ export function PropostaComercialCards({
                                     label="Valor unitário"
                                     valor={itemVivo.propostaCliente?.precoMinimo != null ? formatarMoeda(itemVivo.propostaCliente.precoMinimo) : '— pendente'}
                                   />
-                                  <MiniCampo label="Marca/Fabricante" valor={itemVivo.propostaCliente?.marca || '—'} />
-                                  <MiniCampo label="Modelo/Versão" valor={itemVivo.propostaCliente?.modelo || '—'} />
-                                  {(itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
+                                  {ehServico ? (
+                                    <>
+                                      <MiniCampo label="Categoria do serviço" valor={itemVivo.propostaCliente?.categoriaServico || '—'} />
+                                      <MiniCampo label="Cód. Serviço" valor={itemVivo.propostaCliente?.codigoInterno || '—'} />
+                                      <MiniCampo label="Descrição do Serviço" valor={itemVivo.propostaCliente?.descricaoProduto || '—'} />
+                                      {itemVivo.propostaCliente?.observacoes && (
+                                        <div className="col-span-2 sm:col-span-4">
+                                          <MiniCampo label="Observações" valor={itemVivo.propostaCliente.observacoes} />
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <MiniCampo label="Marca/Fabricante" valor={itemVivo.propostaCliente?.marca || '—'} />
+                                      <MiniCampo label="Modelo/Versão" valor={itemVivo.propostaCliente?.modelo || '—'} />
+                                    </>
+                                  )}
+                                  {!ehServico && (itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
                                     <div className="col-span-2 sm:col-span-4">
                                       <MiniCampo
                                         label="Marcas da composição"
@@ -1090,6 +1186,33 @@ function CampoMarcasComposicao({ marcas, onChange }: { marcas: string[]; onChang
         onBlur={() => adicionar(texto)}
         className="w-full rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20 disabled:opacity-60"
       />
+    </div>
+  )
+}
+
+/** Categoria do serviço (lista da planilha de serviços). Se a categoria já
+ *  gravada não estiver na lista (ex.: texto antigo), ela aparece como opção
+ *  extra para não ser perdida ao salvar. */
+function CampoCategoriaServico({ valor, onChange }: { valor: string; onChange: (valor: string) => void }) {
+  const foraDaLista = valor !== '' && !(CATEGORIAS_SERVICO as readonly string[]).includes(valor)
+  return (
+    <div className="col-span-2">
+      <label className="mb-1 block font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+        Categoria do serviço (obrigatória)
+      </label>
+      <select
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-forest/30 bg-forest-mist/20 px-3 py-2 font-body text-sm focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
+      >
+        <option value="">Selecione a categoria</option>
+        {foraDaLista && <option value={valor}>{valor}</option>}
+        {CATEGORIAS_SERVICO.map((categoria) => (
+          <option key={categoria} value={categoria}>
+            {categoria}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }

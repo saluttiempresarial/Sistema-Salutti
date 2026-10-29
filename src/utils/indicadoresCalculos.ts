@@ -199,8 +199,10 @@ function itemTemProposta(item: ItemLicitacao): boolean {
 // Filtros
 // ---------------------------------------------------------------------------
 
+/** Valor do filtro "Marca": a marca do item ou, nos itens de serviço (que não
+ *  têm marca), a categoria do serviço. */
 function marcaDoItem(item: ItemLicitacao): string {
-  return normalizarNome(item.propostaCliente?.marca ?? '');
+  return normalizarNome(item.propostaCliente?.marca || item.propostaCliente?.categoriaServico || '');
 }
 
 /** Produto ofertado pelo cliente: código interno, marca e modelo, ou a
@@ -322,7 +324,9 @@ export function listarOpcoesOrgaos(licitacoes: Licitacao[]): OpcaoFiltro[] {
 
 /** Marcas distintas informadas nas propostas dos clientes. */
 export function listarOpcoesMarcas(licitacoes: Licitacao[]): OpcaoFiltro[] {
-  return opcoesDistintas(licitacoes.flatMap((l) => l.itens.map((i) => i.propostaCliente?.marca ?? '')));
+  return opcoesDistintas(
+    licitacoes.flatMap((l) => l.itens.map((i) => i.propostaCliente?.marca || i.propostaCliente?.categoriaServico || ''))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -417,6 +421,7 @@ export function montarUnidades(
           rotulo: `${item.numero} — ${item.descricao}`,
           familiaId: item.familiaId,
           marca: item.propostaCliente?.marca?.trim() || undefined,
+          categoriaServico: item.propostaCliente?.categoriaServico?.trim() || undefined,
           marcasComposicao: item.propostaCliente?.marcasComposicao?.filter((m) => m.trim()) ?? undefined,
           produtoChave: produtoDoItem(item)?.chave,
           produtoNome: produtoDoItem(item)?.nome,
@@ -1571,7 +1576,14 @@ export function calcularMarcas(
 
   licitacoes.forEach((l) => {
     l.itens
-      .filter((i) => !i.grupoId && itemTemProposta(i) && familiaCombina(i) && (!filtroMarca || marcaDoItem(i) === filtroMarca))
+      .filter(
+        (i) =>
+          !i.grupoId &&
+          itemTemProposta(i) &&
+          !i.propostaCliente?.categoriaServico && // item de serviço vai para o card de categorias
+          familiaCombina(i) &&
+          (!filtroMarca || marcaDoItem(i) === filtroMarca)
+      )
       .forEach((i) => {
         barra(i.propostaCliente?.marca).cotadas += 1;
         // Marcas que compõem cestas e kits também contam como cotadas (presença).
@@ -1585,7 +1597,7 @@ export function calcularMarcas(
   // Itens de grupo em detalhe: cada um conta como cotado (o loop acima só vê itens
   // avulsos) e, se ganho, como ganho.
   detalhesDeGrupo
-    .filter((u) => u.resultado === 'ganho' || ehPerdida(u))
+    .filter((u) => !u.categoriaServico && (u.resultado === 'ganho' || ehPerdida(u)))
     .forEach((u) => {
       const extras = (u.marcasComposicao ?? []).filter((m) => normalizarNome(m) !== normalizarNome(u.marca ?? ''));
       barra(u.marca).cotadas += 1;
@@ -1600,7 +1612,7 @@ export function calcularMarcas(
       }
     });
   unidades
-    .filter((u) => u.tipo === 'item' && u.resultado === 'ganho' && !u.detalheDeGrupo)
+    .filter((u) => u.tipo === 'item' && u.resultado === 'ganho' && !u.detalheDeGrupo && !u.categoriaServico)
     .forEach((u) => {
       barra(u.marca).ganhas += 1;
       (u.marcasComposicao ?? [])
@@ -1608,6 +1620,61 @@ export function calcularMarcas(
         .forEach((m) => {
           barra(m).ganhas += 1;
         });
+    });
+
+  return [...mapa.values()]
+    .sort((a, b) => b.cotadas - a.cotadas || b.ganhas - a.ganhas || a.nome.localeCompare(b.nome, 'pt-BR'))
+    .slice(0, LIMITE_TOP);
+}
+
+/** Categorias de serviço mais cotadas e mais ganhas (top 10), só de itens de
+ *  licitações de Serviços (itens com categoria). Mesma regra de calcularMarcas:
+ *  cotadas = itens soltos com preço informado; ganhas = itens soltos ganhos;
+ *  itens de grupo em detalhe contam como cotados e, se ganhos, como ganhos. */
+export function calcularCategoriasServico(
+  licitacoes: Licitacao[],
+  unidades: UnidadeResultado[],
+  filtroFamilia?: string,
+  filtroMarca?: string,
+  detalhesDeGrupo: UnidadeResultado[] = []
+): BarraMarca[] {
+  const mapa = new Map<string, BarraMarca>();
+  function barra(texto: string): BarraMarca {
+    const nome = texto.trim().replace(/\s+/g, ' ');
+    const chave = normalizarNome(nome);
+    const existente = mapa.get(chave);
+    if (existente) return existente;
+    const nova = { chave, nome, cotadas: 0, ganhas: 0 };
+    mapa.set(chave, nova);
+    return nova;
+  }
+  const familiaCombina = (i: ItemLicitacao) =>
+    !filtroFamilia || (filtroFamilia === FILTRO_SEM_FAMILIA ? !i.familiaId : i.familiaId === filtroFamilia);
+
+  licitacoes.forEach((l) => {
+    l.itens
+      .filter(
+        (i) =>
+          !i.grupoId &&
+          itemTemProposta(i) &&
+          !!i.propostaCliente?.categoriaServico?.trim() &&
+          familiaCombina(i) &&
+          (!filtroMarca || marcaDoItem(i) === filtroMarca)
+      )
+      .forEach((i) => {
+        barra(i.propostaCliente?.categoriaServico as string).cotadas += 1;
+      });
+  });
+  detalhesDeGrupo
+    .filter((u) => !!u.categoriaServico && (u.resultado === 'ganho' || ehPerdida(u)))
+    .forEach((u) => {
+      barra(u.categoriaServico as string).cotadas += 1;
+      if (u.resultado === 'ganho') barra(u.categoriaServico as string).ganhas += 1;
+    });
+  unidades
+    .filter((u) => u.tipo === 'item' && u.resultado === 'ganho' && !u.detalheDeGrupo && !!u.categoriaServico)
+    .forEach((u) => {
+      barra(u.categoriaServico as string).ganhas += 1;
     });
 
   return [...mapa.values()]
@@ -2463,6 +2530,7 @@ export function calcularIndicadoresAdmin(
     concorrentes: calcularConcorrentes(unidades, nomeDaFamilia),
     taxaVitoriaFamilia: calcularTaxaVitoriaFamilia(unidades, nomeDaFamilia),
     marcas: calcularMarcas(licitacoes, unidades, filtros.familiaId, filtros.marca, detalhesDeGrupo),
+    categoriasServico: calcularCategoriasServico(licitacoes, unidades, filtros.familiaId, filtros.marca, detalhesDeGrupo),
     produtosNuncaGanhos: calcularProdutosNuncaGanhos([...new Set([...unidades, ...detalhesDeGrupo])]),
     concorrentesFamilia: calcularConcorrentesFamilia(unidades, nomeDaFamilia),
     pipeline: calcularPipeline(licitacoes, dados.disputas, agora),

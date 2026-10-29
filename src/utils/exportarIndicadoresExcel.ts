@@ -351,7 +351,15 @@ function dadosDasAbas(op: OpcoesExportacaoIndicadores): Aba[] {
   }
 
   if (ver('marcas')) {
-    add('Marcas', bloco(undefined, [['Marca', 'txt'], ['Cotadas', 'int'], ['Ganhas', 'int']], i.marcas.map((m) => [m.nome, m.cotadas, m.ganhas])))
+    add(
+      'Marcas',
+      bloco(undefined, [['Marca', 'txt'], ['Cotadas', 'int'], ['Ganhas', 'int']], i.marcas.map((m) => [m.nome, m.cotadas, m.ganhas])),
+      bloco(
+        'Categorias de serviço',
+        [['Categoria', 'txt'], ['Cotadas', 'int'], ['Ganhas', 'int']],
+        i.categoriasServico.map((c) => [c.nome, c.cotadas, c.ganhas]),
+      ),
+    )
   }
 
   if (ver('perdas_evitaveis')) {

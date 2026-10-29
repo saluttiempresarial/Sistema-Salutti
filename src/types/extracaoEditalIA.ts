@@ -74,6 +74,11 @@ export interface ExtracaoEditalIA {
     prazoEntregaDias?: number;
     localEntrega: string;
     validadePropostaDias?: number;
+    // Só para objeto "Serviços" (29/10):
+    prazoVigencia?: string;
+    reajusteRepactuacao?: string;
+    subcontratacao?: 'permitida' | 'permitida_com_limite' | 'vedada' | 'omisso';
+    exigePlanilhaCustos?: 'sim' | 'nao';
   };
 
   outrasExigencias: ItemChecklistExtraidoIA[];

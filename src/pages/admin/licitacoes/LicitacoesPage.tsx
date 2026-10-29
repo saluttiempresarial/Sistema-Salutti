@@ -102,7 +102,7 @@ export function LicitacoesPage() {
     setCarregando(false);
 
     try {
-      const faltas = await propostaPendenciasService.faltasPorLicitacao(resultado.itens.map((l) => l.id));
+      const faltas = await propostaPendenciasService.faltasPorLicitacao(resultado.itens);
       const mapa: Record<string, PendenciaIdentificacao> = {};
       resultado.itens.forEach((l) => {
         const pendencia = pendenciaDeFaltas(l, faltas[l.id] ?? []);

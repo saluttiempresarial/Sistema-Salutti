@@ -62,12 +62,18 @@ import {
   StatusExigencia,
   criarChecklistVazio,
   criarHabilitacaoVazia,
-  HABILITACAO_JURIDICA_ITENS,
-  HABILITACAO_FISCAL_ITENS,
-  HABILITACAO_ECONOMICO_FINANCEIRA_ITENS,
-  HABILITACAO_TECNICA_ITENS,
   DECLARACOES_ITENS,
   OUTRAS_EXIGENCIAS_ITENS,
+  OBJETOS_LICITACAO,
+  TipoObjeto,
+  tipoDoObjeto,
+  listasDeExigencias,
+  converterChecklists,
+  itemEhOpcional,
+  rotulosCondicoes,
+  SubcontratacaoServico,
+  SUBCONTRATACAO_SERVICO_LABEL,
+  SUBCONTRATACAO_SERVICO_DESCRICAO,
 } from '../../../types/licitacao';
 import { clienteService } from '../../../services/clienteService';
 import { PorteEmpresa } from '../../../types/cliente';
@@ -102,25 +108,32 @@ const IMPORTACAO_EDITAL_IA_ATIVA = false;
 // marcação (Exigido/Não exigido) ao lado do nome — para o Analista ver de
 // longe onde falta preencher, sem precisar entrar em cada aba. O item
 // "Outras" de cada seção não entra nessa contagem (ver itensPendentes).
-function construirTabs(pendentesHabilitacao: number, pendentesDeclaracoes: number, pendentesOutras: number) {
+// A aba "Outras Exigências" some quando a licitação é de Serviços (a planilha de
+// serviços não tem essa seção).
+function construirTabs(
+  pendentesHabilitacao: number,
+  pendentesDeclaracoes: number,
+  pendentesOutras: number,
+  mostrarOutras: boolean
+) {
   const comContagem = (label: string, pendentes: number) => (pendentes > 0 ? `${label} (${pendentes})` : label);
   return [
     { id: 'gerais', label: 'Informações Gerais' },
     { id: 'habilitacao', label: comContagem('Habilitação', pendentesHabilitacao) },
     { id: 'declaracoes', label: comContagem('Declarações', pendentesDeclaracoes) },
     { id: 'comerciais', label: 'Cond. Comerciais' },
-    { id: 'outras', label: comContagem('Outras Exigências', pendentesOutras) },
+    ...(mostrarOutras ? [{ id: 'outras', label: comContagem('Outras Exigências', pendentesOutras) }] : []),
     { id: 'itens', label: 'Itens' },
     { id: 'atencao', label: 'Ponto de Atenção' },
   ];
 }
 
 // Um item conta como "pendente" quando ainda não foi marcado Exigido/Não
-// exigido — exceto o item "Outras" de cada seção, que é sempre opcional (o
-// Analista só usa se o edital tiver alguma exigência fora da lista fixa) e
-// nunca bloqueia o salvamento.
+// exigido — exceto o item "Outras" de cada seção (em Serviços, "Outros
+// requisitos"), que é sempre opcional (o Analista só usa se o edital tiver
+// alguma exigência fora da lista fixa) e nunca bloqueia o salvamento.
 function itensPendentes(itens: ItemChecklistExigencia[]): ItemChecklistExigencia[] {
-  return itens.filter((item) => item.status == null && item.label !== 'Outras');
+  return itens.filter((item) => item.status == null && !itemEhOpcional(item));
 }
 
 function gerarIdLocal(prefixo: string): string {
@@ -245,17 +258,19 @@ function estaPreenchido(valor: unknown): valor is ItemChecklistExigencia[] {
   return Array.isArray(valor) && valor.length > 0;
 }
 
-function normalizarHabilitacao(valor: unknown): Habilitacao {
+// O tipo de objeto define quais itens fixos semeiam uma seção ainda vazia.
+function normalizarHabilitacao(valor: unknown, tipo: TipoObjeto): Habilitacao {
   const h = (valor ?? {}) as Partial<Habilitacao>;
+  const listas = listasDeExigencias(tipo);
   return {
-    juridica: estaPreenchido(h.juridica) ? h.juridica : criarChecklistVazio(HABILITACAO_JURIDICA_ITENS),
+    juridica: estaPreenchido(h.juridica) ? h.juridica : criarChecklistVazio(listas.juridica),
     fiscalSocialTrabalhista: estaPreenchido(h.fiscalSocialTrabalhista)
       ? h.fiscalSocialTrabalhista
-      : criarChecklistVazio(HABILITACAO_FISCAL_ITENS),
+      : criarChecklistVazio(listas.fiscalSocialTrabalhista),
     economicoFinanceira: estaPreenchido(h.economicoFinanceira)
       ? h.economicoFinanceira
-      : criarChecklistVazio(HABILITACAO_ECONOMICO_FINANCEIRA_ITENS),
-    tecnica: estaPreenchido(h.tecnica) ? h.tecnica : criarChecklistVazio(HABILITACAO_TECNICA_ITENS),
+      : criarChecklistVazio(listas.economicoFinanceira),
+    tecnica: estaPreenchido(h.tecnica) ? h.tecnica : criarChecklistVazio(listas.tecnica),
   };
 }
 
@@ -447,9 +462,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       // Editando uma licitação existente — rascunho local não se aplica.
       setForm({
         ...licitacaoEmEdicao,
-        habilitacao: normalizarHabilitacao(licitacaoEmEdicao.habilitacao),
-        declaracoes: normalizarChecklistCampo(licitacaoEmEdicao.declaracoes, DECLARACOES_ITENS),
-        outrasExigencias: normalizarChecklistCampo(licitacaoEmEdicao.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
+        habilitacao: normalizarHabilitacao(licitacaoEmEdicao.habilitacao, tipoDoObjeto(licitacaoEmEdicao.objeto)),
+        declaracoes: normalizarChecklistCampo(
+          licitacaoEmEdicao.declaracoes,
+          listasDeExigencias(tipoDoObjeto(licitacaoEmEdicao.objeto)).declaracoes
+        ),
+        outrasExigencias: normalizarChecklistCampo(
+          licitacaoEmEdicao.outrasExigencias,
+          listasDeExigencias(tipoDoObjeto(licitacaoEmEdicao.objeto)).outras
+        ),
       });
       setValorTotalTexto(numeroParaCampoDecimal(licitacaoEmEdicao.valorTotalLicitacao, 10, 2));
       setValorIntervaloLancesTexto(
@@ -467,9 +488,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (rascunho) {
       setForm({
         ...rascunho,
-        habilitacao: normalizarHabilitacao(rascunho.habilitacao),
-        declaracoes: normalizarChecklistCampo(rascunho.declaracoes, DECLARACOES_ITENS),
-        outrasExigencias: normalizarChecklistCampo(rascunho.outrasExigencias, OUTRAS_EXIGENCIAS_ITENS),
+        habilitacao: normalizarHabilitacao(rascunho.habilitacao, tipoDoObjeto(rascunho.objeto)),
+        declaracoes: normalizarChecklistCampo(rascunho.declaracoes, listasDeExigencias(tipoDoObjeto(rascunho.objeto)).declaracoes),
+        outrasExigencias: normalizarChecklistCampo(rascunho.outrasExigencias, listasDeExigencias(tipoDoObjeto(rascunho.objeto)).outras),
       });
       setValorTotalTexto(numeroParaCampoDecimal(rascunho.valorTotalLicitacao, 10, 2));
       setValorIntervaloLancesTexto(numeroParaCampoDecimal(rascunho.condicoesComerciais.valorIntervaloLances, 4, 2));
@@ -616,6 +637,34 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     setForm((atual) => ({ ...atual, itens: atual.itens.filter((i) => i.id !== id) }));
   }
 
+  // Troca o objeto da licitação. Se o tipo de lista muda (ex.: Produto →
+  // Serviços), as exigências são refeitas com a lista do tipo novo: itens de mesmo
+  // id aproveitam a marcação, e o que seria perdido exige confirmação.
+  function trocarObjeto(novoObjeto: string) {
+    const tipoAtual = tipoDoObjeto(form.objeto);
+    const tipoNovo = tipoDoObjeto(novoObjeto);
+    if (tipoAtual === tipoNovo) {
+      atualizarCampo('objeto', novoObjeto);
+      return;
+    }
+    const conversao = converterChecklists(form, tipoNovo);
+    if (conversao.descartados.length > 0) {
+      const confirmou = window.confirm(
+        `Ao trocar o objeto para "${novoObjeto || 'em branco'}", a lista de exigências muda. ` +
+          `${conversao.descartados.length} ${conversao.descartados.length === 1 ? 'item marcado ou anotado não existe' : 'itens marcados ou anotados não existem'} ` +
+          `na lista nova e ${conversao.descartados.length === 1 ? 'será perdido' : 'serão perdidos'}. Deseja continuar?`
+      );
+      if (!confirmou) return;
+    }
+    setForm((atual) => ({
+      ...atual,
+      objeto: novoObjeto,
+      habilitacao: conversao.habilitacao,
+      declaracoes: conversao.declaracoes,
+      outrasExigencias: conversao.outrasExigencias,
+    }));
+  }
+
   // Pré-preenche o formulário com o que a IA extraiu do PDF do edital.
   // Nunca salva sozinha — só popula o estado, exatamente como se o
   // Analista tivesse digitado tudo à mão. "estrutura"/"participacao" vêm
@@ -640,7 +689,25 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       exclusivoMeEpp: item.exclusivoMeEpp,
     }));
 
-    setForm((atual) => ({
+    // O objeto extraído define a lista de exigências. Se o tipo mudou em relação ao
+    // que está no formulário, parte-se de uma lista nova (em branco) desse tipo.
+    const tipoExtraido = tipoDoObjeto(extracao.objeto);
+    const mudouTipo = tipoExtraido !== tipoDoObjeto(form.objeto);
+
+    setForm((atualForm) => {
+      const base = mudouTipo
+        ? {
+            habilitacao: criarHabilitacaoVazia(tipoExtraido),
+            declaracoes: criarChecklistVazio(listasDeExigencias(tipoExtraido).declaracoes),
+            outrasExigencias: criarChecklistVazio(listasDeExigencias(tipoExtraido).outras),
+          }
+        : {
+            habilitacao: atualForm.habilitacao,
+            declaracoes: atualForm.declaracoes,
+            outrasExigencias: atualForm.outrasExigencias,
+          };
+      const atual = { ...atualForm, ...base };
+      return {
       ...atual,
       dataLicitacao: extracao.dataLicitacao ?? atual.dataLicitacao,
       portal: extracao.portal,
@@ -685,7 +752,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       itens: novosItens,
 
       pontosAtencao: [atual.pontosAtencao, extracao.pontosAtencao].filter(Boolean).join('\n\n'),
-    }));
+      };
+    });
 
     // Campos de texto mascarado (BR) não vêm do spread acima — precisam
     // ser reformatados manualmente, mesmo padrão usado ao carregar uma
@@ -812,7 +880,13 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     itensPendentes(form.habilitacao.tecnica).length;
   const pendentesDeclaracoes = itensPendentes(form.declaracoes).length;
   const pendentesOutras = itensPendentes(form.outrasExigencias).length;
-  const tabs = construirTabs(pendentesHabilitacao, pendentesDeclaracoes, pendentesOutras);
+  const tipoObjeto = tipoDoObjeto(form.objeto);
+  const rotulos = rotulosCondicoes(tipoObjeto);
+  // Em Serviços a aba "Outras Exigências" some, a menos que a licitação já traga
+  // itens salvos nela (cadastrada antes da lista de serviços): aí continua visível,
+  // para nada ficar escondido nem bloquear o salvamento sem o analista ver.
+  const mostrarOutras = tipoObjeto !== 'servicos' || form.outrasExigencias.length > 0;
+  const tabs = construirTabs(pendentesHabilitacao, pendentesDeclaracoes, pendentesOutras, mostrarOutras);
 
   const dataParaPrazo = form.dataEfetivaLicitacao || form.dataLicitacao;
   const prazoInterno = dataParaPrazo ? calcularPrazoInterno(dataParaPrazo) : null;
@@ -1018,14 +1092,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 <SelectField
                   label="Objeto da licitação"
                   value={form.objeto}
-                  onChange={(e) => atualizarCampo('objeto', e.target.value)}
+                  onChange={(e) => trocarObjeto(e.target.value)}
                   placeholder="Selecione"
-                  options={[
-                    { value: 'Produto', label: 'Produto' },
-                    { value: 'Serviços', label: 'Serviços' },
-                    { value: 'Obra', label: 'Obra' },
-                    { value: 'Serviços Técnicos', label: 'Serviços Técnicos' },
-                  ]}
+                  options={OBJETOS_LICITACAO.map((objeto) => ({ value: objeto, label: objeto }))}
                 />
               </div>
             </SecaoFormulario>
@@ -1491,7 +1560,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 }}
               />
               <TextField
-                label="Prazo de entrega (dias)"
+                label={rotulos.prazo}
                 type="number"
                 min={0}
                 maxLength={2}
@@ -1529,7 +1598,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
             </div>
 
             <TextAreaField
-              label="Local de entrega"
+              label={rotulos.local}
               value={form.condicoesComerciais.localEntrega}
               onChange={(e) => atualizarCondicoes('localEntrega', e.target.value)}
               rows={2}
@@ -1547,6 +1616,54 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 onChange={(e) => atualizarCondicoes('garantiasDetalhe', e.target.value)}
                 rows={2}
               />
+            )}
+
+            {tipoObjeto === 'servicos' && (
+              <div className="space-y-4 rounded-xl border border-ink-soft/15 p-4">
+                <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Execução do serviço</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <TextField
+                    label="Prazo de execução / vigência do contrato"
+                    value={form.condicoesComerciais.prazoVigencia ?? ''}
+                    onChange={(e) => atualizarCondicoes('prazoVigencia', e.target.value)}
+                    placeholder="Ex.: 12 meses"
+                  />
+                  <TextField
+                    label="Reajuste / repactuação (índice e data-base)"
+                    value={form.condicoesComerciais.reajusteRepactuacao ?? ''}
+                    onChange={(e) => atualizarCondicoes('reajusteRepactuacao', e.target.value)}
+                    placeholder="Ex.: IPCA, após 12 meses"
+                  />
+                  <div>
+                    <SelectField
+                      label="Subcontratação permitida? (art. 122)"
+                      value={form.condicoesComerciais.subcontratacao ?? ''}
+                      onChange={(e) =>
+                        atualizarCondicoes('subcontratacao', (e.target.value || undefined) as SubcontratacaoServico | undefined)
+                      }
+                      placeholder="Selecione"
+                      options={Object.entries(SUBCONTRATACAO_SERVICO_LABEL).map(([value, label]) => ({ value, label }))}
+                    />
+                    {form.condicoesComerciais.subcontratacao && (
+                      <p className="mt-1 font-body text-xs text-ink-soft">
+                        {SUBCONTRATACAO_SERVICO_DESCRICAO[form.condicoesComerciais.subcontratacao]}
+                      </p>
+                    )}
+                  </div>
+                  <SelectField
+                    label="Exige planilha de custos e formação de preços?"
+                    value={form.condicoesComerciais.exigePlanilhaCustos ?? ''}
+                    onChange={(e) =>
+                      atualizarCondicoes('exigePlanilhaCustos', (e.target.value || undefined) as 'sim' | 'nao' | undefined)
+                    }
+                    placeholder="Selecione"
+                    options={[
+                      { value: 'sim', label: 'Sim' },
+                      { value: 'nao', label: 'Não' },
+                    ]}
+                  />
+                </div>
+              </div>
             )}
 
           </div>

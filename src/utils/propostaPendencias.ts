@@ -14,24 +14,28 @@
 //    cotar, e o preenchimento parcial de grupos já tem aviso próprio;
 //  - licitação recusada pelo cliente não entra.
 
-import type { ItemLicitacao, Licitacao } from '../types/licitacao'
+import { tipoDoObjeto, type ItemLicitacao, type Licitacao } from '../types/licitacao'
 import {
   DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE,
   propostaComercialTravadaDeVez,
 } from './licitacaoCalculos'
 
-export type FaltaIdentificacao = 'marca' | 'modelo' | 'marca_modelo'
+export type FaltaIdentificacao = 'marca' | 'modelo' | 'marca_modelo' | 'categoria'
 
 export const ROTULO_FALTA_IDENTIFICACAO: Record<FaltaIdentificacao, string> = {
   marca: 'Falta marca',
   modelo: 'Falta modelo',
   marca_modelo: 'Falta marca e modelo',
+  categoria: 'Falta categoria',
 }
 
-/** O que falta no item, ou null quando está completo (ou sem valor). */
-export function faltaIdentificacaoDoItem(item: ItemLicitacao): FaltaIdentificacao | null {
+/** O que falta no item, ou null quando está completo (ou sem valor). Em
+ *  licitação de Serviços (`ehServico`), o que se exige é a categoria do serviço
+ *  (migração 061); nos demais objetos, marca e modelo. */
+export function faltaIdentificacaoDoItem(item: ItemLicitacao, ehServico = false): FaltaIdentificacao | null {
   const p = item.propostaCliente
   if (!p || p.precoMinimo == null) return null
+  if (ehServico) return (p.categoriaServico ?? '').trim() ? null : 'categoria'
   const semMarca = !(p.marca ?? '').trim()
   const semModelo = !(p.modelo ?? '').trim()
   if (semMarca && semModelo) return 'marca_modelo'
@@ -89,7 +93,8 @@ export function pendenciaDeFaltas(
 
   const soMarca = faltas.every((f) => f === 'marca')
   const soModelo = faltas.every((f) => f === 'modelo')
-  const o = soMarca ? 'marca' : soModelo ? 'modelo' : 'marca/modelo'
+  const soCategoria = faltas.every((f) => f === 'categoria')
+  const o = soCategoria ? 'categoria do serviço' : soMarca ? 'marca' : soModelo ? 'modelo' : 'marca/modelo'
   const mensagem = `Falta ${o} em ${faltas.length} ${faltas.length === 1 ? 'item' : 'itens'}`
 
   return { itens: faltas.length, mensagem, urgencia: urgenciaDaLicitacao(licitacao, agora) }
@@ -101,8 +106,9 @@ export function pendenciaIdentificacaoDaLicitacao(
   licitacao: Licitacao,
   agora: Date = new Date(),
 ): PendenciaIdentificacao | null {
+  const ehServico = tipoDoObjeto(licitacao.objeto) === 'servicos'
   const faltas = licitacao.itens
-    .map(faltaIdentificacaoDoItem)
+    .map((item) => faltaIdentificacaoDoItem(item, ehServico))
     .filter((f): f is FaltaIdentificacao => f !== null)
   return pendenciaDeFaltas(licitacao, faltas, agora)
 }

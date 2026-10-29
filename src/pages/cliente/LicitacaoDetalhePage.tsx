@@ -50,6 +50,9 @@ import {
   ItemChecklistExigencia,
   StatusExigencia,
   STATUS_EXIGENCIA_LABEL,
+  SUBCONTRATACAO_SERVICO_LABEL,
+  tipoDoObjeto,
+  rotulosCondicoes,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
@@ -262,7 +265,14 @@ export function LicitacaoDetalhePage() {
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
-          <Tabs tabs={TABS} activeTab={abaAtiva} onChange={setAbaAtiva} />
+          <Tabs
+            tabs={TABS.filter(
+              // Em Serviços não há "Outras Exigências" (a menos que a licitação já traga itens nela).
+              (aba) => aba.id !== 'outras' || tipoDoObjeto(licitacao.objeto) !== 'servicos' || licitacao.outrasExigencias.length > 0
+            )}
+            activeTab={abaAtiva}
+            onChange={setAbaAtiva}
+          />
 
           <div className="mt-5 min-h-[280px] space-y-5">
             {abaAtiva === 'gerais' && (
@@ -384,9 +394,12 @@ export function LicitacaoDetalhePage() {
                 />
 
                 <div className="grid grid-cols-3 gap-4">
-                  <Campo label="Local de entrega" value={licitacao.condicoesComerciais.localEntrega} />
                   <Campo
-                    label="Prazo de entrega"
+                    label={rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).local}
+                    value={licitacao.condicoesComerciais.localEntrega}
+                  />
+                  <Campo
+                    label={rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).prazoCurto}
                     value={
                       licitacao.condicoesComerciais.prazoEntregaDias
                         ? `${licitacao.condicoesComerciais.prazoEntregaDias} dias`
@@ -424,6 +437,34 @@ export function LicitacaoDetalhePage() {
 
                 {licitacao.condicoesComerciais.possuiGarantias && (
                   <Campo label="Garantias" value={licitacao.condicoesComerciais.garantiasDetalhe || 'Sim'} />
+                )}
+
+                {tipoDoObjeto(licitacao.objeto) === 'servicos' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <Campo label="Prazo de execução / vigência do contrato" value={licitacao.condicoesComerciais.prazoVigencia} />
+                    <Campo
+                      label="Reajuste / repactuação (índice e data-base)"
+                      value={licitacao.condicoesComerciais.reajusteRepactuacao}
+                    />
+                    <Campo
+                      label="Subcontratação permitida?"
+                      value={
+                        licitacao.condicoesComerciais.subcontratacao
+                          ? SUBCONTRATACAO_SERVICO_LABEL[licitacao.condicoesComerciais.subcontratacao]
+                          : undefined
+                      }
+                    />
+                    <Campo
+                      label="Exige planilha de custos e formação de preços?"
+                      value={
+                        licitacao.condicoesComerciais.exigePlanilhaCustos
+                          ? licitacao.condicoesComerciais.exigePlanilhaCustos === 'sim'
+                            ? 'Sim'
+                            : 'Não'
+                          : undefined
+                      }
+                    />
+                  </div>
                 )}
               </div>
             )}

@@ -894,8 +894,10 @@ export interface IndicadoresAdmin {
   concorrentes: Concorrente[]; // top 10
   /** Taxa de vitória por família (por quantidade). */
   taxaVitoriaFamilia: TaxaVitoriaFamilia;
-  /** Marcas mais cotadas e mais ganhas (top 10). */
+  /** Marcas mais cotadas e mais ganhas (top 10). Itens de serviço não entram aqui. */
   marcas: BarraMarca[];
+  /** Categorias de serviço mais cotadas e mais ganhas (top 10) — só itens de licitações de Serviços. */
+  categoriasServico: BarraMarca[];
   /** Produtos disputados que nunca ganharam. */
   produtosNuncaGanhos: ProdutosNuncaGanhos;
   /** Contra quem perdemos em cada família (até 5 famílias). */
@@ -928,6 +930,8 @@ export interface UnidadeResultado {
   familiaId?: string; // só itens
   /** Marca informada pelo cliente na proposta (só itens). */
   marca?: string;
+  /** Categoria do serviço informada pelo cliente (só itens de licitação de Serviços). */
+  categoriaServico?: string;
   /** Produto ofertado pelo cliente (só itens): código interno, marca e modelo
    *  ou descrição, nessa ordem de preferência. */
   produtoChave?: string;

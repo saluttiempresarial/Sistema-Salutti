@@ -42,6 +42,9 @@ import {
   FORMA_PAGAMENTO_LABEL,
   ItemChecklistExigencia,
   STATUS_EXIGENCIA_LABEL,
+  SUBCONTRATACAO_SERVICO_LABEL,
+  tipoDoObjeto,
+  rotulosCondicoes,
   DecisaoAcimaReferencia,
 } from '@/types/licitacao'
 import { formatarDataHora } from '@/utils/prazoUtils'
@@ -298,9 +301,30 @@ export function PropostaComercialPage() {
         { Campo: 'Prazo de pagamento (dias)', Valor: licitacao.condicoesComerciais.prazoPagamentoDias ?? '—' },
         { Campo: 'Possui garantias', Valor: licitacao.condicoesComerciais.possuiGarantias ? 'Sim' : 'Não' },
         { Campo: 'Detalhe das garantias', Valor: licitacao.condicoesComerciais.garantiasDetalhe || '—' },
-        { Campo: 'Prazo de entrega (dias)', Valor: licitacao.condicoesComerciais.prazoEntregaDias ?? '—' },
-        { Campo: 'Local de entrega', Valor: licitacao.condicoesComerciais.localEntrega || '—' },
+        { Campo: rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).prazo, Valor: licitacao.condicoesComerciais.prazoEntregaDias ?? '—' },
+        { Campo: rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).local, Valor: licitacao.condicoesComerciais.localEntrega || '—' },
         { Campo: 'Validade da proposta (dias)', Valor: licitacao.condicoesComerciais.validadePropostaDias ?? '—' },
+        ...(tipoDoObjeto(licitacao.objeto) === 'servicos'
+          ? [
+              { Campo: 'Prazo de execução / vigência do contrato', Valor: licitacao.condicoesComerciais.prazoVigencia || '—' },
+              { Campo: 'Reajuste / repactuação (índice e data-base)', Valor: licitacao.condicoesComerciais.reajusteRepactuacao || '—' },
+              {
+                Campo: 'Subcontratação permitida?',
+                Valor: licitacao.condicoesComerciais.subcontratacao
+                  ? SUBCONTRATACAO_SERVICO_LABEL[licitacao.condicoesComerciais.subcontratacao]
+                  : '—',
+              },
+              {
+                Campo: 'Exige planilha de custos e formação de preços?',
+                Valor:
+                  licitacao.condicoesComerciais.exigePlanilhaCustos === 'sim'
+                    ? 'Sim'
+                    : licitacao.condicoesComerciais.exigePlanilhaCustos === 'nao'
+                      ? 'Não'
+                      : '—',
+              },
+            ]
+          : []),
 
         { Campo: 'Pontos de atenção', Valor: licitacao.pontosAtencao || '—' },
 
@@ -322,6 +346,7 @@ export function PropostaComercialPage() {
       const taxaFretePreenchida = licitacao.percentualFrete != null
       const taxaFreteNumero = licitacao.percentualFrete ?? 0
 
+      const ehServico = tipoDoObjeto(licitacao.objeto) === 'servicos'
       const linhasItens = licitacao.itens.map((item) => {
         const grupo = licitacao.grupos.find((g) => g.id === item.grupoId)
         const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
@@ -335,10 +360,19 @@ export function PropostaComercialPage() {
           'Valor unit. referência': item.precoReferencia,
           'Valor total referência': totalReferenciaItem(item),
           'Exclusivo ME/EPP': item.exclusivoMeEpp ? 'Sim' : 'Não',
-          'Cód. produto': item.propostaCliente?.codigoInterno || '—',
-          'Descrição ofertada': item.propostaCliente?.descricaoProduto || '—',
-          Fabricante: item.propostaCliente?.marca || '—',
-          Modelo: item.propostaCliente?.modelo || '—',
+          ...(ehServico
+            ? {
+                'Cód. serviço': item.propostaCliente?.codigoInterno || '—',
+                'Descrição do serviço': item.propostaCliente?.descricaoProduto || '—',
+                'Categoria do serviço': item.propostaCliente?.categoriaServico || '—',
+                Observações: item.propostaCliente?.observacoes || '—',
+              }
+            : {
+                'Cód. produto': item.propostaCliente?.codigoInterno || '—',
+                'Descrição ofertada': item.propostaCliente?.descricaoProduto || '—',
+                Fabricante: item.propostaCliente?.marca || '—',
+                Modelo: item.propostaCliente?.modelo || '—',
+              }),
           'Preço mínimo (R$)': item.propostaCliente?.precoMinimo ?? '—',
           'Preço com frete (R$)': analise.precoComFrete ?? '—',
           'Valor total ofertado (R$)': analise.valorTotal ?? '—',

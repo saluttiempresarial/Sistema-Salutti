@@ -276,13 +276,186 @@ export const OUTRAS_EXIGENCIAS_ITENS = [
  *  nenhum status marcado ainda. Usada tanto pelo formulário quanto (via
  *  `completarChecklist`, no service) pra preencher itens novos do checklist
  *  em licitações salvas antes deles existirem. */
-export function criarHabilitacaoVazia(): Habilitacao {
+export function criarHabilitacaoVazia(tipo: TipoObjeto = 'produto'): Habilitacao {
+  const listas = listasDeExigencias(tipo);
   return {
-    juridica: criarChecklistVazio(HABILITACAO_JURIDICA_ITENS),
-    fiscalSocialTrabalhista: criarChecklistVazio(HABILITACAO_FISCAL_ITENS),
-    economicoFinanceira: criarChecklistVazio(HABILITACAO_ECONOMICO_FINANCEIRA_ITENS),
-    tecnica: criarChecklistVazio(HABILITACAO_TECNICA_ITENS),
+    juridica: criarChecklistVazio(listas.juridica),
+    fiscalSocialTrabalhista: criarChecklistVazio(listas.fiscalSocialTrabalhista),
+    economicoFinanceira: criarChecklistVazio(listas.economicoFinanceira),
+    tecnica: criarChecklistVazio(listas.tecnica),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tipo de objeto (29/10) — as listas de exigências mudam conforme o objeto
+// ---------------------------------------------------------------------------
+// "Produto" usa as listas acima. "Serviços" usa a lista da planilha de análise
+// de edital de serviços (ASTRON, 29/10). "Obra" e "Serviços Técnicos" seguem com
+// a lista de produto até a Salutti definir as listas próprias.
+//
+// Os checklists são salvos inteiros (id, nome e marcação) nas colunas JSON da
+// licitação; por isso trocar a lista não exige migração do banco. Itens que
+// existem nas duas listas usam o MESMO id, então a marcação é aproveitada quando
+// o analista troca o objeto.
+export type TipoObjeto = 'produto' | 'servicos';
+
+export const OBJETOS_LICITACAO = ['Produto', 'Serviços', 'Obra', 'Serviços Técnicos'] as const;
+
+/** Descobre o tipo de lista a partir do texto do objeto (campo livre, pois a
+ *  leitura por IA também preenche). Só "Serviços" tem lista própria por enquanto. */
+export function tipoDoObjeto(objeto?: string | null): TipoObjeto {
+  const normalizado = (objeto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+  return normalizado === 'servicos' || normalizado === 'servico' ? 'servicos' : 'produto';
+}
+
+type DefinicaoItens = ReadonlyArray<{ id: string; label: string }>;
+
+export interface ListasExigencias {
+  juridica: DefinicaoItens;
+  fiscalSocialTrabalhista: DefinicaoItens;
+  economicoFinanceira: DefinicaoItens;
+  tecnica: DefinicaoItens;
+  declaracoes: DefinicaoItens;
+  /** Vazia em "Serviços": a planilha não tem a seção (os itens equivalentes
+   *  ficam na qualificação técnica). A aba "Outras Exigências" some. */
+  outras: DefinicaoItens;
+}
+
+export const SERVICOS_HABILITACAO_JURIDICA_ITENS = [
+  { id: 'ato_constitutivo_objeto_compativel', label: 'Ato constitutivo / contrato social consolidado, com objeto compatível com o serviço' },
+  { id: 'doc_identificacao_socios', label: 'Documento de identificação dos sócios ou administradores' },
+  { id: 'aceita_sicaf', label: 'Aceita o SICAF (Sistema de Cadastramento Unificado de Fornecedores) em substituição aos documentos' },
+] as const;
+
+export const SERVICOS_HABILITACAO_FISCAL_ITENS = [
+  { id: 'cartao_cnpj', label: 'CNPJ (Cadastro Nacional da Pessoa Jurídica) com CNAE (Classificação Nacional de Atividades Econômicas) compatível com o serviço' },
+  { id: 'inscricao_estadual_municipal', label: 'Inscrição no cadastro de contribuintes municipal (ISS (Imposto Sobre Serviços)) e/ou estadual' },
+  { id: 'cnd_federal', label: 'Certidão Conjunta de Débitos Federais (Receita Federal e PGFN (Procuradoria-Geral da Fazenda Nacional))' },
+  { id: 'cnd_estadual', label: 'Certidão de regularidade com a Fazenda Estadual' },
+  { id: 'cnd_municipal', label: 'Certidão de regularidade com a Fazenda Municipal' },
+  { id: 'fgts_crf', label: 'CRF (Certificado de Regularidade do FGTS (Fundo de Garantia do Tempo de Serviço))' },
+  { id: 'cndt', label: 'CNDT (Certidão Negativa de Débitos Trabalhistas)' },
+] as const;
+
+export const SERVICOS_HABILITACAO_ECONOMICO_FINANCEIRA_ITENS = [
+  { id: 'balanco_patrimonial', label: 'Balanço patrimonial e demonstrações contábeis (informar se do último exercício ou dos dois últimos)' },
+  { id: 'indices_economico_financeiros', label: 'Índices contábeis mínimos – LG (Liquidez Geral), LC (Liquidez Corrente) e SG (Solvência Geral) (informar os valores)' },
+  { id: 'capital_ou_patrimonio_minimo', label: 'Capital social ou patrimônio líquido mínimo (até 10% do valor estimado – art. 69, § 4º)' },
+  { id: 'certidao_falencia', label: 'Certidão negativa de falência ou recuperação judicial' },
+  { id: 'compromissos_assumidos', label: 'Declaração / relação de compromissos assumidos (contratos em andamento)' },
+] as const;
+
+export const SERVICOS_HABILITACAO_TECNICA_ITENS = [
+  { id: 'atestado_capacidade_tecnica', label: 'Atestado de capacidade técnica da empresa (informar a parcela relevante e o quantitativo mínimo – até 50%, art. 67, § 2º)' },
+  { id: 'profissional_tecnico_quadro', label: 'Atestado ou comprovação de profissional responsável (técnico-profissional) no quadro da empresa' },
+  { id: 'equipe_tecnica_minima', label: 'Indicação da equipe técnica mínima (ex.: diretor, cinegrafista, editor, técnico de áudio, fotógrafo)' },
+  { id: 'equipamentos_minimos', label: 'Relação de equipamentos mínimos (câmeras, áudio, iluminação, mesa de corte, transmissão, drone)' },
+  { id: 'registro_conselho_profissional', label: 'Registro da empresa ou dos profissionais em entidade profissional (ex.: DRT (Registro Profissional) de radialista/jornalista, CREA (Conselho Regional de Engenharia e Agronomia))' },
+  { id: 'registro_ancine', label: 'Registro na ANCINE (Agência Nacional do Cinema)' },
+  { id: 'certificado_cenp', label: 'Certificado do CENP (Conselho Executivo das Normas-Padrão) – típico de agência de publicidade (Lei nº 12.232/2010)' },
+  { id: 'art_rrt_responsavel', label: 'Responsável técnico com ART/RRT (Anotação/Registro de Responsabilidade Técnica) – estruturas, palco ou elétrica em eventos' },
+  { id: 'vistoria_visita_tecnica', label: 'Vistoria / visita técnica (ou declaração de conhecimento das condições do local)' },
+  { id: 'amostra_portfolio_prova_conceito', label: 'Amostra, portfólio, vídeo-piloto ou prova de conceito' },
+  { id: 'proposta_tecnica', label: 'Proposta técnica (julgamento por melhor técnica ou técnica e preço)' },
+  { id: 'licencas_autorizacoes_servico', label: 'Licenças e autorizações específicas (ex.: drone – ANAC/DECEA, alvarás de evento, cessão de direitos autorais e de imagem)' },
+] as const;
+
+// O último item ("Outros requisitos") é opcional: o id começa com "outras_" (ver
+// itemEhOpcional).
+export const SERVICOS_DECLARACOES_ITENS = [
+  { id: 'cumprimento_requisitos_habilitacao', label: 'Declaração de cumprimento dos requisitos de habilitação' },
+  { id: 'reserva_cargos_pcd', label: 'Declaração de reserva de cargos para PcD (Pessoa com Deficiência) e reabilitados da Previdência' },
+  { id: 'proposta_compativel_custos_trabalhistas', label: 'Declaração de que a proposta cobre os custos trabalhistas' },
+  { id: 'nao_emprego_menor', label: 'Declaração de não emprego de menor (art. 7º, XXXIII, da Constituição Federal)' },
+  { id: 'enquadramento_me_epp', label: 'Declaração de enquadramento como ME/EPP (Microempresa e Empresa de Pequeno Porte), se for usar o benefício' },
+  { id: 'outras_declaracoes', label: 'Outros requisitos de habilitação (descrever no campo de detalhes)' },
+] as const;
+
+/** Listas de exigências de cada tipo de objeto. */
+export function listasDeExigencias(tipo: TipoObjeto): ListasExigencias {
+  if (tipo === 'servicos') {
+    return {
+      juridica: SERVICOS_HABILITACAO_JURIDICA_ITENS,
+      fiscalSocialTrabalhista: SERVICOS_HABILITACAO_FISCAL_ITENS,
+      economicoFinanceira: SERVICOS_HABILITACAO_ECONOMICO_FINANCEIRA_ITENS,
+      tecnica: SERVICOS_HABILITACAO_TECNICA_ITENS,
+      declaracoes: SERVICOS_DECLARACOES_ITENS,
+      outras: [],
+    };
+  }
+  return {
+    juridica: HABILITACAO_JURIDICA_ITENS,
+    fiscalSocialTrabalhista: HABILITACAO_FISCAL_ITENS,
+    economicoFinanceira: HABILITACAO_ECONOMICO_FINANCEIRA_ITENS,
+    tecnica: HABILITACAO_TECNICA_ITENS,
+    declaracoes: DECLARACOES_ITENS,
+    outras: OUTRAS_EXIGENCIAS_ITENS,
+  };
+}
+
+/** Item que nunca bloqueia o salvamento: o "Outras" de cada seção de produto e o
+ *  "Outros requisitos" de serviços (todos com id "outras_…"). */
+export function itemEhOpcional(item: { id: string; label: string }): boolean {
+  return item.label === 'Outras' || item.id.startsWith('outras_');
+}
+
+/** Resultado de trocar o tipo de objeto sobre checklists já preenchidos. */
+export interface ConversaoChecklists {
+  habilitacao: Habilitacao;
+  declaracoes: ItemChecklistExigencia[];
+  outrasExigencias: ItemChecklistExigencia[];
+  /** Itens com marcação ou detalhe que não existem na lista nova (serão perdidos). */
+  descartados: ItemChecklistExigencia[];
+}
+
+/** Monta as listas do tipo novo e aproveita a marcação dos itens de mesmo id. */
+export function converterChecklists(
+  atual: {
+    habilitacao: Habilitacao;
+    declaracoes: ItemChecklistExigencia[];
+    outrasExigencias: ItemChecklistExigencia[];
+  },
+  tipoNovo: TipoObjeto
+): ConversaoChecklists {
+  const listas = listasDeExigencias(tipoNovo);
+  const todosAtuais = [
+    ...atual.habilitacao.juridica,
+    ...atual.habilitacao.fiscalSocialTrabalhista,
+    ...atual.habilitacao.economicoFinanceira,
+    ...atual.habilitacao.tecnica,
+    ...atual.declaracoes,
+    ...atual.outrasExigencias,
+  ];
+  const porId = new Map(todosAtuais.map((item) => [item.id, item]));
+  const aproveitados = new Set<string>();
+
+  const montar = (definicao: DefinicaoItens): ItemChecklistExigencia[] =>
+    definicao.map(({ id, label }) => {
+      const anterior = porId.get(id);
+      if (!anterior || (anterior.status == null && !anterior.detalhamento.trim())) {
+        return { id, label, status: undefined, detalhamento: '' };
+      }
+      aproveitados.add(id);
+      return { id, label, status: anterior.status, detalhamento: anterior.detalhamento };
+    });
+
+  const habilitacao: Habilitacao = {
+    juridica: montar(listas.juridica),
+    fiscalSocialTrabalhista: montar(listas.fiscalSocialTrabalhista),
+    economicoFinanceira: montar(listas.economicoFinanceira),
+    tecnica: montar(listas.tecnica),
+  };
+  const declaracoes = montar(listas.declaracoes);
+  const outrasExigencias = montar(listas.outras);
+
+  const descartados = todosAtuais.filter(
+    (item) => (item.status != null || item.detalhamento.trim() !== '') && !aproveitados.has(item.id)
+  );
+  return { habilitacao, declaracoes, outrasExigencias, descartados };
 }
 
 // ---------------------------------------------------------------------------
@@ -306,9 +479,45 @@ export interface CondicoesComerciais {
   prazoPagamentoDias?: number;
   possuiGarantias: boolean;
   garantiasDetalhe?: string; // abre quando possuiGarantias = true
+  // Em "Serviços", prazoEntregaDias é o "prazo para início da execução" e
+  // localEntrega é o "local de execução do serviço" (mesmos campos, outro rótulo
+  // — ver rotulosCondicoes).
   prazoEntregaDias?: number; // até 2 dígitos
   localEntrega: string; // detalhamento aberto
   validadePropostaDias?: number; // até 3 dígitos
+
+  // Só para objeto "Serviços" (29/10, planilha de análise de serviços):
+  prazoVigencia?: string; // "Prazo de execução / vigência do contrato", texto livre (ex.: "12 meses")
+  reajusteRepactuacao?: string; // índice e data-base
+  subcontratacao?: SubcontratacaoServico; // art. 122 da Lei 14.133/2021
+  exigePlanilhaCustos?: 'sim' | 'nao'; // exige planilha de custos e formação de preços?
+}
+
+export type SubcontratacaoServico = 'permitida' | 'permitida_com_limite' | 'vedada' | 'omisso';
+
+export const SUBCONTRATACAO_SERVICO_LABEL: Record<SubcontratacaoServico, string> = {
+  permitida: 'Permitida',
+  permitida_com_limite: 'Permitida com limite',
+  vedada: 'Vedada',
+  omisso: 'Edital omisso',
+};
+
+export const SUBCONTRATACAO_SERVICO_DESCRICAO: Record<SubcontratacaoServico, string> = {
+  permitida: 'O edital admite subcontratar partes do objeto, conforme o art. 122.',
+  permitida_com_limite: 'O edital admite subcontratar até o percentual ou as parcelas que indicar.',
+  vedada: 'O edital proíbe subcontratar: todo o serviço deve ser executado pela própria empresa.',
+  omisso: 'O edital não trata do tema: pedir esclarecimento antes de contar com terceiros.',
+};
+
+/** Rótulos das condições comerciais conforme o tipo de objeto. */
+export function rotulosCondicoes(tipo: TipoObjeto) {
+  return tipo === 'servicos'
+    ? {
+        prazo: 'Prazo para início da execução (dias)',
+        prazoCurto: 'Prazo para início da execução',
+        local: 'Local de execução do serviço',
+      }
+    : { prazo: 'Prazo de entrega (dias)', prazoCurto: 'Prazo de entrega', local: 'Local de entrega' };
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +542,28 @@ export interface PropostaClienteItem {
   precoMinimo?: number;
   /** Marcas que compõem o item (cestas básicas/natalinas e kits) — opcional, até 30 (migração 056). */
   marcasComposicao?: string[];
+  /** Só em licitação de Serviços (migração 061): categoria do serviço ofertado — obrigatória no item com valor, no lugar de marca e modelo. */
+  categoriaServico?: string;
+  /** Só em licitação de Serviços (migração 061): observações do serviço — opcional. */
+  observacoes?: string;
 }
+
+/** Categorias de serviço da planilha de análise (aba BASE DE INFORMAÇÕES). O texto é gravado como está. */
+export const CATEGORIAS_SERVICO = [
+  'Produção audiovisual (vídeo institucional/publicitário)',
+  'Captação e cobertura de eventos (foto e vídeo)',
+  'Transmissão ao vivo (streaming)',
+  'Podcast / videocast',
+  'Conteúdo para redes sociais',
+  'Animação / motion graphics',
+  'Edição e pós-produção',
+  'Locução, trilha e áudio',
+  'Fotografia',
+  'Imagens aéreas (drone)',
+  'Eventos e ativações (produção e cenografia)',
+  'Locação de equipamentos audiovisuais',
+  'Outro (descrever em Observações)',
+] as const;
 
 export interface GrupoItens {
   id: string;

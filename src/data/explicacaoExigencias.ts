@@ -122,6 +122,22 @@ export const EXPLICACAO_EXIGENCIAS: Record<string, string> = {
   instalacao: "Obrigação de a empresa instalar ou montar o produto no local indicado pelo órgão. Envolve custos de mão de obra, deslocamento e, às vezes, responsável técnico.",
   // Outras
   outras_exigencias: "Exigência de aceitação específica deste edital. Veja a descrição informada.",
+
+  // ---- Itens da lista de SERVIÇOS (29/10, planilha de análise de serviços) ----
+  // Textos redigidos a partir da própria planilha; revisar antes de divulgar ao cliente.
+  ato_constitutivo_objeto_compativel: "Documento que comprova a existência legal da empresa (contrato social, estatuto ou requerimento de empresário), na versão consolidada mais recente. Em serviços, o objeto social deve ser compatível com o serviço licitado.",
+  aceita_sicaf: "Indica se o edital aceita o SICAF (Sistema de Cadastramento Unificado de Fornecedores) no lugar de parte dos documentos de habilitação. Quando aceita, confira se o cadastro e os documentos nele estão válidos.",
+  compromissos_assumidos: "Declaração ou relação dos contratos que a empresa já tem em andamento, usada para avaliar se ela comporta o novo contrato. Siga o modelo do edital, quando houver.",
+  capital_ou_patrimonio_minimo: "Exigência de capital social ou de patrimônio líquido mínimo. A lei limita essa exigência a 10% do valor estimado da contratação (art. 69, § 4º da Lei nº 14.133/2021). Informe o valor ou o percentual pedido.",
+  profissional_tecnico_quadro: "Comprovação de que a empresa tem, no seu quadro, profissional responsável pelo serviço, com experiência compatível. Veja no edital como o vínculo deve ser comprovado.",
+  equipe_tecnica_minima: "Relação dos profissionais que o edital exige para executar o serviço (por exemplo, diretor, cinegrafista, editor, técnico de áudio e fotógrafo). Anote as funções e as quantidades pedidas.",
+  equipamentos_minimos: "Relação dos equipamentos mínimos que a empresa deve ter para executar o serviço (câmeras, áudio, iluminação, mesa de corte, transmissão e drone). Anote o que o edital lista.",
+  registro_ancine: "Registro da empresa na ANCINE (Agência Nacional do Cinema), quando o edital o exige para serviços audiovisuais.",
+  certificado_cenp: "Certificado do CENP (Conselho Executivo das Normas-Padrão), típico de agência de publicidade, relacionado à Lei nº 12.232/2010.",
+  art_rrt_responsavel: "Responsável técnico com ART (Anotação de Responsabilidade Técnica) ou RRT (Registro de Responsabilidade Técnica), pedido em serviços de estruturas, palco ou instalações elétricas em eventos.",
+  amostra_portfolio_prova_conceito: "Material que comprova a capacidade de executar o serviço: amostra, portfólio, vídeo-piloto ou prova de conceito. Anote o que o edital pede e o prazo para apresentar.",
+  proposta_tecnica: "Documento técnico exigido quando o julgamento é por melhor técnica ou por técnica e preço, avaliado conforme os critérios do edital.",
+  licencas_autorizacoes_servico: "Licenças e autorizações específicas do serviço, como autorização para drone (ANAC (Agência Nacional de Aviação Civil) e DECEA (Departamento de Controle do Espaço Aéreo)), alvarás de evento e cessão de direitos autorais e de imagem.",
 }
 
 /** Explicação do item do checklist, ou undefined se ainda não houver texto. */

@@ -156,7 +156,7 @@ export function FiltrosIndicadoresBar({
     [],
   )
 
-  const opcoesMarcas = useMemo(() => [{ value: '', label: 'Todas as marcas' }, ...marcas], [marcas])
+  const opcoesMarcas = useMemo(() => [{ value: '', label: 'Todas as marcas e categorias' }, ...marcas], [marcas])
 
   const opcoesResultados = useMemo(
     () => [
@@ -324,7 +324,7 @@ export function FiltrosIndicadoresBar({
           }
         />
         <SelectField
-          label="Marca"
+          label="Marca ou categoria"
           value={filtros.marca ?? ''}
           options={opcoesMarcas}
           onChange={(e) => onChange({ ...filtros, marca: e.target.value || undefined })}
