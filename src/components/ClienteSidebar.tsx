@@ -17,7 +17,7 @@ import { usuarioClienteService } from '@/services/usuarioClienteService'
 import { ROLE_LABEL } from '@/types/auth'
 import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
-import { IconeCalendario, IconeDocumento, IconeInicio, IconeFechar, IconeTendencia } from '@/components/icones'
+import { IconeCalendario, IconeDocumento, IconeInicio, IconeFechar, IconeGrafico } from '@/components/icones'
 
 interface ItemMenu {
   label: string
@@ -31,7 +31,7 @@ const ITENS: ItemMenu[] = [
   { label: 'Início', to: '/cliente', icon: <IconeInicio />, exato: true },
   { label: 'Licitações', to: '/cliente/licitacoes', icon: <IconeDocumento /> },
   { label: 'Calendário', to: '/cliente/calendario', icon: <IconeCalendario /> },
-  { label: 'Indicadores', to: '/cliente/indicadores', icon: <IconeTendencia /> },
+  { label: 'Relatórios', to: '/cliente/relatorios', icon: <IconeGrafico /> },
 ]
 
 interface ClienteSidebarProps {

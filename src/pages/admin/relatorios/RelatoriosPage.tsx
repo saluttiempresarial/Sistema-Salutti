@@ -106,18 +106,18 @@ function CardResumo({ label, valor, tone = 'default' }: CardResumoProps) {
 }
 
 export function RelatoriosPage() {
-  const { carregando: carregandoPermissoes, restricaoDados, ehAdmin } = usePermissoes();
+  const { carregando: carregandoPermissoes, restricaoDados } = usePermissoes();
 
-  // Aba "Indicadores": só para o Administrador, e é a primeira (padrão). O
-  // Analista segue com o menu "Indicadores" próprio. `?aba=indicadores` permite
-  // o redirecionamento da rota antiga /admin/indicadores.
+  // Aba "Indicadores": primeira e padrão para o Administrador e para o Analista
+  // (29/10: o item "Indicadores" do menu do Analista foi incorporado a
+  // Relatórios). `?aba=indicadores` atende o redirecionamento da rota antiga
+  // /admin/indicadores.
   const [searchParams] = useSearchParams();
   const abaDaUrl = searchParams.get('aba');
   const [abaEscolhida, setAbaEscolhida] = useState<AbaRelatorio | null>(
     abaDaUrl === 'indicadores' || abaDaUrl === 'licitacoes' || abaDaUrl === 'disputas' ? abaDaUrl : null,
   );
-  const abaPadrao: AbaRelatorio = ehAdmin ? 'indicadores' : 'licitacoes';
-  const aba: AbaRelatorio = abaEscolhida === 'indicadores' && !ehAdmin ? abaPadrao : (abaEscolhida ?? abaPadrao);
+  const aba: AbaRelatorio = abaEscolhida ?? 'indicadores';
   const setAba = setAbaEscolhida;
   const [licitacoes, setLicitacoes] = useState<Licitacao[]>([]);
   const [disputas, setDisputas] = useState<Disputa[]>([]);
@@ -306,7 +306,7 @@ export function RelatoriosPage() {
 
   return (
     <div className="min-h-screen bg-paper p-8">
-      <header className="mb-6">
+      <header className="no-print mb-6">
         <h1 className="font-display text-2xl text-ink">Relatórios</h1>
         <p className="font-body text-sm text-ink-soft">
           Acompanhamento consolidado de licitações e disputas.
@@ -314,8 +314,8 @@ export function RelatoriosPage() {
       </header>
 
       {/* Abas */}
-      <div className="mb-5 flex gap-1 border-b border-charcoal-3/15 font-body">
-        {ABAS.filter((tab) => tab.id !== 'indicadores' || ehAdmin).map((tab) => (
+      <div className="no-print mb-5 flex gap-1 border-b border-charcoal-3/15 font-body">
+        {ABAS.map((tab) => (
           <button
             key={tab.id}
             type="button"

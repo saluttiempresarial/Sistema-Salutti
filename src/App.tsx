@@ -14,7 +14,6 @@ import { LicitacoesPage } from '@/pages/admin/licitacoes/LicitacoesPage'
 import { PropostaComercialPage as AdminPropostaComercialPage } from '@/pages/admin/licitacoes/PropostaComercialPage'
 import { DisputasPage } from '@/pages/admin/disputas/DisputasPage'
 import { RelatoriosPage } from '@/pages/admin/relatorios/RelatoriosPage'
-import { IndicadoresPage } from '@/pages/admin/indicadores/IndicadoresPage'
 import { ConfiguracoesPage } from '@/pages/admin/ConfiguracoesPage'
 import { CalendarioPage as AdminCalendarioPage } from '@/pages/admin/CalendarioPage'
 import { FuncionarioDashboard } from '@/pages/funcionario/FuncionarioDashboard'
@@ -23,16 +22,8 @@ import { LicitacoesPage as ClienteLicitacoesPage } from '@/pages/cliente/Licitac
 import { LicitacaoDetalhePage } from '@/pages/cliente/LicitacaoDetalhePage'
 import { PropostaComercialPage as ClientePropostaComercialPage } from '@/pages/cliente/PropostaComercialPage'
 import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
+import { RelatoriosPage as ClienteRelatoriosPage } from '@/pages/cliente/RelatoriosPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { useAuth } from '@/context/AuthContext'
-
-// /admin/indicadores: o Administrador é levado à aba Indicadores de Relatórios
-// (links antigos continuam funcionando); o Analista mantém a página própria.
-function IndicadoresAdminRota() {
-  const { user } = useAuth()
-  if (user?.role === 'admin') return <Navigate to="/admin/relatorios?aba=indicadores" replace />
-  return <IndicadoresPage />
-}
 
 export default function App() {
   // O cache da regra de prazo interno (dias úteis antes + horário) é carregado
@@ -161,7 +152,8 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'funcionario']} requiredModule="relatorios">
                 <AdminLayout>
-                  <IndicadoresAdminRota />
+                  {/* Link antigo: os Indicadores agora são a aba de Relatórios. */}
+                  <Navigate to="/admin/relatorios?aba=indicadores" replace />
                 </AdminLayout>
               </ProtectedRoute>
             }
@@ -245,15 +237,18 @@ export default function App() {
           />
 
           <Route
-            path="/cliente/indicadores"
+            path="/cliente/relatorios"
             element={
               <ProtectedRoute allowedRoles={['cliente']}>
                 <ClienteLayout>
-                  <IndicadoresPage />
+                  <ClienteRelatoriosPage />
                 </ClienteLayout>
               </ProtectedRoute>
             }
           />
+
+          {/* Link antigo: os Indicadores agora ficam em Relatórios. */}
+          <Route path="/cliente/indicadores" element={<Navigate to="/cliente/relatorios" replace />} />
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

@@ -1897,7 +1897,7 @@ interface IndicadoresGraficosProps {
 }
 
 /** Cards que não fazem sentido num recorte só de ganhos ou só de perdas. */
-const CARDS_OCULTOS_POR_RESULTADO: Partial<Record<ResultadoLicitacaoFiltro, ReadonlySet<ChaveIndicador>>> = {
+export const CARDS_OCULTOS_POR_RESULTADO: Partial<Record<ResultadoLicitacaoFiltro, ReadonlySet<ChaveIndicador>>> = {
   ganho: new Set<ChaveIndicador>([
     'tempo_resposta', 'pipeline', 'prazos_proximos', 'motivos_nao_participacao',
     'perdas_evitaveis', 'perdas_habilitacao', 'fora_de_mercado', 'distancia_derrota',

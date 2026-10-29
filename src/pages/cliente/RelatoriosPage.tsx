@@ -1,36 +1,31 @@
 // src/pages/cliente/RelatoriosPage.tsx
 //
-// Tela de Relatórios do Portal do Cliente — placeholder por enquanto,
-// como o Márcio mesmo previu ("relatórios que ainda vamos criar").
-// Só ocupa o espaço de navegação já com o visual final, pra não ficar um
-// link morto no menu enquanto os relatórios de verdade não são definidos.
+// Relatórios do Portal do Cliente (29/10, a pedido do Márcio): os Indicadores
+// ficam dentro de Relatórios, como na área da equipe. Para o cliente há uma
+// única aba, "Indicadores"; as abas Licitações e Disputas são de uso interno.
+// O que cada usuário enxerga continua sendo decidido pela liberação de
+// indicadores (Administrador e, para o Operador, o Responsável).
 
-import { DashboardShell } from '@/components/DashboardShell'
-import { BotaoSair } from '@/components/BotaoSair'
+import { IndicadoresPage } from '@/pages/admin/indicadores/IndicadoresPage'
 
 export function RelatoriosPage() {
   return (
-    <DashboardShell showHeader={false} title="Relatórios" headerActions={<BotaoSair />}>
-      <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-ink-soft/10 bg-white p-10 text-center shadow-soft">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-10 w-10 text-brass"
-        >
-          <path d="M4 20V10" />
-          <path d="M11 20V4" />
-          <path d="M18 20v-7" />
-          <path d="M3 20h18" />
-        </svg>
-        <h2 className="font-display text-lg font-semibold text-forest-deep">Em construção</h2>
+    <div className="min-h-screen bg-paper p-8">
+      <header className="no-print mb-6">
+        <h1 className="font-display text-2xl text-ink">Relatórios</h1>
         <p className="font-body text-sm text-ink-soft">
-          Em breve você vai acompanhar aqui indicadores da sua participação em licitações.
+          Desempenho das suas licitações e disputas. Os filtros valem para todos os gráficos.
         </p>
+      </header>
+
+      <div className="no-print mb-5 flex gap-1 border-b border-charcoal-3/15 font-body">
+        <span className="relative px-4 py-2.5 text-sm font-medium text-forest-deep">
+          Indicadores
+          <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brass" />
+        </span>
       </div>
-    </DashboardShell>
+
+      <IndicadoresPage embutido />
+    </div>
   )
 }

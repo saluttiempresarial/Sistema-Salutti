@@ -31,6 +31,7 @@ import {
 } from '../../../utils/indicadoresCalculos'
 import type { DadosBaseIndicadores, FiltrosIndicadores } from '../../../types/indicadores'
 import { formatarNumero } from '../../../utils/prazoUtils'
+import { descreverFiltros } from '../../../utils/descricaoFiltrosIndicadores'
 
 export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {}) {
   const { user } = useAuth()
@@ -122,6 +123,33 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
   const { clienteId: _cliente, analistaId: _analista, ...outrosRecortes } = recortes
   const filtrandoAlemDeClienteEAnalista = Object.values(outrosRecortes).some(Boolean)
 
+  // Impressão: o navegador usa o título da página como nome do PDF.
+  const imprimir = useCallback(() => {
+    const tituloAnterior = document.title
+    const hoje = new Date().toISOString().slice(0, 10)
+    document.title = `Indicadores Salutti ${hoje}`
+    const restaurar = () => {
+      document.title = tituloAnterior
+      window.removeEventListener('afterprint', restaurar)
+    }
+    window.addEventListener('afterprint', restaurar)
+    window.print()
+  }, [])
+
+  const linhasFiltros = useMemo(
+    () =>
+      dados
+        ? descreverFiltros(filtros, {
+            clientes: dados.clientes,
+            familias: dados.familias,
+            orgaos: opcoesOrgaos,
+            marcas: opcoesMarcas,
+            analistas: opcoesAnalistas,
+          })
+        : [],
+    [dados, filtros, opcoesOrgaos, opcoesMarcas, opcoesAnalistas],
+  )
+
   return (
     <div className={embutido ? 'space-y-5' : 'min-h-screen space-y-5 bg-paper p-8'}>
       <header className={embutido ? 'hidden' : undefined}>
@@ -154,17 +182,42 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
 
       {dados && indicadores && !carregando && (
         <>
-          <FiltrosIndicadoresBar
-            filtros={filtros}
-            onChange={setFiltros}
-            clientes={dados.clientes}
-            familias={dados.familias}
-            mostrarCliente={!ehCliente}
-            mostrarStatus={!ehCliente}
-            orgaos={opcoesOrgaos}
-            marcas={opcoesMarcas}
-            analistas={opcoesAnalistas}
-          />
+          {/* Cabeçalho que só aparece no papel: quem emitiu, quando e com quais filtros. */}
+          <div className="print-only border-b border-ink-soft/30 pb-3">
+            <p className="font-display text-xl text-ink">Salutti — Relatório de Indicadores</p>
+            <p className="font-body text-xs text-ink-soft">
+              Emitido em {new Date().toLocaleString('pt-BR')} por {user?.name ?? '—'}
+            </p>
+            <ul className="mt-2 font-body text-xs text-ink">
+              {linhasFiltros.map((linha) => (
+                <li key={linha}>{linha}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="no-print flex justify-end">
+            <button
+              type="button"
+              onClick={imprimir}
+              className="rounded-md border border-forest/40 px-4 py-2 font-body text-sm font-medium text-forest-deep hover:bg-forest-mist"
+            >
+              Imprimir / salvar em PDF
+            </button>
+          </div>
+
+          <div className="no-print">
+            <FiltrosIndicadoresBar
+              filtros={filtros}
+              onChange={setFiltros}
+              clientes={dados.clientes}
+              familias={dados.familias}
+              mostrarCliente={!ehCliente}
+              mostrarStatus={!ehCliente}
+              orgaos={opcoesOrgaos}
+              marcas={opcoesMarcas}
+              analistas={opcoesAnalistas}
+            />
+          </div>
           <p className="font-body text-sm text-ink-soft">
             {formatarNumero(indicadores.totalLicitacoes)}{' '}
             {indicadores.totalLicitacoes === 1 ? 'licitação considerada' : 'licitações consideradas'} nos filtros escolhidos.
@@ -184,7 +237,11 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
         </>
       )}
 
-      {ehCliente && !carregando && <LiberacaoOperadoresSecao />}
+      {ehCliente && !carregando && (
+        <div className="no-print">
+          <LiberacaoOperadoresSecao />
+        </div>
+      )}
     </div>
   )
 }

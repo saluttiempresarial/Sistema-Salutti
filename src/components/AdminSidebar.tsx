@@ -30,7 +30,6 @@ import {
   IconeMartelo,
   IconePessoa,
   IconePessoas,
-  IconeTendencia,
 } from '@/components/icones'
 
 interface ItemMenu {
@@ -68,11 +67,8 @@ export function AdminSidebar({ aberta = false, onFechar }: AdminSidebarProps) {
     ...(isAdmin || podeAcessarModulo('relatorios')
       ? [{ label: 'Relatórios', to: '/admin/relatorios', icon: <IconeGrafico /> }]
       : []),
-    // O Administrador acessa os Indicadores pela aba de Relatórios; o Analista
-    // mantém o item próprio.
-    ...(!isAdmin && podeAcessarModulo('relatorios')
-      ? [{ label: 'Indicadores', to: '/admin/indicadores', icon: <IconeTendencia /> }]
-      : []),
+    // Os Indicadores ficam dentro de Relatórios (aba Indicadores) para todos os
+    // perfis internos; não há mais item próprio no menu.
     ...(isAdmin || podeAcessarModulo('licitacoes')
       ? [{ label: 'Calendário', to: '/admin/calendario', icon: <IconeCalendario /> }]
       : []),
