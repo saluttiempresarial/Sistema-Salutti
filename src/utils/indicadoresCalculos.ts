@@ -121,7 +121,13 @@ import {
   type ValorAdjudicadoMes,
   type VolumeMes,
 } from '../types/indicadores';
-import { calcularAnaliseItem, licitacaoExclusivaMeEpp, totalReferenciaItem, totalReferenciaOportunidade } from './licitacaoCalculos';
+import {
+  calcularAnaliseItem,
+  DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE,
+  licitacaoExclusivaMeEpp,
+  totalReferenciaItem,
+  totalReferenciaOportunidade,
+} from './licitacaoCalculos';
 import { calcularPrazoInterno, classificarUrgenciaPrazo, subtrairDiasUteis } from './prazoUtils';
 
 const LIMITE_TOP = 10;
@@ -1942,8 +1948,8 @@ export function diasUteisEntre(inicio: Date, fim: Date): number {
   return total;
 }
 
-/** Prazo do cliente para decidir: 3 dias úteis antes da sessão. */
-const DIAS_UTEIS_PRAZO_CLIENTE = 3;
+/** Prazo do cliente para decidir: 4 dias úteis antes da sessão (mesma regra da proposta). */
+const DIAS_UTEIS_PRAZO_CLIENTE = DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE;
 const JANELA_CURTA_DIAS_UTEIS = 2;
 
 function medidaTempo(valores: number[]): MedidaTempo {

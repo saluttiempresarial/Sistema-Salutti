@@ -556,7 +556,7 @@ export interface MedidaTempo {
 export interface TemposEnvio {
   /** Liberação ao cliente → sessão. */
   antecedencia: MedidaTempo;
-  /** Liberação → prazo do cliente (sessão − 3 dias úteis). */
+  /** Liberação → prazo do cliente (sessão − 4 dias úteis). */
   janelaCliente: MedidaTempo;
   /** Licitações com janela menor que 2 dias úteis (inclui as já sem janela). */
   janelaCurta: number;

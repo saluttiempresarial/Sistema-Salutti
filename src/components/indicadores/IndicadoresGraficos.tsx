@@ -1511,7 +1511,7 @@ function TempoRespostaBloco({ dados, mostrarAnalistas }: { dados: TempoResposta;
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <Medida titulo="Antecedência do envio" medida={dados.envio.antecedencia} nota="liberação → sessão" />
-        <Medida titulo="Janela do cliente" medida={dados.envio.janelaCliente} nota="liberação → prazo do cliente (sessão − 3 dias úteis)" />
+        <Medida titulo="Janela do cliente" medida={dados.envio.janelaCliente} nota="liberação → prazo do cliente (sessão − 4 dias úteis)" />
         <Medida
           titulo="Tempo de resposta"
           medida={{ medianaDias: dados.medianaDias, mediaDias: dados.mediaDias, quantidade: dados.quantidade }}
