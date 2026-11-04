@@ -79,6 +79,15 @@ import { clienteService } from '../../../services/clienteService';
 import { PorteEmpresa } from '../../../types/cliente';
 import { rotuloDoMotivo } from '../../../types/motivoNaoParticipacao';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
+import {
+  condicoesComerciaisFaltando,
+  idsItensComNumeroRepetido,
+  normalizarCapag,
+  numerosDeGrupoRepetidos,
+  OPCOES_CAPAG,
+  permissoesDaEstrutura,
+  valorCampoKm,
+} from '../../../utils/licitacaoCampos';
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
 // Funções de formatação/conversão numérica BR (vírgula decimal, ponto de
 // milhar) — centralizadas aqui (02/10) para não ficarem duplicadas entre
@@ -98,6 +107,7 @@ import type { ExtracaoEditalIA, ItemChecklistExtraidoIA } from '../../../types/e
 import { InfoTooltip } from '../../../components/InfoTooltip';
 import { formatarCnpj, somenteDigitosCnpj } from '../../../utils/cnpj';
 import { explicacaoDaExigencia } from '../../../data/explicacaoExigencias';
+import { SeletorUnidadeMedida } from '../../../components/SeletorUnidadeMedida';
 
 // Chave geral da importação de edital por IA. Mantida em false enquanto a
 // função extrair-edital-ia não estiver publicada (falta chave da API +
@@ -114,14 +124,15 @@ function construirTabs(
   pendentesHabilitacao: number,
   pendentesDeclaracoes: number,
   pendentesOutras: number,
-  mostrarOutras: boolean
+  mostrarOutras: boolean,
+  faltandoComerciais: number
 ) {
   const comContagem = (label: string, pendentes: number) => (pendentes > 0 ? `${label} (${pendentes})` : label);
   return [
     { id: 'gerais', label: 'Informações Gerais' },
     { id: 'habilitacao', label: comContagem('Habilitação', pendentesHabilitacao) },
     { id: 'declaracoes', label: comContagem('Declarações', pendentesDeclaracoes) },
-    { id: 'comerciais', label: 'Cond. Comerciais' },
+    { id: 'comerciais', label: comContagem('Cond. Comerciais', faltandoComerciais) },
     ...(mostrarOutras ? [{ id: 'outras', label: comContagem('Outras Exigências', pendentesOutras) }] : []),
     { id: 'itens', label: 'Itens' },
     { id: 'atencao', label: 'Ponto de Atenção' },
@@ -719,12 +730,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       esfera: extracao.esfera ?? atual.esfera,
       modalidade: extracao.modalidade,
       estrutura: extracao.estrutura,
-      tipoContratacao: extracao.tipoContratacao,
+      tipoContratacao:
+        extracao.tipoContratacao && extracao.tipoContratacao in TIPO_CONTRATACAO_LICITACAO_LABEL
+          ? extracao.tipoContratacao
+          : atual.tipoContratacao,
       procedimento: extracao.procedimento,
       formaDisputa: extracao.formaDisputa,
       modoDisputa: extracao.modoDisputa,
       participacao: extracao.participacao,
-      capag: extracao.capag ?? atual.capag,
+      capag: normalizarCapag(extracao.capag) || atual.capag,
       valorTotalLicitacao: extracao.valorTotalLicitacao ?? atual.valorTotalLicitacao,
 
       habilitacao: {
@@ -788,6 +802,43 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // cliente ou quando a equipe constata a necessidade).
   const jaLiberada = !!licitacaoEmEdicao?.liberadaAoClienteEm;
 
+  // Regras da aba Itens para poder salvar: pelo menos um item, número preenchido
+  // e sem repetição, grupos com itens e tudo de acordo com a Estrutura escolhida.
+  function validarItens(): string | null {
+    if (form.itens.length === 0) {
+      return 'Cadastre pelo menos um item na aba "Itens" antes de salvar.';
+    }
+    const sem = form.itens.filter((i) => !i.numero.trim());
+    if (sem.length > 0) {
+      return `Informe o número de todos os itens (faltam ${sem.length}).`;
+    }
+    const semUnidade = form.itens.filter((i) => !i.unidadeMedida.trim());
+    if (semUnidade.length > 0) {
+      return `Escolha a unidade de medida de todos os itens (faltam ${semUnidade.length}).`;
+    }
+    const repetidos = idsItensComNumeroRepetido(form.itens);
+    if (repetidos.size > 0) {
+      const numeros = [...new Set(form.itens.filter((i) => repetidos.has(i.id)).map((i) => i.numero.trim()))];
+      return `Há números de item repetidos: ${numeros.join(', ')}. Cada item precisa ter um número diferente.`;
+    }
+    const gruposRepetidos = numerosDeGrupoRepetidos(form.grupos);
+    if (gruposRepetidos.length > 0) {
+      return `Há números de grupo repetidos: ${gruposRepetidos.join(', ')}. Cada grupo precisa ter um número diferente.`;
+    }
+    const permitido = permissoesDaEstrutura(form.estrutura);
+    if (!permitido.grupos && form.grupos.length > 0) {
+      return 'A Estrutura escolhida é "Item", mas há grupos cadastrados. Exclua os grupos ou mude a Estrutura.';
+    }
+    if (!permitido.individuais && form.itens.some((i) => !i.grupoId)) {
+      return 'A Estrutura escolhida é "Lote/Grupo": todos os itens precisam estar dentro de um grupo.';
+    }
+    const grupoVazio = form.grupos.find((g) => !form.itens.some((i) => i.grupoId === g.id));
+    if (grupoVazio) {
+      return `O grupo ${grupoVazio.numero || grupoVazio.nome} está sem itens. Cadastre itens nele ou exclua o grupo.`;
+    }
+    return null;
+  }
+
   async function handleSalvar() {
     if (jaLiberada && !motivoAlteracao.trim()) {
       setErroMotivo(true);
@@ -809,6 +860,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (!form.municipio) camposObrigatoriosFaltando.push('Município');
     if (!form.dataLicitacao) camposObrigatoriosFaltando.push('Data e horário da licitação');
     if (!form.modalidade) camposObrigatoriosFaltando.push('Modalidade');
+    if (!form.estrutura) camposObrigatoriosFaltando.push('Estrutura');
     if (!form.clienteId) camposObrigatoriosFaltando.push('Cliente vinculado');
     if (!form.status) camposObrigatoriosFaltando.push('Status');
 
@@ -857,11 +909,26 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       );
       return;
     }
+
+    // Condições comerciais e itens: não salva incompleto (04/11, a pedido do Márcio).
+    const faltaComerciais = condicoesComerciaisFaltando(form.condicoesComerciais, tipoObjeto === 'servicos');
+    if (faltaComerciais.length > 0) {
+      setAbaAtiva('comerciais');
+      setErroChecklist(`Preencha as condições comerciais antes de salvar. Faltam: ${faltaComerciais.join(', ')}.`);
+      return;
+    }
+
+    const erroItens = validarItens();
+    if (erroItens) {
+      setAbaAtiva('itens');
+      setErroChecklist(erroItens);
+      return;
+    }
     setErroChecklist(null);
 
     setSalvando(true);
     try {
-      await onSave(form, {
+      await onSave(licitacaoEmEdicao ? form : { ...form, status: 'pendente' }, {
         motivoAlteracao: jaLiberada ? motivoAlteracao.trim() : undefined,
       });
       if (!licitacaoEmEdicao) limparRascunho();
@@ -886,7 +953,10 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // itens salvos nela (cadastrada antes da lista de serviços): aí continua visível,
   // para nada ficar escondido nem bloquear o salvamento sem o analista ver.
   const mostrarOutras = tipoObjeto !== 'servicos' || form.outrasExigencias.length > 0;
-  const tabs = construirTabs(pendentesHabilitacao, pendentesDeclaracoes, pendentesOutras, mostrarOutras);
+  const faltandoComerciais = condicoesComerciaisFaltando(form.condicoesComerciais, tipoObjeto === 'servicos');
+  const tabs = construirTabs(pendentesHabilitacao, pendentesDeclaracoes, pendentesOutras, mostrarOutras, faltandoComerciais.length);
+  const permissoes = permissoesDaEstrutura(form.estrutura);
+  const itensRepetidos = idsItensComNumeroRepetido(form.itens);
 
   const dataParaPrazo = form.dataEfetivaLicitacao || form.dataLicitacao;
   const prazoInterno = dataParaPrazo ? calcularPrazoInterno(dataParaPrazo) : null;
@@ -1171,14 +1241,19 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 options={Object.entries(ESFERA_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
               <TextField
-                label="Distância da matriz"
-                value={form.distanciaMatriz}
-                onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value)}
+                label="Distância da matriz (km)"
+                value={valorCampoKm(form.distanciaMatriz)}
+                onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value.replace(/[^\d.,]/g, ''))}
+                inputMode="decimal"
+                placeholder="Ex.: 120"
               />
-              <TextField
+              <SelectField
                 label="CAPAG"
-                value={form.capag}
+                value={normalizarCapag(form.capag)}
                 onChange={(e) => atualizarCampo('capag', e.target.value)}
+                placeholder="Não informada"
+                options={OPCOES_CAPAG.map((nota) => ({ value: nota, label: nota }))}
+                className={normalizarCapag(form.capag) === 'C' ? '!border-red-500 !bg-red-50 font-semibold !text-red-600' : ''}
               />
             </SecaoFormulario>
 
@@ -1249,7 +1324,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 options={Object.entries(TIPO_CONTRATACAO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
               <SelectField
-                label="Procedimento"
+                label="Registro de Preços"
                 value={form.procedimento}
                 onChange={(e) => atualizarCampo('procedimento', e.target.value as ProcedimentoLicitacao)}
                 placeholder="Selecione"
@@ -1340,13 +1415,18 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 placeholder="Selecione um cliente"
                 options={clientes}
               />
-              <SelectField
-                label="Status *"
-                required
-                value={form.status}
-                onChange={(e) => atualizarCampo('status', e.target.value as StatusLicitacao)}
-                options={Object.entries(STATUS_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
-              />
+              {licitacaoEmEdicao ? (
+                <SelectField
+                  label="Status *"
+                  required
+                  value={form.status}
+                  onChange={(e) => atualizarCampo('status', e.target.value as StatusLicitacao)}
+                  options={Object.entries(STATUS_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+                />
+              ) : (
+                // Licitação nova sempre nasce Pendente (a pedido do Márcio, 04/11).
+                <TextField label="Status" value={STATUS_LICITACAO_LABEL.pendente} readOnly disabled />
+              )}
             </SecaoFormulario>
 
             {licitacaoEmEdicao && (
@@ -1687,20 +1767,31 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <p className="font-body text-sm text-ink-soft">
-                Cadastre os itens individuais ou organize-os em grupos. O total da oportunidade é calculado
-                automaticamente a partir do preço de referência × quantidade de cada item.
+                {!form.estrutura
+                  ? 'Escolha a Estrutura da licitação na aba "Informações Gerais" para liberar o cadastro dos itens.'
+                  : form.estrutura === 'item'
+                    ? 'A Estrutura é "Item": cadastre os itens um a um.'
+                    : form.estrutura === 'lote_grupo'
+                      ? 'A Estrutura é "Lote/Grupo": crie os grupos e cadastre os itens dentro de cada um.'
+                      : 'A Estrutura é "Item + Lote/Grupo": cadastre itens avulsos e/ou grupos com itens dentro.'}{' '}
+                O total da oportunidade é calculado automaticamente a partir do preço de referência × quantidade de
+                cada item. O número do item não pode se repetir.
               </p>
               <div className="flex shrink-0 gap-2">
-                <Button variant="ghost" onClick={adicionarGrupo} className="whitespace-nowrap">
-                  + Novo grupo
-                </Button>
-                <Button variant="ghost" onClick={() => adicionarItem()} className="whitespace-nowrap">
-                  + Item individual
-                </Button>
+                {permissoes.grupos && (
+                  <Button variant="ghost" onClick={adicionarGrupo} className="whitespace-nowrap">
+                    + Novo grupo
+                  </Button>
+                )}
+                {permissoes.individuais && (
+                  <Button variant="ghost" onClick={() => adicionarItem()} className="whitespace-nowrap">
+                    + Item individual
+                  </Button>
+                )}
               </div>
             </div>
 
-            {form.grupos.map((grupo) => {
+            {form.estrutura && form.grupos.map((grupo) => {
               const itensDoGrupo = form.itens.filter((i) => i.grupoId === grupo.id);
               return (
                 <div key={grupo.id} className="rounded-xl border border-ink-soft/15 p-4">
@@ -1732,7 +1823,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
 
                   <div className="space-y-3">
                     {itensDoGrupo.map((item) => (
-                      <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} />
+                      <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} numeroRepetido={itensRepetidos.has(item.id)} />
                     ))}
                     {itensDoGrupo.length === 0 && (
                       <p className="font-body text-xs italic text-ink-soft">Nenhum item neste grupo ainda.</p>
@@ -1746,12 +1837,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               );
             })}
 
-            {(itensIndividuais.length > 0 || form.grupos.length === 0) && (
+            {form.estrutura && (permissoes.individuais || itensIndividuais.length > 0) && (
               <div className="rounded-xl border border-ink-soft/15 p-4">
                 <p className="mb-3 font-body text-sm font-semibold text-ink">Itens individuais</p>
                 <div className="space-y-3">
                   {itensIndividuais.map((item) => (
-                    <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} />
+                    <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} numeroRepetido={itensRepetidos.has(item.id)} />
                   ))}
                   {itensIndividuais.length === 0 && (
                     <p className="font-body text-xs italic text-ink-soft">Nenhum item individual ainda.</p>
@@ -1878,6 +1969,7 @@ function ItemLicitacaoRow({
   erroFamilias,
   temCliente,
   onCriarFamilia,
+  numeroRepetido = false,
 }: {
   item: ItemLicitacao;
   onChange: <K extends keyof ItemLicitacao>(id: string, campo: K, valor: ItemLicitacao[K]) => void;
@@ -1894,6 +1986,8 @@ function ItemLicitacaoRow({
   /** false enquanto nenhum cliente foi escolhido na aba Vinculação. */
   temCliente: boolean;
   onCriarFamilia: (nome: string) => Promise<FamiliaProduto>;
+  /** true quando outro item da mesma licitação tem este mesmo número. */
+  numeroRepetido?: boolean;
 }) {
   const [criandoFamilia, setCriandoFamilia] = useState(false);
   const [nomeNovaFamilia, setNomeNovaFamilia] = useState('');
@@ -1945,14 +2039,12 @@ function ItemLicitacaoRow({
             label="Nº"
             value={item.numero}
             onChange={(e) => onChange(item.id, 'numero', e.target.value)}
+            className={numeroRepetido ? '!border-red-500 !bg-red-50' : ''}
           />
+          {numeroRepetido && <p className="mt-1 font-body text-[11px] font-semibold text-red-600">Repetido</p>}
         </div>
-        <div className="w-32 shrink-0">
-          <TextField
-            label="Unidade de medida"
-            value={item.unidadeMedida}
-            onChange={(e) => onChange(item.id, 'unidadeMedida', e.target.value)}
-          />
+        <div className="w-44 shrink-0">
+          <SeletorUnidadeMedida valor={item.unidadeMedida} onChange={(v) => onChange(item.id, 'unidadeMedida', v)} />
         </div>
         <div className="w-28 shrink-0">
           <TextField

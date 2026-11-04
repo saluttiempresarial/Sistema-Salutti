@@ -8,9 +8,8 @@
 // Redesenho (15/10, a pedido do Márcio). A taxa de vitória continua sendo
 // ganhas ÷ (ganhas + perdidas), agora calculada pelo total que o banco
 // informa de cada situação, em vez de baixar até 1000 licitações só para
-// contar. O cartão "Prazos vencendo (7 dias)" passou a se chamar "Prazos
-// vencidos ou próximos": a regra (prazo vencido, ou a menos de 24 h de vencer)
-// sempre foi essa — o "7 dias" do título não correspondia ao cálculo.
+// contar. Em 04/11 o cartão de prazos foi dividido em dois, "Prazos vencidos" e
+// "Prazos próximos" (vencem até o próximo dia útil) — ver CartoesPrazos.tsx.
 
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
@@ -20,30 +19,22 @@ import { calcularTaxaVitoria, montarUnidades } from '@/utils/indicadoresCalculos
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { CabecalhoPainel } from '@/components/dashboard/CabecalhoPainel'
 import { CartaoResumo } from '@/components/dashboard/CartaoResumo'
+import { CartoesPrazos } from '@/components/dashboard/CartoesPrazos'
 import { useAcoesDisputa } from '@/hooks/useAcoesDisputa'
 import { ProximosEventos } from '@/components/dashboard/ProximosEventos'
 import { PainelLicitacoesAtivas } from '@/components/dashboard/PainelLicitacoesAtivas'
 import {
   IconeCalendario,
-  IconeCalendarioRelogio,
   IconeDocumento,
   IconeMoeda,
   IconePessoas,
   IconeTendencia,
 } from '@/components/icones'
-import { classificarUrgenciaPrazo } from '@/utils/prazoUtils'
 
 function formatarMoedaResumida(valor: number): string {
   if (valor >= 1_000_000) return `R$ ${(valor / 1_000_000).toFixed(1).replace('.', ',')}M`
   if (valor >= 1_000) return `R$ ${(valor / 1_000).toFixed(0)}mil`
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-// Legenda do cartão de prazos: separa prazos de licitações e ações da disputa.
-function legendaPrazos(licitacoes: number, acoes: number): string {
-  if (acoes === 0) return 'requerem atenção'
-  const ac = `${acoes} ${acoes === 1 ? 'ação da disputa' : 'ações da disputa'}`
-  return licitacoes === 0 ? ac : `${licitacoes} ${licitacoes === 1 ? 'licitação' : 'licitações'} · ${ac}`
 }
 
 export function AdminDashboard() {
@@ -70,16 +61,12 @@ export function AdminDashboard() {
     }
   }, [])
 
-  const prazosUrgentes = useMemo(
-    () =>
-      ativas.filter((l) => {
-        const urgencia = classificarUrgenciaPrazo(l.dataEfetivaLicitacao || l.dataLicitacao)
-        return urgencia === 'vencido' || urgencia === 'atencao'
-      }),
+  // Só conta quem já foi liberada ao cliente: licitação ainda não liberada não está
+  // esperando decisão de ninguém (correção de 04/11).
+  const aguardandoCliente = useMemo(
+    () => ativas.filter((l) => !!l.liberadaAoClienteEm && l.decisaoCliente === 'pendente'),
     [ativas]
   )
-
-  const aguardandoCliente = useMemo(() => ativas.filter((l) => l.decisaoCliente === 'pendente'), [ativas])
 
   const taxaVitoria = useMemo(() => {
     if (!finalizadas) return null
@@ -97,7 +84,7 @@ export function AdminDashboard() {
     <div className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
       <CabecalhoPainel nome={user?.name ?? 'Administrador'} />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <CartaoResumo
           titulo="Licitações ativas"
           valor={carregando ? '—' : String(ativas.length)}
@@ -106,12 +93,10 @@ export function AdminDashboard() {
           tom="verde"
           to="/admin/licitacoes"
         />
-        <CartaoResumo
-          titulo="Prazos vencidos ou próximos"
-          valor={carregando || carregandoAcoes ? '—' : String(prazosUrgentes.length + acoes.length)}
-          legenda={legendaPrazos(prazosUrgentes.length, acoes.length)}
-          icone={<IconeCalendarioRelogio className="h-8 w-8" />}
-          tom="dourado"
+        <CartoesPrazos
+          licitacoes={ativas}
+          acoes={acoes}
+          carregando={carregando || carregandoAcoes}
           to="/admin/calendario"
         />
         <CartaoResumo

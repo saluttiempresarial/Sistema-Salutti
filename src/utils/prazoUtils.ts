@@ -81,18 +81,30 @@ export function calcularPrazoInterno(dataAberturaSessaoISO: string): Date {
 
 export type UrgenciaPrazo = 'ok' | 'atencao' | 'vencido';
 
+/** Último instante do próximo dia útil depois de `agora` (sábado e domingo
+ *  são pulados; feriados não são considerados, como no resto do sistema).
+ *  Ex.: numa quarta-feira, quinta às 23h59; numa sexta-feira, segunda às 23h59. */
+export function fimDoProximoDiaUtil(agora: Date = new Date()): Date {
+  const dia = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  do {
+    dia.setDate(dia.getDate() + 1);
+  } while (!isDiaUtil(dia));
+  dia.setHours(23, 59, 59, 999);
+  return dia;
+}
+
 /**
  * Classifica a urgência do prazo interno em relação a agora:
- * - "vencido": já passou do prazo interno
- * - "atencao": faltam 24h ou menos para o prazo interno
+ * - "vencido": já passou do prazo interno (o cliente não altera mais a proposta,
+ *   a menos que a equipe libere um novo prazo)
+ * - "atencao": ainda não venceu, mas vence até o fim do próximo dia útil
  * - "ok": ainda há folga
  */
 export function classificarUrgenciaPrazo(dataAberturaSessaoISO: string, agora: Date = new Date()): UrgenciaPrazo {
   const prazo = calcularPrazoInterno(dataAberturaSessaoISO);
-  const diffHoras = (prazo.getTime() - agora.getTime()) / (1000 * 60 * 60);
 
-  if (diffHoras < 0) return 'vencido';
-  if (diffHoras <= 24) return 'atencao';
+  if (prazo.getTime() < agora.getTime()) return 'vencido';
+  if (prazo.getTime() <= fimDoProximoDiaUtil(agora).getTime()) return 'atencao';
   return 'ok';
 }
 

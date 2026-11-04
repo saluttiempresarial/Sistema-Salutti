@@ -49,6 +49,7 @@ import {
   totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
 import { formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
+import { SeletorUnidadeMedida } from '@/components/SeletorUnidadeMedida'
 import {
   ROTULO_FALTA_IDENTIFICACAO,
   faltaIdentificacaoDoItem,
@@ -446,12 +447,16 @@ export function PropostaComercialCards({
   function gruposComPreenchimentoParcial(): string[] {
     const nomes: string[] = []
     blocos.forEach(({ grupo, itens }) => {
+      // Itens individuais (sem grupo) são disputados cada um por si: o cliente pode
+      // preencher só alguns deles. A regra do "tudo ou nada" vale apenas para
+      // grupos e lotes (correção de 04/11).
+      if (!grupo) return
       const itensVivos = itens.map(itemAoVivo)
       const participaveis = itensVivos.filter((item) => !(item.exclusivoMeEpp && porteCliente === 'demais'))
       if (participaveis.length === 0) return
       const preenchidos = participaveis.filter((item) => item.propostaCliente?.precoMinimo != null).length
       if (preenchidos > 0 && preenchidos < participaveis.length) {
-        nomes.push(grupo ? (grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`) : 'Itens individuais')
+        nomes.push(grupo.nome?.trim() ? grupo.nome : `Grupo ${grupo.numero}`)
       }
     })
     return nomes
@@ -465,7 +470,7 @@ export function PropostaComercialCards({
       setErro(
         `${incompletos.length === 1 ? 'Este grupo está' : 'Estes grupos estão'} com preenchimento parcial: ${incompletos.join(
           ', '
-        )}. Preencha todos os itens do grupo pra participar dele, ou apague os preços já lançados pra não participar.`
+        )}. Preencha todos os itens do grupo para participar dele, ou apague os preços já lançados para não participar.`
       )
       return
     }
@@ -694,9 +699,14 @@ export function PropostaComercialCards({
         // do grupo), independente do cliente já ter preenchido ou não — a
         // pedido do Márcio (25/09). "Valor da proposta" (antigo "Valor do
         // grupo") é que muda conforme ele preenche.
+        // Exceção (04/11, a pedido do Márcio): em "Itens individuais" cada item é
+        // disputado sozinho, então a referência soma só os itens que o cliente já
+        // está preenchendo — para casar com o "Valor da proposta" ao lado.
         const valorRefGrupo = grupo
           ? totalReferenciaGrupo(itensAoVivo, grupo.id)
-          : itensAoVivoDoGrupo.reduce((soma, item) => soma + totalReferenciaItem(item), 0)
+          : itensAoVivoDoGrupo
+              .filter((item) => item.propostaCliente?.precoMinimo != null)
+              .reduce((soma, item) => soma + totalReferenciaItem(item), 0)
         const valorPropostaGrupo = itensAoVivoDoGrupo.reduce((soma, item) => {
           const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
           return soma + (analise.valorTotal ?? 0)
@@ -809,7 +819,7 @@ export function PropostaComercialCards({
                               <span className="font-semibold">Categoria:</span> {itemVivo.propostaCliente.categoriaServico}
                             </div>
                           )}
-                          {!ehServico && (itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
+                          {!ehServico && !!itemVivo.grupoId && (itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
                             <div className="mt-1 font-body text-xs text-ink-soft">
                               <span className="font-semibold">Marcas da composição:</span>{' '}
                               {(itemVivo.propostaCliente?.marcasComposicao ?? []).join(', ')}
@@ -920,12 +930,15 @@ export function PropostaComercialCards({
                                         placeholder="digite o modelo/versão"
                                         onChange={(v) => atualizarCampoProposta(itemVivo.id, 'modelo', v)}
                                       />
-                                      <div className="col-span-2 sm:col-span-4">
-                                        <CampoMarcasComposicao
-                                          marcas={formProposta.marcasComposicao}
-                                          onChange={(marcas) => atualizarMarcasComposicao(itemVivo.id, marcas)}
-                                        />
-                                      </div>
+                                      {/* Marcas da composição: só para item de grupo/lote (04/11, a pedido do Márcio) */}
+                                      {itemVivo.grupoId && (
+                                        <div className="col-span-2 sm:col-span-4">
+                                          <CampoMarcasComposicao
+                                            marcas={formProposta.marcasComposicao}
+                                            onChange={(marcas) => atualizarMarcasComposicao(itemVivo.id, marcas)}
+                                          />
+                                        </div>
+                                      )}
                                     </>
                                   )}
                                 </>
@@ -952,7 +965,7 @@ export function PropostaComercialCards({
                                       <MiniCampo label="Modelo/Versão" valor={itemVivo.propostaCliente?.modelo || '—'} />
                                     </>
                                   )}
-                                  {!ehServico && (itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
+                                  {!ehServico && !!itemVivo.grupoId && (itemVivo.propostaCliente?.marcasComposicao?.length ?? 0) > 0 && (
                                     <div className="col-span-2 sm:col-span-4">
                                       <MiniCampo
                                         label="Marcas da composição"
@@ -1022,7 +1035,8 @@ export function PropostaComercialCards({
                                 Dados de referência (Admin)
                               </p>
                               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                <CampoEditavel
+                                <SeletorUnidadeMedida
+                                  estilo="compacto"
                                   label="Unidade"
                                   valor={formReferencia.unidadeMedida}
                                   onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'unidadeMedida', v)}

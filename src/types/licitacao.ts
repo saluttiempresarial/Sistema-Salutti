@@ -87,26 +87,32 @@ export const PARTICIPACAO_LICITACAO_DESCRICAO: Record<ParticipacaoLicitacao, str
 // Substituiu o antigo campo "Participação" (Individual / Por lote), que
 // não tinha relação com ME/EPP — esse conceito de organização dos itens
 // agora mora aqui, com nome próprio.
-export type EstruturaLicitacao = 'item' | 'lote_grupo';
+export type EstruturaLicitacao = 'item' | 'lote_grupo' | 'item_lote_grupo';
 
 export const ESTRUTURA_LICITACAO_LABEL: Record<EstruturaLicitacao, string> = {
   item: 'Item',
   lote_grupo: 'Lote/Grupo',
+  // 04/11, a pedido do Márcio: licitação que tem itens avulsos e lotes/grupos ao mesmo tempo.
+  item_lote_grupo: 'Item + Lote/Grupo',
 };
 
-export type TipoContratacaoLicitacao = 'licitacao' | 'dispensa' | 'inexigibilidade';
+export type TipoContratacaoLicitacao = 'licitacao' | 'dispensa' | 'adesao_arp';
 
 export const TIPO_CONTRATACAO_LICITACAO_LABEL: Record<TipoContratacaoLicitacao, string> = {
   licitacao: 'Licitação',
   dispensa: 'Dispensa',
-  inexigibilidade: 'Inexigibilidade',
+  // 04/11, a pedido do Márcio: Inexigibilidade saiu e entrou a Adesão à ARP
+  // (Ata de Registro de Preços), a "carona" do art. 86 da Lei 14.133/2021.
+  adesao_arp: 'Adesão à ARP (Ata de Registro de Preços)',
 };
 
 export type ProcedimentoLicitacao = 'convencional' | 'srp';
 
 export const PROCEDIMENTO_LICITACAO_LABEL: Record<ProcedimentoLicitacao, string> = {
-  convencional: 'Contratação convencional',
-  srp: 'Sistema de Registro de Preços (SRP)',
+  // 04/11, a pedido do Márcio: o campo passou a se chamar "Registro de Preços".
+  // Os valores gravados no banco continuam os mesmos (srp e convencional).
+  srp: 'Sim, com SRP (Sistema de Registro de Preços)',
+  convencional: 'Não, contratação imediata',
 };
 
 export type DecisaoCliente = 'pendente' | 'participar' | 'recusar';
@@ -614,7 +620,7 @@ export interface Licitacao {
   distanciaMatriz: string; // texto livre, ex: "120km" ou "cerca de 2h de viagem"
   modalidade: string;
   estrutura: string; // dropdown: Item / Lote-Grupo — antes era "participacao" (Individual/Por lote)
-  tipoContratacao: string; // dropdown: Licitação / Dispensa / Inexigibilidade
+  tipoContratacao: string; // dropdown: Licitação / Dispensa / Adesão à ARP
   procedimento: string; // dropdown: Contratação convencional / Sistema de Registro de Preços (SRP)
   formaDisputa: string;
   modoDisputa: string; // dropdown: Aberto / Fechado / Aberto-Fechado / Fechado-Aberto

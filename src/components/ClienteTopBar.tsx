@@ -9,6 +9,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { ROLE_LABEL } from '@/types/auth'
+import { AvatarUsuario } from '@/components/AvatarUsuario'
 import { ClienteNotificacoes } from '@/components/ClienteNotificacoes'
 import { IconeMenu, IconeSair } from '@/components/icones'
 
@@ -19,13 +20,6 @@ interface ClienteTopBarProps {
 export function ClienteTopBar({ onAbrirMenu }: ClienteTopBarProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-
-  const iniciais = (user?.name ?? '')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((parte) => parte[0]?.toUpperCase())
-    .join('')
 
   function handleLogout() {
     logout()
@@ -51,9 +45,7 @@ export function ClienteTopBar({ onAbrirMenu }: ClienteTopBarProps) {
         <div className="hidden h-8 w-px bg-ink-soft/15 sm:block" />
 
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-forest-deep font-body text-sm font-semibold text-white">
-            {iniciais || '—'}
-          </div>
+          <AvatarUsuario />
           <div className="hidden text-left leading-tight sm:block">
             <p className="max-w-[14rem] truncate font-body text-sm font-semibold text-ink">{user?.name ?? '—'}</p>
             <p className="font-mono text-[11px] uppercase tracking-wide text-brass">

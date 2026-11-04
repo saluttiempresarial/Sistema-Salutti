@@ -17,6 +17,7 @@ import { usuarioClienteService } from '@/services/usuarioClienteService'
 import { ROLE_LABEL } from '@/types/auth'
 import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
+import { avisarFotoPerfilAtualizada } from '@/utils/fotoPerfilEvento'
 import { IconeCalendario, IconeDocumento, IconeInicio, IconeFechar, IconeGrafico } from '@/components/icones'
 
 interface ItemMenu {
@@ -84,6 +85,7 @@ export function ClienteSidebar({ aberta = false, onFechar }: ClienteSidebarProps
     try {
       const url = await usuarioClienteService.uploadFoto(user.id, arquivoRecortado)
       setFotoUrl(url)
+      avisarFotoPerfilAtualizada(url)
     } finally {
       setEnviandoFoto(false)
     }

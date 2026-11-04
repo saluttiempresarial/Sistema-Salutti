@@ -1,7 +1,7 @@
 // src/components/dashboard/CartaoResumo.tsx
 //
 // Cartão de resumo da tela inicial: ícone em destaque, título, número grande
-// e uma legenda. Cada cartão tem uma cor própria (verde, dourado ou azul) e,
+// e uma legenda. Cada cartão tem uma cor própria (verde, dourado, azul ou vermelho) e,
 // quando recebe `to`, vira um atalho para a tela correspondente.
 // `compacto` é a versão menor, usada para indicadores secundários.
 
@@ -9,12 +9,13 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { IconeSetaDireita } from '@/components/icones'
 
-export type TomCartao = 'verde' | 'dourado' | 'azul'
+export type TomCartao = 'verde' | 'dourado' | 'azul' | 'vermelho'
 
 const TONS: Record<TomCartao, { icone: string; titulo: string }> = {
   verde: { icone: 'bg-forest-mist text-forest', titulo: 'text-forest' },
   dourado: { icone: 'bg-brass-pale text-brass', titulo: 'text-brass' },
   azul: { icone: 'bg-sky-50 text-sky-600', titulo: 'text-sky-700' },
+  vermelho: { icone: 'bg-red-50 text-red-600', titulo: 'text-red-600' },
 }
 
 interface CartaoResumoProps {

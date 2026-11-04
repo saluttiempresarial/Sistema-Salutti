@@ -59,6 +59,7 @@ import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade,
 import { PorteEmpresa } from '@/types/cliente'
 import { MOTIVOS_ESCOLHIDOS_CLIENTE, rotuloDoMotivo } from '@/types/motivoNaoParticipacao'
 import type { MotivoEscolhidoCliente, MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
+import { formatarDistanciaKm, normalizarCapag } from '@/utils/licitacaoCampos'
 
 const TABS = [
   { id: 'gerais', label: 'Informações Gerais' },
@@ -69,12 +70,12 @@ const TABS = [
   { id: 'itens', label: 'Itens' },
 ]
 
-function Campo({ label, value }: { label: string; value?: string | null }) {
+function Campo({ label, value, alerta = false }: { label: string; value?: string | null; alerta?: boolean }) {
   if (!value) return null
   return (
     <div>
       <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">{label}</p>
-      <p className="mt-0.5 font-body text-sm text-ink">{value}</p>
+      <p className={`mt-0.5 font-body text-sm ${alerta ? 'font-semibold text-red-600' : 'text-ink'}`}>{value}</p>
     </div>
   )
 }
@@ -288,7 +289,7 @@ export function LicitacaoDetalhePage() {
                     órgão já costuma trazer a cidade/UF (ex.: "Prefeitura
                     Municipal de Nova Campina/SP"), então repetir num campo
                     à parte só duplicava a mesma informação. */}
-                <Campo label="Distância da matriz" value={licitacao.distanciaMatriz} />
+                <Campo label="Distância da matriz" value={formatarDistanciaKm(licitacao.distanciaMatriz)} />
                 <div className="col-span-2">
                   <Campo label="Objeto" value={licitacao.objeto} />
                 </div>
@@ -308,7 +309,7 @@ export function LicitacaoDetalhePage() {
                   }
                 />
                 <Campo
-                  label="Procedimento"
+                  label="Registro de Preços"
                   value={PROCEDIMENTO_LICITACAO_LABEL[licitacao.procedimento as ProcedimentoLicitacao] ?? licitacao.procedimento}
                 />
                 <Campo label="Critério de julgamento" value={licitacao.formaDisputa} />
@@ -317,7 +318,7 @@ export function LicitacaoDetalhePage() {
                   label="Participação"
                   value={PARTICIPACAO_LICITACAO_LABEL[licitacao.participacao as ParticipacaoLicitacao] ?? licitacao.participacao}
                 />
-                <Campo label="CAPAG" value={licitacao.capag} />
+                <Campo label="CAPAG" value={normalizarCapag(licitacao.capag) || licitacao.capag} alerta={normalizarCapag(licitacao.capag) === 'C'} />
                 <Campo
                   label="Valor total"
                   value={licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}

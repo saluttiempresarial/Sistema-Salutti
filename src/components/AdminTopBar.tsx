@@ -9,6 +9,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { ROLE_LABEL } from '@/types/auth'
+import { AvatarUsuario } from '@/components/AvatarUsuario'
 import { BuscaGlobal } from '@/components/BuscaGlobal'
 import { Notificacoes } from '@/components/Notificacoes'
 import { IconeMenu, IconeSair } from '@/components/icones'
@@ -24,13 +25,6 @@ export function AdminTopBar({ onAbrirMenu }: AdminTopBarProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const { podeAcessarModulo } = usePermissoes()
-
-  const iniciais = (user?.name ?? '')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((parte) => parte[0]?.toUpperCase())
-    .join('')
 
   function handleLogout() {
     limparCacheLicitacoesInternas()
@@ -58,9 +52,7 @@ export function AdminTopBar({ onAbrirMenu }: AdminTopBarProps) {
         <div className="hidden h-8 w-px bg-ink-soft/15 sm:block" />
 
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-forest-deep font-body text-sm font-semibold text-white">
-            {iniciais || '—'}
-          </div>
+          <AvatarUsuario />
           <div className="hidden text-left leading-tight md:block">
             <p className="max-w-[12rem] truncate font-body text-sm font-semibold text-ink">{user?.name ?? '—'}</p>
             <p className="font-mono text-[11px] uppercase tracking-wide text-brass">

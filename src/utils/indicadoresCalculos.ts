@@ -1825,6 +1825,7 @@ export function calcularPrazosProximos(
   agora: Date = new Date()
 ): PrazosProximos {
   const disputaPorLicitacao = new Map(disputas.map((d) => [d.licitacaoId, d]));
+  const liberadas = new Set(licitacoes.filter((l) => !!l.liberadaAoClienteEm).map((l) => l.id));
   const limite = new Date(agora.getTime() + JANELA_PRAZOS_DIAS * 86_400_000);
 
   const linhas: PrazoProximo[] = [];
@@ -1853,7 +1854,8 @@ export function calcularPrazosProximos(
     linhas,
     vencidos: linhas.filter((x) => x.urgencia === 'vencido').length,
     vencendoEm24h: linhas.filter((x) => x.urgencia === 'atencao').length,
-    semDecisaoDoCliente: linhas.filter((x) => x.decisaoCliente === 'pendente').length,
+    // Só conta quem já foi liberada ao cliente: sem liberação, ninguém espera decisão.
+    semDecisaoDoCliente: linhas.filter((x) => x.decisaoCliente === 'pendente' && liberadas.has(x.licitacaoId)).length,
   };
 }
 

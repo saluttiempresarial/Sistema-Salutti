@@ -20,6 +20,7 @@ import { funcionarioService } from '@/services/funcionarioService'
 import { ROLE_HOME_ROUTE, ROLE_LABEL } from '@/types/auth'
 import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
+import { avisarFotoPerfilAtualizada } from '@/utils/fotoPerfilEvento'
 import {
   IconeCalendario,
   IconeDocumento,
@@ -121,6 +122,7 @@ export function AdminSidebar({ aberta = false, onFechar }: AdminSidebarProps) {
     try {
       const url = await funcionarioService.uploadFoto(user.id, arquivoRecortado)
       setFotoUrl(url)
+      avisarFotoPerfilAtualizada(url)
     } finally {
       setEnviandoFoto(false)
     }

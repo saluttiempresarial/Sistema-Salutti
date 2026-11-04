@@ -48,6 +48,7 @@ import {
   DecisaoAcimaReferencia,
 } from '@/types/licitacao'
 import { formatarDataHora } from '@/utils/prazoUtils'
+import { formatarDistanciaKm, normalizarCapag } from '@/utils/licitacaoCampos'
 import {
   calcularAnaliseItem,
   classificarStatusProposta,
@@ -225,7 +226,7 @@ export function PropostaComercialPage() {
         { Campo: 'Órgão', Valor: licitacao.orgao },
         { Campo: 'Cidade', Valor: licitacao.municipio },
         { Campo: 'Estado', Valor: licitacao.estado },
-        { Campo: 'Distância da matriz', Valor: licitacao.distanciaMatriz || '—' },
+        { Campo: 'Distância da matriz', Valor: formatarDistanciaKm(licitacao.distanciaMatriz) || '—' },
         { Campo: 'Data da licitação', Valor: formatarDataHora(licitacao.dataLicitacao) },
         {
           Campo: 'Data efetiva (se suspensa/remarcada)',
@@ -251,12 +252,12 @@ export function PropostaComercialPage() {
             licitacao.tipoContratacao,
         },
         {
-          Campo: 'Procedimento',
+          Campo: 'Registro de Preços',
           Valor: PROCEDIMENTO_LICITACAO_LABEL[licitacao.procedimento as ProcedimentoLicitacao] ?? licitacao.procedimento,
         },
         { Campo: 'Forma de disputa', Valor: licitacao.formaDisputa || '—' },
         { Campo: 'Modo de disputa', Valor: licitacao.modoDisputa || '—' },
-        { Campo: 'CAPAG', Valor: licitacao.capag || '—' },
+        { Campo: 'CAPAG', Valor: normalizarCapag(licitacao.capag) || licitacao.capag || '—' },
         { Campo: 'Link do edital', Valor: licitacao.linkEdital || '—' },
         {
           Campo: 'Documentos do edital',

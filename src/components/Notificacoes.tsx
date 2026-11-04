@@ -1,7 +1,7 @@
 // src/components/Notificacoes.tsx
 //
-// Sino do cabeçalho: avisa sobre prazos internos vencidos ou próximos (menos
-// de 24 h) e sobre licitações aguardando decisão do cliente. Usa apenas as
+// Sino do cabeçalho: avisa sobre prazos internos vencidos ou próximos (que
+// vencem até o próximo dia útil) e sobre licitações aguardando decisão do cliente. Usa apenas as
 // licitações ativas já carregadas para a carteira de quem está logado (nada
 // de tabela nova): a contagem do sino é a de prazos vencidos ou próximos.
 
@@ -24,7 +24,8 @@ export function Notificacoes() {
   const { alertas: acoes, carregando: carregandoAcoes } = useAcoesDisputa()
   const alertas = useMemo(() => alertasDePrazo(eventosDasLicitacoes(licitacoes)), [licitacoes])
   const aguardandoDecisao = useMemo(
-    () => licitacoes.filter((l) => l.decisaoCliente === 'pendente').length,
+    // Só conta quem já foi liberada ao cliente (correção de 04/11).
+    () => licitacoes.filter((l) => !!l.liberadaAoClienteEm && l.decisaoCliente === 'pendente').length,
     [licitacoes]
   )
 

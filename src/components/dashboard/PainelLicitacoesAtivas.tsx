@@ -249,7 +249,7 @@ export function PainelLicitacoesAtivas({
             >
               <option value="">Todos</option>
               <option value="vencido">Vencido</option>
-              <option value="proximo">Próximo (menos de 24 h)</option>
+              <option value="proximo">Próximo (até o próximo dia útil)</option>
             </select>
           </label>
           <div className="flex items-end">

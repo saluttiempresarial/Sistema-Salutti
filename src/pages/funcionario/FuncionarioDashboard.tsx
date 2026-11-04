@@ -21,35 +21,20 @@ import { useLicitacoesInternas } from '@/hooks/useLicitacoesInternas'
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { CabecalhoPainel } from '@/components/dashboard/CabecalhoPainel'
 import { CartaoResumo } from '@/components/dashboard/CartaoResumo'
+import { CartoesPrazos } from '@/components/dashboard/CartoesPrazos'
 import { useAcoesDisputa } from '@/hooks/useAcoesDisputa'
 import { ProximosEventos } from '@/components/dashboard/ProximosEventos'
 import { PainelLicitacoesAtivas } from '@/components/dashboard/PainelLicitacoesAtivas'
-import { IconeCalendario, IconeCalendarioRelogio, IconeDocumento, IconePessoas } from '@/components/icones'
-import { classificarUrgenciaPrazo } from '@/utils/prazoUtils'
-
-// Legenda do cartão de prazos: separa prazos de licitações e ações da disputa.
-function legendaPrazos(licitacoes: number, acoes: number): string {
-  if (acoes === 0) return 'requerem atenção'
-  const ac = `${acoes} ${acoes === 1 ? 'ação da disputa' : 'ações da disputa'}`
-  return licitacoes === 0 ? ac : `${licitacoes} ${licitacoes === 1 ? 'licitação' : 'licitações'} · ${ac}`
-}
+import { IconeCalendario, IconeDocumento, IconePessoas } from '@/components/icones'
 
 export function FuncionarioDashboard() {
   const { user } = useAuth()
   const { licitacoes, nomesClientes, carregando, podeEditar } = useLicitacoesInternas()
   const { alertas: acoes, carregando: carregandoAcoes } = useAcoesDisputa()
 
-  const comPrazoUrgente = useMemo(
-    () =>
-      licitacoes.filter((l) => {
-        const urgencia = classificarUrgenciaPrazo(l.dataEfetivaLicitacao || l.dataLicitacao)
-        return urgencia === 'vencido' || urgencia === 'atencao'
-      }),
-    [licitacoes]
-  )
-
   const aguardandoCliente = useMemo(
-    () => licitacoes.filter((l) => l.decisaoCliente === 'pendente'),
+    // Só conta quem já foi liberada ao cliente (correção de 04/11).
+    () => licitacoes.filter((l) => !!l.liberadaAoClienteEm && l.decisaoCliente === 'pendente'),
     [licitacoes]
   )
 
@@ -57,7 +42,7 @@ export function FuncionarioDashboard() {
     <div className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
       <CabecalhoPainel nome={user?.name ?? 'Funcionário'} />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <CartaoResumo
           titulo="Licitações ativas"
           valor={carregando ? '—' : String(licitacoes.length)}
@@ -66,12 +51,10 @@ export function FuncionarioDashboard() {
           tom="verde"
           to="/admin/licitacoes"
         />
-        <CartaoResumo
-          titulo="Prazos vencidos ou próximos"
-          valor={carregando || carregandoAcoes ? '—' : String(comPrazoUrgente.length + acoes.length)}
-          legenda={legendaPrazos(comPrazoUrgente.length, acoes.length)}
-          icone={<IconeCalendarioRelogio className="h-8 w-8" />}
-          tom="dourado"
+        <CartoesPrazos
+          licitacoes={licitacoes}
+          acoes={acoes}
+          carregando={carregando || carregandoAcoes}
           to="/admin/calendario"
         />
         <CartaoResumo

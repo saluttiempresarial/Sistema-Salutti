@@ -1328,7 +1328,7 @@ const LIMITE_PRAZOS = 10
 
 const ROTULO_URGENCIA = {
   vencido: 'Prazo vencido',
-  atencao: 'Vence em até 24 h',
+  atencao: 'Vence até o próximo dia útil',
   ok: 'No prazo',
 } as const
 
@@ -1358,7 +1358,7 @@ function PrazosBloco({ dados }: { dados: PrazosProximos }) {
         </div>
         <div className="rounded-lg bg-paper-2 px-2 py-3">
           <p className="font-display text-3xl text-ink">{formatarNumero(dados.vencendoEm24h)}</p>
-          <p className="font-body text-xs text-ink-soft">vencem em até 24 h</p>
+          <p className="font-body text-xs text-ink-soft">vencem até o próximo dia útil</p>
         </div>
         <div className="rounded-lg bg-paper-2 px-2 py-3">
           <p className="font-display text-3xl text-ink">{formatarNumero(dados.semDecisaoDoCliente)}</p>
