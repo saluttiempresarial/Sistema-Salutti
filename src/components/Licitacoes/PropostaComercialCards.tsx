@@ -325,6 +325,37 @@ export function PropostaComercialCards({
     const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
     return classificarStatusProposta(analise.percentualDiferenca).chave === 'nao_participar'
   }
+  // Item individual que o Admin/Analista marcou "Não participar": sai de
+  // todas as somas (referência e proposta). Continua visível na lista.
+  function itemForaDaConta(item: ItemLicitacao): boolean {
+    return !item.grupoId && item.decisaoAcimaReferencia === 'barrado'
+  }
+
+  // "✕ Remover item": apaga o que foi lançado no item (preço, marca, modelo e
+  // marcas da composição) e desfaz a decisão. Vale depois de "Salvar proposta".
+  async function removerItemDaProposta(item: ItemLicitacao) {
+    const confirmou = window.confirm(
+      `Remover o item ${item.numero} da proposta? O preço, a marca e o modelo lançados serão apagados. Depois clique em "Salvar proposta" para confirmar.`
+    )
+    if (!confirmou) return
+    setFormPorItem((atual) => ({
+      ...atual,
+      [item.id]: {
+        ...(atual[item.id] ?? {
+          categoriaServico: '',
+          observacoes: '',
+          codigoInterno: '',
+          descricaoProduto: '',
+        }),
+        precoMinimo: '',
+        marca: '',
+        modelo: '',
+        marcasComposicao: [],
+      },
+    }))
+    if (item.decisaoAcimaReferencia) await decidirItem(item.id, null)
+  }
+
   const quantidadePendentesDecisao = visaoEquipe
     ? itensAoVivo.filter((item) => itemIndividualAcimaDaReferencia(item) && !item.decisaoAcimaReferencia).length
     : 0
@@ -395,6 +426,7 @@ export function PropostaComercialCards({
     // "Itens individuais". Só o grupo continua com a referência cheia.
     const itensDosGruposIniciados = participaveisTodos.filter((item) => {
       if (!gruposIniciados.has(idGrupoDoItem(item))) return false
+      if (itemForaDaConta(item)) return false
       return item.grupoId ? true : item.propostaCliente?.precoMinimo != null
     })
     const itensPreenchidosNosGruposIniciados = itensDosGruposIniciados.filter(
@@ -711,9 +743,10 @@ export function PropostaComercialCards({
         const valorRefGrupo = grupo
           ? totalReferenciaGrupo(itensAoVivo, grupo.id)
           : itensAoVivoDoGrupo
-              .filter((item) => item.propostaCliente?.precoMinimo != null)
+              .filter((item) => item.propostaCliente?.precoMinimo != null && !itemForaDaConta(item))
               .reduce((soma, item) => soma + totalReferenciaItem(item), 0)
         const valorPropostaGrupo = itensAoVivoDoGrupo.reduce((soma, item) => {
+          if (itemForaDaConta(item)) return soma
           const analise = calcularAnaliseItem(item, taxaFreteNumero, taxaFretePreenchida)
           return soma + (analise.valorTotal ?? 0)
         }, 0)
@@ -1020,6 +1053,14 @@ export function PropostaComercialCards({
                                   className="rounded-lg bg-ink px-3 py-1.5 font-body text-xs font-semibold text-white disabled:opacity-50"
                                 >
                                   Não participar
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={decidindoItemId === itemVivo.id}
+                                  onClick={() => removerItemDaProposta(itemVivo)}
+                                  className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-body text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                >
+                                  ✕ Remover item da proposta
                                 </button>
                                 {itemVivo.decisaoAcimaReferencia && (
                                   <button
