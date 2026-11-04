@@ -390,7 +390,13 @@ export function PropostaComercialCards({
     // ofertado (28/09, a pedido do Márcio — antes a referência só contava
     // os itens já preenchidos, e isso ficava divergente do valor mostrado
     // no card do próprio grupo).
-    const itensDosGruposIniciados = participaveisTodos.filter((item) => gruposIniciados.has(idGrupoDoItem(item)))
+    // Exceção (04/11, a pedido do Márcio): item INDIVIDUAL (sem grupo) é disputado
+    // sozinho, então só entra na conta quando já tem preço — igual ao bloco
+    // "Itens individuais". Só o grupo continua com a referência cheia.
+    const itensDosGruposIniciados = participaveisTodos.filter((item) => {
+      if (!gruposIniciados.has(idGrupoDoItem(item))) return false
+      return item.grupoId ? true : item.propostaCliente?.precoMinimo != null
+    })
     const itensPreenchidosNosGruposIniciados = itensDosGruposIniciados.filter(
       (item) => item.propostaCliente?.precoMinimo != null
     )
