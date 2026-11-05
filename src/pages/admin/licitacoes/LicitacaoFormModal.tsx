@@ -1193,14 +1193,6 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   )
                 }
               />
-              <TextField
-                label="Data efetiva (se suspensa e remarcada)"
-                type="datetime-local"
-                value={paraInputDatetimeLocal(form.dataEfetivaLicitacao)}
-                onChange={(e) =>
-                  atualizarCampo('dataEfetivaLicitacao', e.target.value ? new Date(e.target.value).toISOString() : undefined)
-                }
-              />
               {prazoInterno && (
                 <div
                   className={`col-span-2 rounded-lg border px-4 py-3 font-body text-sm ${

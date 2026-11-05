@@ -677,12 +677,7 @@ export function PropostaComercialCards({
       )}
 
       {ocultarNaoParticiparPorPadrao && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-paper-2/70 px-3 py-2">
-          <p className="font-body text-xs text-ink-soft">
-            {ocultarNaoParticipar
-              ? 'Grupos e itens que o Cliente ainda não preencheu estão ocultos nesta visualização.'
-              : 'Mostrando todos os grupos e itens, inclusive os que o Cliente ainda não preencheu.'}
-          </p>
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={() => setOcultarNaoParticipar((atual) => !atual)}

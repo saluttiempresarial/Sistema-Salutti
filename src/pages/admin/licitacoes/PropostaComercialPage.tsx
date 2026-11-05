@@ -228,10 +228,6 @@ export function PropostaComercialPage() {
         { Campo: 'Estado', Valor: licitacao.estado },
         { Campo: 'Distância da matriz', Valor: formatarDistanciaKm(licitacao.distanciaMatriz) || '—' },
         { Campo: 'Data da licitação', Valor: formatarDataHora(licitacao.dataLicitacao) },
-        {
-          Campo: 'Data efetiva (se suspensa/remarcada)',
-          Valor: licitacao.dataEfetivaLicitacao ? formatarDataHora(licitacao.dataEfetivaLicitacao) : '—',
-        },
         { Campo: 'Objeto', Valor: licitacao.objeto },
         {
           Campo: 'Modalidade',
