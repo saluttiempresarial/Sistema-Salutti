@@ -21,7 +21,7 @@
 
 import { useMemo, useState } from 'react'
 import { Licitacao } from '@/types/licitacao'
-import { calcularPrazoInterno, classificarUrgenciaPrazo, UrgenciaPrazo } from '@/utils/prazoUtils'
+import { classificarUrgenciaPrazo, UrgenciaPrazo } from '@/utils/prazoUtils'
 import { IconeSetaDireita, IconeSetaEsquerda } from '@/components/icones'
 
 const DIAS_SEMANA = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
@@ -65,7 +65,7 @@ function LinhaEvento({ evento, rotuloPrazo }: { evento: EventoDia; rotuloPrazo: 
       <span className="w-12 shrink-0 font-mono text-xs font-semibold">{formatarHoraEvento(evento.data)}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate font-body text-sm font-semibold">
-          {evento.tipo === 'prazo' ? rotuloPrazo : 'Sessão pública'} • {evento.numero}
+          {evento.tipo === 'prazo' ? rotuloPrazo : 'Licitação'} • {evento.numero}
         </p>
         <p className="truncate font-body text-xs opacity-80" title={evento.orgao}>
           {evento.orgao}
@@ -140,15 +140,8 @@ export function CalendarioLicitacoes({
         numero: licitacao.numeroPregao,
         orgao: licitacao.orgao,
       })
-
-      const prazo = calcularPrazoInterno(dataSessaoISO)
-      adicionar(prazo, {
-        tipo: 'prazo',
-        label: `Prazo: ${licitacao.numeroPregao}`,
-        urgencia,
-        numero: licitacao.numeroPregao,
-        orgao: licitacao.orgao,
-      })
+      // 05/11 (Márcio): o prazo interno / "Data de retorno" não aparece mais no
+      // calendário — deixava a equipe confusa. Só a data da licitação.
     })
 
     mapa.forEach((lista) => lista.sort((a, b) => a.data.getTime() - b.data.getTime()))
@@ -229,7 +222,7 @@ export function CalendarioLicitacoes({
   const legenda = (
     <div className="flex flex-wrap gap-3 font-body text-xs text-ink-soft">
       <span className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-forest" /> Sessão
+        <span className="h-2.5 w-2.5 rounded-full bg-forest" /> Licitação
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Prazo vencido

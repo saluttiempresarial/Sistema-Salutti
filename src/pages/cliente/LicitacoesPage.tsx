@@ -25,7 +25,7 @@ export function LicitacoesPage() {
       return
     }
     let ativo = true
-    licitacaoService.listarPorCliente(user.clienteId).then((itens) => {
+    licitacaoService.listarPorClienteComItens(user.clienteId).then((itens) => {
       if (!ativo) return
       setLicitacoes(itens)
       setCarregando(false)

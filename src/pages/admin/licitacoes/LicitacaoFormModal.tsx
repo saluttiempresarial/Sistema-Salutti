@@ -311,6 +311,13 @@ function mesclarChecklistComExtracao(
   });
 }
 
+const MOTIVOS_ALTERACAO = [
+  { value: 'Alteração de data', label: 'Alteração de data' },
+  { value: 'Alteração de cliente', label: 'Alteração de cliente' },
+  { value: 'Exclusão de item a pedido do cliente', label: 'Exclusão de item a pedido do cliente' },
+  { value: 'Outros', label: 'Outros' },
+];
+
 /** O que o formulário devolve além dos dados da licitação (22/10):
  *  motivoAlteracao é obrigatório quando a licitação já foi liberada ao cliente. */
 export interface OpcoesSalvarLicitacao {
@@ -347,6 +354,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [salvando, setSalvando] = useState(false);
   // Para licitação já liberada ao cliente: motivo da alteração — ver OpcoesSalvarLicitacao.
   const [motivoAlteracao, setMotivoAlteracao] = useState('');
+  const [motivoOpcao, setMotivoOpcao] = useState('');
   const [erroMotivo, setErroMotivo] = useState(false);
   const [clientes, setClientes] = useState<Array<{ value: string; label: string; porte: PorteEmpresa }>>([]);
   const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
@@ -467,6 +475,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     setAbaAtiva('gerais');
     setErroChecklist(null);
     setMotivoAlteracao('');
+    setMotivoOpcao('');
     setErroMotivo(false);
 
     if (licitacaoEmEdicao) {
@@ -593,10 +602,23 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
 
   // --- Aba 5 — Itens: grupos e itens ------------------------------------
 
+  // Depois de adicionar item ou grupo, rola até ele e põe o cursor no campo
+  // do número — assim dá para digitar direto, sem procurar o item novo.
+  function focarNovo(seletor: string) {
+    window.setTimeout(() => {
+      const alvo = document.querySelector<HTMLElement>(seletor);
+      if (!alvo) return;
+      alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const campo = alvo.matches('input') ? alvo : alvo.querySelector<HTMLElement>('input');
+      campo?.focus({ preventScroll: true });
+    }, 60);
+  }
+
   function adicionarGrupo() {
     const numero = String(form.grupos.length + 1);
     const novoGrupo: GrupoItens = { id: gerarIdLocal('grp'), numero, nome: `Grupo ${numero}` };
     setForm((atual) => ({ ...atual, grupos: [...atual.grupos, novoGrupo] }));
+    focarNovo(`[data-foco-grupo="${novoGrupo.id}"]`);
   }
 
   function renumerarGrupo(id: string, numero: string) {
@@ -614,6 +636,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   }
 
   function removerGrupo(id: string) {
+    const grupo = form.grupos.find((g) => g.id === id);
+    const qtdItens = form.itens.filter((i) => i.grupoId === id).length;
+    const nome = grupo ? `Grupo ${grupo.numero || grupo.nome || ''}`.trim() : 'este grupo';
+    const confirmou = window.confirm(
+      `Tem certeza que deseja excluir o ${nome}` +
+        (qtdItens > 0 ? ` e ${qtdItens === 1 ? 'o 1 item' : `os ${qtdItens} itens`} que ${qtdItens === 1 ? 'pertence' : 'pertencem'} a ele` : '') +
+        '? A exclusão só é gravada quando você clicar em "Salvar licitação".'
+    );
+    if (!confirmou) return;
     // Remove o grupo e os itens que pertenciam a ele — para manter um item
     // órfão, seria preciso "desvincular" antes de excluir o grupo.
     setForm((atual) => ({
@@ -635,6 +666,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       exclusivoMeEpp: false,
     };
     setForm((atual) => ({ ...atual, itens: [...atual.itens, novoItem] }));
+    focarNovo(`[data-foco-item="${novoItem.id}"]`);
   }
 
   function atualizarItem<K extends keyof ItemLicitacao>(id: string, campo: K, valor: ItemLicitacao[K]) {
@@ -645,6 +677,16 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   }
 
   function removerItem(id: string) {
+    const item = form.itens.find((i) => i.id === id);
+    // Linha recém-criada e ainda em branco sai sem perguntar.
+    const emBranco = !!item && !item.numero.trim() && !item.descricao.trim() && !item.precoReferencia;
+    if (!emBranco) {
+      const confirmou = window.confirm(
+        `Tem certeza que deseja excluir o item ${item?.numero || ''}${item?.descricao ? ` (${item.descricao.slice(0, 40)})` : ''}? ` +
+          'A exclusão só é gravada quando você clicar em "Salvar licitação".'
+      );
+      if (!confirmou) return;
+    }
     setForm((atual) => ({ ...atual, itens: atual.itens.filter((i) => i.id !== id) }));
   }
 
@@ -840,10 +882,10 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   }
 
   async function handleSalvar() {
-    if (jaLiberada && !motivoAlteracao.trim()) {
+    if (jaLiberada && (!motivoOpcao || (motivoOpcao === 'Outros' && !motivoAlteracao.trim()))) {
       setErroMotivo(true);
       setAbaAtiva('gerais');
-      window.setTimeout(() => document.getElementById('motivo-alteracao')?.focus(), 0);
+      window.setTimeout(() => document.getElementById(motivoOpcao ? 'motivo-alteracao' : 'motivo-alteracao-opcao')?.focus(), 0);
       return;
     }
     setErroMotivo(false);
@@ -929,7 +971,11 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     setSalvando(true);
     try {
       await onSave(licitacaoEmEdicao ? form : { ...form, status: 'pendente' }, {
-        motivoAlteracao: jaLiberada ? motivoAlteracao.trim() : undefined,
+        motivoAlteracao: jaLiberada
+          ? motivoAlteracao.trim()
+            ? `${motivoOpcao}: ${motivoAlteracao.trim()}`
+            : motivoOpcao
+          : undefined,
       });
       if (!licitacaoEmEdicao) limparRascunho();
       onClose();
@@ -1052,27 +1098,59 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 . Depois da liberação, ela só deve ser alterada a pedido do cliente ou quando a equipe constatar a
                 necessidade. Informe o motivo da alteração: ele fica registrado no histórico.
               </p>
-              <label htmlFor="motivo-alteracao" className="mt-2 block font-body text-xs font-semibold text-ink">
+              <label htmlFor="motivo-alteracao-opcao" className="mt-2 block font-body text-xs font-semibold text-ink">
                 Motivo da alteração (obrigatório)
               </label>
-              <textarea
-                id="motivo-alteracao"
-                name="motivo-alteracao"
-                value={motivoAlteracao}
+              <select
+                id="motivo-alteracao-opcao"
+                name="motivo-alteracao-opcao"
+                value={motivoOpcao}
                 onChange={(e) => {
-                  setMotivoAlteracao(e.target.value);
+                  setMotivoOpcao(e.target.value);
                   if (erroMotivo) setErroMotivo(false);
                 }}
-                rows={2}
-                placeholder="Ex.: o cliente pediu a correção da quantidade do item 3"
                 className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 font-body text-sm text-ink focus:outline-none focus:ring-2 ${
-                  erroMotivo
+                  erroMotivo && !motivoOpcao
                     ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
                     : 'border-ink-soft/20 focus:border-forest focus:ring-forest/20'
                 }`}
-              />
+              >
+                <option value="">Selecione o motivo</option>
+                {MOTIVOS_ALTERACAO.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              {motivoOpcao && (
+                <>
+                  <label htmlFor="motivo-alteracao" className="mt-2 block font-body text-xs font-semibold text-ink">
+                    {motivoOpcao === 'Outros' ? 'Explique o motivo (obrigatório)' : 'Detalhes (opcional)'}
+                  </label>
+                  <textarea
+                    id="motivo-alteracao"
+                    name="motivo-alteracao"
+                    value={motivoAlteracao}
+                    onChange={(e) => {
+                      setMotivoAlteracao(e.target.value);
+                      if (erroMotivo) setErroMotivo(false);
+                    }}
+                    rows={2}
+                    placeholder={
+                      motivoOpcao === 'Outros'
+                        ? 'Descreva o motivo da alteração'
+                        : 'Ex.: o cliente pediu a correção da quantidade do item 3'
+                    }
+                    className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 font-body text-sm text-ink focus:outline-none focus:ring-2 ${
+                      erroMotivo && motivoOpcao === 'Outros' && !motivoAlteracao.trim()
+                        ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
+                        : 'border-ink-soft/20 focus:border-forest focus:ring-forest/20'
+                    }`}
+                  />
+                </>
+              )}
               {erroMotivo && (
-                <p className="mt-1 font-body text-xs text-red-700">Informe o motivo antes de salvar a alteração.</p>
+                <p className="mt-1 font-body text-xs text-red-700">{motivoOpcao === 'Outros' ? 'Explique o motivo antes de salvar a alteração.' : 'Selecione o motivo antes de salvar a alteração.'}</p>
               )}
             </div>
           )}
@@ -1797,6 +1875,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 <div key={grupo.id} className="rounded-xl border border-ink-soft/15 p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <input
+                      data-foco-grupo={grupo.id}
                       value={grupo.numero}
                       onChange={(e) => renumerarGrupo(grupo.id, e.target.value)}
                       placeholder="Nº"
@@ -1830,6 +1909,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                     )}
                   </div>
 
+                  <div className="mt-3">
+                    <Button variant="ghost" onClick={() => adicionarItem(grupo.id)} className="text-xs">
+                      + Item no grupo
+                    </Button>
+                  </div>
+
                   <p className="mt-3 text-right font-body text-sm font-medium text-forest-deep">
                     Total do grupo: {formatarMoeda(totalReferenciaGrupo(form.itens, grupo.id))}
                   </p>
@@ -1848,6 +1933,21 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                     <p className="font-body text-xs italic text-ink-soft">Nenhum item individual ainda.</p>
                   )}
                 </div>
+              </div>
+            )}
+
+            {form.estrutura && (permissoes.grupos || permissoes.individuais) && (
+              <div className="flex flex-wrap justify-end gap-2">
+                {permissoes.grupos && (
+                  <Button variant="ghost" onClick={adicionarGrupo} className="whitespace-nowrap">
+                    + Novo grupo
+                  </Button>
+                )}
+                {permissoes.individuais && (
+                  <Button variant="ghost" onClick={() => adicionarItem()} className="whitespace-nowrap">
+                    + Item individual
+                  </Button>
+                )}
               </div>
             )}
 
@@ -2034,7 +2134,7 @@ function ItemLicitacaoRow({
       </button>
 
       <div className="flex flex-wrap items-end gap-2 pr-8">
-        <div className="w-16 shrink-0">
+        <div className="w-16 shrink-0" data-foco-item={item.id}>
           <TextField
             label="Nº"
             value={item.numero}

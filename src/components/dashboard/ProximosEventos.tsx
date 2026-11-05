@@ -48,6 +48,9 @@ interface ProximosEventosProps {
   linkVerTodos?: string | null
   /** Nome do evento de prazo. Padrão: "Prazo interno". */
   rotuloPrazo?: string
+  /** Mostra também o prazo interno / "Data de retorno". Padrão: não (05/11,
+   *  Márcio: deixava a equipe confusa) — só aparece a data da licitação. */
+  mostrarPrazo?: boolean
 }
 
 export function ProximosEventos({
@@ -57,11 +60,13 @@ export function ProximosEventos({
   rotaLicitacao = (id) => `/admin/licitacoes/${id}/proposta`,
   linkVerTodos = '/admin/calendario',
   rotuloPrazo = 'Prazo interno',
+  mostrarPrazo = false,
 }: ProximosEventosProps) {
   const eventos = useMemo(() => {
     const agora = new Date()
-    return proximosEventos(eventosDasLicitacoes(licitacoes, agora), agora, limite)
-  }, [licitacoes, limite])
+    const todos = eventosDasLicitacoes(licitacoes, agora)
+    return proximosEventos(mostrarPrazo ? todos : todos.filter((e) => e.tipo !== 'prazo'), agora, limite)
+  }, [licitacoes, limite, mostrarPrazo])
 
   const agora = new Date()
 
@@ -70,7 +75,7 @@ export function ProximosEventos({
       <header className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <IconeCalendario className="h-6 w-6 text-forest" />
-          <h2 className="font-display text-xl font-semibold text-forest-deep">Próximos eventos</h2>
+          <h2 className="font-display text-xl font-semibold text-forest-deep">Próximas licitações</h2>
         </div>
         {linkVerTodos && (
           <Link
@@ -115,7 +120,7 @@ export function ProximosEventos({
                   ) : (
                     <IconeMartelo className={`h-4 w-4 ${COR_ICONE[evento.tom]}`} />
                   )}
-                  {evento.tipo === 'prazo' ? rotuloPrazo : 'Sessão pública'}
+                  {evento.tipo === 'prazo' ? rotuloPrazo : 'Licitação'}
                 </p>
                 <p className="truncate font-body text-sm text-ink-soft" title={evento.orgao}>
                   Nº {evento.numeroPregao}
@@ -135,7 +140,7 @@ export function ProximosEventos({
         <p className="mb-2 font-display text-base font-semibold text-forest-deep">Legenda</p>
         <ul className="flex flex-wrap gap-x-4 gap-y-1.5 font-body text-xs text-ink-soft">
           <li className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-forest" /> Sessão
+            <span className="h-2.5 w-2.5 rounded-full bg-forest" /> Licitação
           </li>
           <li className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Prazo vencido

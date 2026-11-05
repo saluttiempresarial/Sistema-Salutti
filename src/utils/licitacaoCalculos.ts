@@ -271,3 +271,23 @@ export function classificarStatusProposta(percentualDiferenca: number | null): S
   }
   return { chave: 'nao_participar', label: '📈 Acima da referência', classe: 'bg-red-600 text-white' };
 }
+
+
+/** Valor da participação do cliente: soma, item a item, do preço que ele
+ *  ofertou (já com o frete da proposta) × a quantidade. Item individual que
+ *  a equipe marcou "Não participar" fica fora da conta. Devolve null quando
+ *  ainda não há nenhum item com preço. */
+export function valorParticipacaoCliente(licitacao: Licitacao): number | null {
+  const frete = licitacao.percentualFrete ?? 0;
+  let total = 0;
+  let algum = false;
+  licitacao.itens.forEach((item) => {
+    if (!item.grupoId && item.decisaoAcimaReferencia === 'barrado') return;
+    const analise = calcularAnaliseItem(item, frete, true);
+    if (analise.valorTotal != null) {
+      total += analise.valorTotal;
+      algum = true;
+    }
+  });
+  return algum ? total : null;
+}

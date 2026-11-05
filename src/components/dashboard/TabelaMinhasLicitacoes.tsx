@@ -13,7 +13,7 @@ import { IconeDocumento, IconeSetaDireita } from '@/components/icones'
 import { DECISAO_CLIENTE_LABEL, type DecisaoCliente, type Licitacao } from '@/types/licitacao'
 import type { TomEtiqueta } from '@/utils/eventosPainel'
 import { formatarDataHora, formatarMoeda, calcularPrazoInterno, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
-import { prazoPropostaClienteInfo } from '@/utils/licitacaoCalculos'
+import { prazoPropostaClienteInfo, valorParticipacaoCliente } from '@/utils/licitacaoCalculos'
 
 const URGENCIA_CLASSE: Record<string, string> = {
   vencido: 'font-medium text-red-600',
@@ -31,6 +31,12 @@ function PrazoProposta({ licitacao }: { licitacao: Licitacao }) {
   if (licitacao.decisaoCliente === 'recusar') return <span className="text-ink-soft">—</span>
   const info = prazoPropostaClienteInfo(licitacao)
   return <span className={URGENCIA_CLASSE[info.urgencia]}>{info.texto}</span>
+}
+
+function ValorParticipacao({ licitacao }: { licitacao: Licitacao }) {
+  if (licitacao.decisaoCliente === 'recusar') return <span className="text-ink-soft">—</span>
+  const valor = valorParticipacaoCliente(licitacao)
+  return <span>{valor != null ? formatarMoeda(valor) : '—'}</span>
 }
 
 interface TabelaMinhasLicitacoesProps {
@@ -82,12 +88,14 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
               <thead className="bg-paper-2 text-left text-xs uppercase tracking-wide text-ink-soft">
                 <tr>
                   <th className="px-4 py-3">Órgão</th>
+                  <th className="whitespace-nowrap px-3 py-3">Plataforma</th>
                   <th className="whitespace-nowrap px-3 py-3">Número</th>
                   <th className="whitespace-nowrap px-3 py-3">Cidade / UF</th>
                   <th className="whitespace-nowrap px-3 py-3 text-right">Valor total</th>
+                  <th className="whitespace-nowrap px-3 py-3 text-right">Valor da participação</th>
                   <th className="whitespace-nowrap px-3 py-3">Data da licitação</th>
-                  <th className="whitespace-nowrap px-3 py-3">Data de retorno</th>
-                  <th className="whitespace-nowrap px-3 py-3">Prazo para proposta</th>
+                  <th className="whitespace-nowrap px-3 py-3">Limite de retorno</th>
+                  <th className="whitespace-nowrap px-3 py-3">Prazo para alteração</th>
                   <th className="whitespace-nowrap px-3 py-3">Decisão</th>
                   <th className="w-10 px-3 py-3" />
                 </tr>
@@ -108,7 +116,9 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                         >
                           {licitacao.orgao}
                         </button>
-                        {licitacao.portal && <p className="truncate text-xs text-ink-soft">{licitacao.portal}</p>}
+                      </td>
+                      <td className="max-w-[160px] truncate px-3 py-3 text-ink-soft" title={licitacao.portal}>
+                        {licitacao.portal || '—'}
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-ink-soft">
@@ -116,6 +126,9 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 text-right text-ink-soft">
                         {licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right font-medium text-ink">
+                        <ValorParticipacao licitacao={licitacao} />
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 text-ink-soft">{formatarDataHora(dataReferencia)}</td>
                       <td className={`whitespace-nowrap px-3 py-3 ${URGENCIA_CLASSE[urgencia]}`}>
@@ -168,6 +181,10 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                     </div>
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 font-body text-xs">
                       <div>
+                        <dt className="text-ink-soft">Plataforma</dt>
+                        <dd className="truncate text-ink">{licitacao.portal || '—'}</dd>
+                      </div>
+                      <div>
                         <dt className="text-ink-soft">Cidade / UF</dt>
                         <dd className="text-ink">{[licitacao.municipio, licitacao.estado].filter(Boolean).join(' / ') || '—'}</dd>
                       </div>
@@ -178,15 +195,21 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                         </dd>
                       </div>
                       <div>
+                        <dt className="text-ink-soft">Valor da participação</dt>
+                        <dd className="text-ink">
+                          <ValorParticipacao licitacao={licitacao} />
+                        </dd>
+                      </div>
+                      <div>
                         <dt className="text-ink-soft">Data da licitação</dt>
                         <dd className="text-ink">{formatarDataHora(dataReferencia)}</dd>
                       </div>
                       <div>
-                        <dt className="text-ink-soft">Data de retorno</dt>
+                        <dt className="text-ink-soft">Limite de retorno</dt>
                         <dd className={URGENCIA_CLASSE[urgencia]}>{formatarDataHora(prazo.toISOString())}</dd>
                       </div>
                       <div className="col-span-2">
-                        <dt className="text-ink-soft">Prazo para proposta</dt>
+                        <dt className="text-ink-soft">Prazo para alteração</dt>
                         <dd>
                           <PrazoProposta licitacao={licitacao} />
                         </dd>

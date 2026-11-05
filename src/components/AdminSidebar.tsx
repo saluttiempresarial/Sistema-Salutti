@@ -22,7 +22,6 @@ import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
 import { avisarFotoPerfilAtualizada } from '@/utils/fotoPerfilEvento'
 import {
-  IconeCalendario,
   IconeDocumento,
   IconeEngrenagem,
   IconeFechar,
@@ -70,9 +69,7 @@ export function AdminSidebar({ aberta = false, onFechar }: AdminSidebarProps) {
       : []),
     // Os Indicadores ficam dentro de Relatórios (aba Indicadores) para todos os
     // perfis internos; não há mais item próprio no menu.
-    ...(isAdmin || podeAcessarModulo('licitacoes')
-      ? [{ label: 'Calendário', to: '/admin/calendario', icon: <IconeCalendario /> }]
-      : []),
+    // O Calendário fica só na tela Início (05/11, Márcio); sem item próprio no menu.
     ...(isAdmin ? [{ label: 'Configurações', to: '/admin/configuracoes', icon: <IconeEngrenagem /> }] : []),
   ]
 

@@ -501,6 +501,41 @@ export const licitacaoService = {
     return ((data as LicitacaoRow[]) ?? []).map((row) => paraLicitacao(row))
   },
 
+  // Igual a listarPorCliente, mas já com os itens (e a proposta do cliente em
+  // cada um) — usado na tabela "Minhas licitações" para mostrar o valor da
+  // participação. Os itens vêm numa consulta só, para todas as licitações.
+  async listarPorClienteComItens(clienteId: string): Promise<Licitacao[]> {
+    const { data, error } = await supabase
+      .from('licitacoes')
+      .select('*')
+      .eq('cliente_id', clienteId)
+      .order('criado_em', { ascending: false })
+    if (error) throw new Error(error.message)
+    const rows = (data as LicitacaoRow[]) ?? []
+    if (rows.length === 0) return []
+
+    const ids = rows.map((row) => row.id)
+    const tamanhoPagina = 1000
+    const itensRows: ItemRow[] = []
+    for (let de = 0; ; de += tamanhoPagina) {
+      const { data: pagina, error: erroItens } = await supabase
+        .from('itens_licitacao')
+        .select('*')
+        .in('licitacao_id', ids)
+        .order('id')
+        .range(de, de + tamanhoPagina - 1)
+      if (erroItens) throw new Error(erroItens.message)
+      const lote = (pagina as ItemRow[] | null) ?? []
+      itensRows.push(...lote)
+      if (lote.length < tamanhoPagina) break
+    }
+    const itensPorLicitacao = new Map<string, ItemRow[]>()
+    itensRows.forEach((item) => {
+      itensPorLicitacao.set(item.licitacao_id, [...(itensPorLicitacao.get(item.licitacao_id) ?? []), item])
+    })
+    return rows.map((row) => paraLicitacao(row, [], itensPorLicitacao.get(row.id) ?? []))
+  },
+
   // Todas as licitações ainda em andamento (exclui 'ganho'/'perdido'), sem
   // paginação, ordenadas pela sessão mais próxima primeiro.
   async listarAtivas(restricao: { clienteIds?: string[]; licitacaoIds?: string[] } = {}): Promise<Licitacao[]> {

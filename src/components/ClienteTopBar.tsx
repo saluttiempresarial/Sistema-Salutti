@@ -4,12 +4,13 @@
 // notificações (licitações aguardando a decisão do cliente), o perfil
 // de quem está logado e o botão "Sair" sempre visível (FIXO no topo, a pedido
 // do Márcio em 14/10 — a barra acompanha a rolagem). Mesmo visual da
-// AdminTopBar, sem a busca global (que usa dados internos da Salutti).
+// AdminTopBar; a busca (BuscaCliente) procura só nas licitações do próprio cliente.
 
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { ROLE_LABEL } from '@/types/auth'
 import { AvatarUsuario } from '@/components/AvatarUsuario'
+import { BuscaCliente } from '@/components/BuscaCliente'
 import { ClienteNotificacoes } from '@/components/ClienteNotificacoes'
 import { IconeMenu, IconeSair } from '@/components/icones'
 
@@ -38,7 +39,7 @@ export function ClienteTopBar({ onAbrirMenu }: ClienteTopBarProps) {
           <IconeMenu className="h-6 w-6" />
         </button>
 
-        <div className="flex-1" />
+        <div className="min-w-0 flex-1">{user?.clienteId && <BuscaCliente />}</div>
 
         <ClienteNotificacoes />
 

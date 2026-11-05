@@ -51,7 +51,7 @@ export function InicioPage() {
       return
     }
     let ativo = true
-    licitacaoService.listarPorCliente(user.clienteId).then((itens) => {
+    licitacaoService.listarPorClienteComItens(user.clienteId).then((itens) => {
       if (!ativo) return
       setLicitacoes(itens)
       setCarregando(false)
@@ -79,17 +79,18 @@ export function InicioPage() {
 
   // Painel "Próximos eventos": só licitações ainda em andamento (mesma regra
   // da tela Calendário).
-  // O calendário não mostra as licitações que o cliente recusou: as datas delas
-  // não exigem mais nada dele. Ganhas e perdidas continuam (histórico).
+  // O calendário e o painel de datas só mostram as licitações em que o cliente
+  // vai participar (05/11, Márcio): as que ele recusou saem, e as pendentes
+  // aparecem em "Aguardando sua decisão". Ganhas e perdidas continuam (histórico).
   const noCalendario = useMemo(
-    () => licitacoes.filter((l) => l.decisaoCliente !== 'recusar'),
+    () => licitacoes.filter((l) => l.decisaoCliente === 'participar'),
     [licitacoes]
   )
 
   const emAndamento = useMemo(
     () =>
       licitacoes.filter(
-        (l) => l.status !== 'ganho' && l.status !== 'perdido' && l.decisaoCliente !== 'recusar'
+        (l) => l.status !== 'ganho' && l.status !== 'perdido' && l.decisaoCliente === 'participar'
       ),
     [licitacoes]
   )
@@ -222,6 +223,7 @@ export function InicioPage() {
           rotaLicitacao={(id) => `/cliente/licitacoes/${id}`}
           linkVerTodos={null}
           rotuloPrazo="Data de retorno"
+          mostrarPrazo={false}
         />
       </div>
 

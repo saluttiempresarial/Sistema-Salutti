@@ -49,7 +49,6 @@ import {
   totalReferenciaGrupo,
 } from '@/utils/licitacaoCalculos'
 import { formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
-import { SeletorUnidadeMedida } from '@/components/SeletorUnidadeMedida'
 import {
   ROTULO_FALTA_IDENTIFICACAO,
   faltaIdentificacaoDoItem,
@@ -468,13 +467,6 @@ export function PropostaComercialCards({
     }))
   }
 
-  function atualizarCampoReferencia(itemId: string, campo: keyof FormReferencia, valor: string) {
-    setFormReferenciaPorItem((atual) => ({
-      ...atual,
-      [itemId]: { ...atual[itemId], [campo]: valor },
-    }))
-  }
-
   // Regra do Márcio (25/09): o cliente não pode enviar proposta de só
   // parte de um grupo — ou preenche TODOS os itens participáveis do grupo
   // (excluindo os bloqueados por ME/EPP, que ele nem consegue preencher),
@@ -555,15 +547,9 @@ export function PropostaComercialCards({
         } satisfies PropostaClienteItem,
       }))
 
-      const itensReferencia = podeEditarItens
-        ? itensAoVivo.map((item) => ({
-            id: item.id,
-            descricao: item.descricao,
-            unidadeMedida: item.unidadeMedida,
-            quantidade: item.quantidade,
-            precoReferencia: item.precoReferencia,
-          }))
-        : undefined
+      // Unidade, quantidade e valor de referência são FIXOS (05/11, Márcio):
+      // vêm do cadastro da licitação e não são mais gravados por esta tela.
+      const itensReferencia = undefined
 
       await onSalvar({
         propostaPorItem,
@@ -694,15 +680,15 @@ export function PropostaComercialCards({
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-paper-2/70 px-3 py-2">
           <p className="font-body text-xs text-ink-soft">
             {ocultarNaoParticipar
-              ? 'Grupos que o Cliente ainda não começou a preencher estão ocultos nesta visualização.'
-              : 'Mostrando todos os grupos, inclusive os que o Cliente ainda não preencheu.'}
+              ? 'Grupos e itens que o Cliente ainda não preencheu estão ocultos nesta visualização.'
+              : 'Mostrando todos os grupos e itens, inclusive os que o Cliente ainda não preencheu.'}
           </p>
           <button
             type="button"
             onClick={() => setOcultarNaoParticipar((atual) => !atual)}
             className="whitespace-nowrap font-body text-xs font-semibold text-forest hover:underline"
           >
-            {ocultarNaoParticipar ? 'Mostrar tudo' : 'Ocultar de novo'}
+            {ocultarNaoParticipar ? 'Mostrar tudo' : 'Ocultar não preenchidos'}
           </button>
         </div>
       )}
@@ -762,7 +748,12 @@ export function PropostaComercialCards({
 
         // Itens acima da referência NÃO ficam mais ocultos (06/10): eles
         // precisam estar visíveis para o Admin/Analista decidir.
-        const itensVisiveis = itensAoVivoDoGrupo
+        // Na tela do Admin/Analista, no modo "oculto" (padrão), itens que o
+        // Cliente ainda não preencheu ficam escondidos (05/11, Márcio). O item
+        // que está aberto na tela continua visível, para não sumir enquanto se edita.
+        const itensVisiveis = ocultarNaoParticipar
+          ? itensAoVivoDoGrupo.filter((item) => item.propostaCliente?.precoMinimo != null || item.id === itemAberto)
+          : itensAoVivoDoGrupo
         const grupoAcimaDaReferencia = !!grupo && statusGrupo.chave === 'nao_participar'
 
         return (
@@ -1079,39 +1070,12 @@ export function PropostaComercialCards({
                           {podeEditarItens && formReferencia && (
                             <div className="mt-4 rounded-lg border border-dashed border-ink-soft/20 p-3">
                               <p className="mb-2 font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
-                                Dados de referência (Admin)
+                                Dados de referência (fixos — vêm do cadastro da licitação)
                               </p>
                               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                <SeletorUnidadeMedida
-                                  estilo="compacto"
-                                  label="Unidade"
-                                  valor={formReferencia.unidadeMedida}
-                                  onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'unidadeMedida', v)}
-                                />
-                                <CampoEditavel
-                                  label="Quantidade"
-                                  valor={formReferencia.quantidade}
-                                  onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'quantidade', v)}
-                                  onBlur={() =>
-                                    atualizarCampoReferencia(
-                                      itemVivo.id,
-                                      'quantidade',
-                                      numeroParaCampo(campoParaNumero(formReferencia.quantidade, 0), 0)
-                                    )
-                                  }
-                                />
-                                <CampoEditavel
-                                  label="Valor unit. referência (R$)"
-                                  valor={formReferencia.precoReferencia}
-                                  onChange={(v) => atualizarCampoReferencia(itemVivo.id, 'precoReferencia', v)}
-                                  onBlur={() =>
-                                    atualizarCampoReferencia(
-                                      itemVivo.id,
-                                      'precoReferencia',
-                                      numeroParaCampo(campoParaNumero(formReferencia.precoReferencia, 10), 10)
-                                    )
-                                  }
-                                />
+                                <CampoFixo label="Unidade" valor={itemVivo.unidadeMedida || '—'} />
+                                <CampoFixo label="Quantidade" valor={formatarNumero(itemVivo.quantidade)} />
+                                <CampoFixo label="Valor unit. referência (R$)" valor={formatarMoeda(itemVivo.precoReferencia)} />
                               </div>
                             </div>
                           )}
@@ -1274,6 +1238,15 @@ function CampoCategoriaServico({ valor, onChange }: { valor: string; onChange: (
           </option>
         ))}
       </select>
+    </div>
+  )
+}
+
+function CampoFixo({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div>
+      <div className="mb-1 block font-body text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</div>
+      <div className="w-full rounded-lg border border-ink-soft/10 bg-paper-2 px-3 py-2 font-body text-sm text-ink">{valor}</div>
     </div>
   )
 }
