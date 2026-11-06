@@ -481,7 +481,7 @@ export interface CondicoesComerciais {
   percentualIntervaloLances?: number; // em % — só quando tipoIntervaloLances === 'percentual'
   intervaloLancesDetalhe?: string; // texto livre complementar, opcional
   formaPagamento: FormaPagamento;
-  recebimentoBanco: string; // "Banco do Brasil" ou "Outros" — seletor fixo
+  recebimentoBanco: string; // banco da lista ou, em "Outros", o nome digitado
   prazoPagamentoDias?: number;
   possuiGarantias: boolean;
   garantiasDetalhe?: string; // abre quando possuiGarantias = true

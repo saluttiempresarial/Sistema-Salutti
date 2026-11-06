@@ -8,6 +8,31 @@
 
 import type { CondicoesComerciais, GrupoItens, ItemLicitacao } from '@/types/licitacao'
 
+/** Bancos de recebimento mais comuns nos editais (lista validada com o Márcio
+ *  em 06/11). Fora dela, o usuário escolhe "Outros" e digita o nome do banco. */
+export const BANCOS_RECEBIMENTO = [
+  'Banco do Brasil',
+  'Caixa Econômica Federal',
+  'Banrisul',
+  'BRB (Banco de Brasília)',
+  'Banestes',
+  'Banpará',
+  'Banese',
+  'Banco do Nordeste',
+  'Banco da Amazônia',
+  'Bradesco',
+  'Itaú',
+  'Santander',
+  'Sicoob',
+] as const
+/** Valor interno enquanto "Outros" está escolhido e o nome ainda não foi digitado. */
+export const BANCO_OUTROS = 'Outros'
+
+/** "Outros" escolhido (ou valor antigo que não está na lista): pede o nome. */
+export function bancoEmOutros(valor: string): boolean {
+  return !!valor && !(BANCOS_RECEBIMENTO as readonly string[]).includes(valor)
+}
+
 export const OPCOES_CAPAG = ['A', 'B', 'C', 'N/D'] as const
 export type NotaCapag = (typeof OPCOES_CAPAG)[number]
 
@@ -95,6 +120,7 @@ export function numerosDeGrupoRepetidos(grupos: GrupoItens[]): string[] {
 export function condicoesComerciaisFaltando(cond: CondicoesComerciais, ehServico: boolean): string[] {
   const faltando: string[] = []
   if (!cond.recebimentoBanco) faltando.push('Recebimento em qual banco')
+  else if (cond.recebimentoBanco === BANCO_OUTROS) faltando.push('Nome do banco (Outros)')
   if (cond.prazoPagamentoDias == null) faltando.push('Prazo de pagamento')
   if (cond.prazoEntregaDias == null) faltando.push(ehServico ? 'Prazo para início da execução' : 'Prazo de entrega')
   if (cond.validadePropostaDias == null) faltando.push('Validade da proposta')

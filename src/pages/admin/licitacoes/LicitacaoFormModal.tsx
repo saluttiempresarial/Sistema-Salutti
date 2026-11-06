@@ -81,6 +81,9 @@ import { rotuloDoMotivo } from '../../../types/motivoNaoParticipacao';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import {
   condicoesComerciaisFaltando,
+  BANCO_OUTROS,
+  BANCOS_RECEBIMENTO,
+  bancoEmOutros,
   idsItensComNumeroRepetido,
   normalizarCapag,
   numerosDeGrupoRepetidos,
@@ -1323,7 +1326,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 onChange={(e) => atualizarCampo('capag', e.target.value)}
                 placeholder="Não informada"
                 options={OPCOES_CAPAG.map((nota) => ({ value: nota, label: nota }))}
-                className={normalizarCapag(form.capag) === 'C' ? '!border-red-500 !bg-red-50 font-semibold !text-red-600' : ''}
+                className={['C', 'N/D'].includes(normalizarCapag(form.capag)) ? '!border-red-500 !bg-red-50 font-semibold !text-red-600' : ''}
               />
             </SecaoFormulario>
 
@@ -1687,14 +1690,22 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               />
               <SelectField
                 label="Recebimento em qual banco"
-                value={form.condicoesComerciais.recebimentoBanco}
+                value={bancoEmOutros(form.condicoesComerciais.recebimentoBanco) ? BANCO_OUTROS : form.condicoesComerciais.recebimentoBanco}
                 onChange={(e) => atualizarCondicoes('recebimentoBanco', e.target.value)}
                 placeholder="Selecione"
                 options={[
-                  { value: 'Banco do Brasil', label: 'Banco do Brasil' },
-                  { value: 'Outros', label: 'Outros' },
+                  ...BANCOS_RECEBIMENTO.map((banco) => ({ value: banco, label: banco })),
+                  { value: BANCO_OUTROS, label: 'Outros (especificar)' },
                 ]}
               />
+              {bancoEmOutros(form.condicoesComerciais.recebimentoBanco) && (
+                <TextField
+                  label="Nome do banco (obrigatório)"
+                  value={form.condicoesComerciais.recebimentoBanco === BANCO_OUTROS ? '' : form.condicoesComerciais.recebimentoBanco}
+                  onChange={(e) => atualizarCondicoes('recebimentoBanco', e.target.value.trim() === '' ? BANCO_OUTROS : e.target.value)}
+                  placeholder="Digite o nome do banco"
+                />
+              )}
               <TextField
                 label="Prazo de pagamento (dias)"
                 type="number"

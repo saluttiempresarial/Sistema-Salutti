@@ -39,7 +39,10 @@ function formatarMoedaResumida(valor: number): string {
 
 export function AdminDashboard() {
   const { user } = useAuth()
-  const { licitacoes: ativas, nomesClientes, carregando, podeEditar } = useLicitacoesInternas()
+  const { licitacoes: todasAtivas, nomesClientes, carregando, podeEditar } = useLicitacoesInternas()
+  // "Licitações ativas" = só as que já foram enviadas (liberadas) ao cliente
+  // (05/11, Márcio). As ainda não liberadas ficam na tela Licitações.
+  const ativas = useMemo(() => todasAtivas.filter((l) => !!l.liberadaAoClienteEm), [todasAtivas])
   const { alertas: acoes, carregando: carregandoAcoes } = useAcoesDisputa()
   const [finalizadas, setFinalizadas] = useState<{ ganhas: number; perdidas: number } | null>(null)
 

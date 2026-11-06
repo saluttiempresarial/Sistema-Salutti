@@ -29,7 +29,10 @@ import { IconeCalendario, IconeDocumento, IconePessoas } from '@/components/icon
 
 export function FuncionarioDashboard() {
   const { user } = useAuth()
-  const { licitacoes, nomesClientes, carregando, podeEditar } = useLicitacoesInternas()
+  const { licitacoes: todasAtivas, nomesClientes, carregando, podeEditar } = useLicitacoesInternas()
+  // "Licitações ativas" = só as que já foram enviadas (liberadas) ao cliente
+  // (05/11, Márcio). As ainda não liberadas ficam na tela Licitações.
+  const licitacoes = useMemo(() => todasAtivas.filter((l) => !!l.liberadaAoClienteEm), [todasAtivas])
   const { alertas: acoes, carregando: carregandoAcoes } = useAcoesDisputa()
 
   const aguardandoCliente = useMemo(
