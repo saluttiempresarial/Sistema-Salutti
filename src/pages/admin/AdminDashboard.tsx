@@ -1,21 +1,15 @@
 // src/pages/admin/AdminDashboard.tsx
 //
 // Tela inicial do Administrador: visão geral do sistema. Mesmo painel do
-// Funcionário (cartões, calendário, próximos eventos e licitações ativas),
-// mais dois indicadores só do Administrador: taxa de vitória e valor em
-// disputa.
-//
-// Redesenho (15/10, a pedido do Márcio). A taxa de vitória continua sendo
-// ganhas ÷ (ganhas + perdidas), agora calculada pelo total que o banco
-// informa de cada situação, em vez de baixar até 1000 licitações só para
-// contar. Em 04/11 o cartão de prazos foi dividido em dois, "Prazos vencidos" e
+// Funcionário (cartões, calendário, próximas licitações e licitações ativas).
+// Em 04/11 o cartão de prazos foi dividido em dois, "Prazos vencidos" e
 // "Prazos próximos" (vencem até o próximo dia útil) — ver CartoesPrazos.tsx.
+// Em 06/11 (Márcio) saíram os cartões "Taxa de vitória" e "Valor em disputa":
+// esses números ficam só nos Relatórios e Indicadores.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useLicitacoesInternas } from '@/hooks/useLicitacoesInternas'
-import { relatorioIndicadoresService } from '@/services/relatorioIndicadoresService'
-import { calcularTaxaVitoria, montarUnidades } from '@/utils/indicadoresCalculos'
 import { CalendarioLicitacoes } from '@/components/Licitacoes/CalendarioLicitacoes'
 import { CabecalhoPainel } from '@/components/dashboard/CabecalhoPainel'
 import { CartaoResumo } from '@/components/dashboard/CartaoResumo'
@@ -26,16 +20,8 @@ import { PainelLicitacoesAtivas } from '@/components/dashboard/PainelLicitacoesA
 import {
   IconeCalendario,
   IconeDocumento,
-  IconeMoeda,
   IconePessoas,
-  IconeTendencia,
 } from '@/components/icones'
-
-function formatarMoedaResumida(valor: number): string {
-  if (valor >= 1_000_000) return `R$ ${(valor / 1_000_000).toFixed(1).replace('.', ',')}M`
-  if (valor >= 1_000) return `R$ ${(valor / 1_000).toFixed(0)}mil`
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
 
 export function AdminDashboard() {
   const { user } = useAuth()
@@ -44,42 +30,10 @@ export function AdminDashboard() {
   // (05/11, Márcio). As ainda não liberadas ficam na tela Licitações.
   const ativas = useMemo(() => todasAtivas.filter((l) => !!l.liberadaAoClienteEm), [todasAtivas])
   const { alertas: acoes, carregando: carregandoAcoes } = useAcoesDisputa()
-  const [finalizadas, setFinalizadas] = useState<{ ganhas: number; perdidas: number } | null>(null)
-
-  useEffect(() => {
-    let ativo = true
-    // Mesma regra do painel de Indicadores: itens/grupos de disputas com
-    // resultado definitivo; perdido na habilitação conta como perdido.
-    relatorioIndicadoresService
-      .carregarDadosBase()
-      .then((base) => {
-        const taxa = calcularTaxaVitoria(montarUnidades(base.licitacoes, base.disputas))
-        if (ativo) setFinalizadas({ ganhas: taxa.ganhos, perdidas: taxa.perdidos })
-      })
-      .catch(() => {
-        if (ativo) setFinalizadas(null)
-      })
-    return () => {
-      ativo = false
-    }
-  }, [])
-
   // Só conta quem já foi liberada ao cliente: licitação ainda não liberada não está
   // esperando decisão de ninguém (correção de 04/11).
   const aguardandoCliente = useMemo(
     () => ativas.filter((l) => !!l.liberadaAoClienteEm && l.decisaoCliente === 'pendente'),
-    [ativas]
-  )
-
-  const taxaVitoria = useMemo(() => {
-    if (!finalizadas) return null
-    const total = finalizadas.ganhas + finalizadas.perdidas
-    if (total === 0) return null
-    return Math.round((finalizadas.ganhas / total) * 100)
-  }, [finalizadas])
-
-  const valorEmDisputa = useMemo(
-    () => ativas.reduce((soma, l) => soma + (l.valorTotalLicitacao ?? 0), 0),
     [ativas]
   )
 
@@ -109,25 +63,6 @@ export function AdminDashboard() {
           icone={<IconePessoas className="h-8 w-8" />}
           tom="azul"
           to="/admin/licitacoes"
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CartaoResumo
-          compacto
-          titulo="Taxa de vitória"
-          valor={taxaVitoria === null ? '—' : `${taxaVitoria}%`}
-          legenda={taxaVitoria === null ? 'Sem resultados definitivos ainda' : 'ganhos entre os resultados definitivos'}
-          icone={<IconeTendencia className="h-6 w-6" />}
-          tom="verde"
-        />
-        <CartaoResumo
-          compacto
-          titulo="Valor em disputa"
-          valor={carregando ? '—' : formatarMoedaResumida(valorEmDisputa)}
-          legenda="Licitações ativas com valor público"
-          icone={<IconeMoeda className="h-6 w-6" />}
-          tom="dourado"
         />
       </div>
 
