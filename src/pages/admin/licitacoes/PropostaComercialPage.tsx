@@ -47,7 +47,7 @@ import {
   rotulosCondicoes,
   DecisaoAcimaReferencia,
 } from '@/types/licitacao'
-import { formatarDataHora } from '@/utils/prazoUtils'
+import { classificarUrgenciaPrazo, formatarDataHora } from '@/utils/prazoUtils'
 import { formatarDistanciaKm, normalizarCapag } from '@/utils/licitacaoCampos'
 import {
   calcularAnaliseItem,
@@ -174,6 +174,56 @@ export function PropostaComercialPage() {
     } finally {
       setReabrindo(false)
     }
+  }
+
+  // Formulário "data e hora de retorno": usado tanto para liberar um prazo novo
+  // (prazo vencido ou perto de vencer) quanto para alterar uma liberação já feita.
+  function renderFormLiberacao(classeBorda: string) {
+    return (
+      <div className={`mt-3 flex flex-wrap items-end gap-3 border-t pt-3 ${classeBorda}`}>
+        <label className="flex flex-col gap-1">
+          <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+            Data de retorno
+          </span>
+          <input
+            type="date"
+            value={novaDataLiberacao}
+            min={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setNovaDataLiberacao(e.target.value)}
+            className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Horário</span>
+          <input
+            type="time"
+            value={novaHoraLiberacao}
+            onChange={(e) => setNovaHoraLiberacao(e.target.value)}
+            className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleConfirmarLiberacao}
+          disabled={alterandoPrazo}
+          className="rounded-lg bg-forest px-3.5 py-1.5 font-body text-xs font-semibold text-white hover:bg-forest-deep disabled:opacity-60"
+        >
+          {alterandoPrazo ? 'Liberando...' : 'Confirmar'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMostrarFormLiberar(false)
+            setErroLiberacao(null)
+          }}
+          disabled={alterandoPrazo}
+          className="font-body text-xs font-semibold text-ink-soft hover:underline disabled:opacity-60"
+        >
+          Cancelar
+        </button>
+        {erroLiberacao && <p className="w-full font-body text-xs text-red-700">{erroLiberacao}</p>}
+      </div>
+    )
   }
 
   // Liberar o prazo do Cliente até a data/hora que quem está liberando
@@ -516,34 +566,50 @@ export function PropostaComercialPage() {
                 </p>
               </div>
             ) : licitacao.prazoPropostaLiberado && licitacao.prazoPropostaLiberadoAte ? (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-forest-mist bg-forest-mist/40 px-3 py-2.5">
-                <p className="font-body text-xs text-forest-deep">
-                  🔓 Prazo liberado manualmente até{' '}
-                  <strong>
-                    {new Date(licitacao.prazoPropostaLiberadoAte).toLocaleDateString('pt-BR')}{' '}
-                    {new Date(licitacao.prazoPropostaLiberadoAte).toLocaleTimeString('pt-BR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </strong>{' '}
-                  — o Cliente pode editar a proposta até lá, mesmo com o prazo automático vencido.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleTravarPrazo}
-                  disabled={alterandoPrazo}
-                  className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline disabled:opacity-60"
-                >
-                  {alterandoPrazo ? 'Travando...' : 'Travar novamente'}
-                </button>
+              <div className="mb-4 rounded-lg border border-forest-mist bg-forest-mist/40 px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="font-body text-xs text-forest-deep">
+                    🔓 Data de retorno liberada até{' '}
+                    <strong>
+                      {new Date(licitacao.prazoPropostaLiberadoAte).toLocaleDateString('pt-BR')}{' '}
+                      {new Date(licitacao.prazoPropostaLiberadoAte).toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </strong>{' '}
+                    — o Cliente pode editar a proposta até lá, mesmo com o prazo automático vencido.
+                  </p>
+                  <div className="flex items-center gap-4">
+                    {!mostrarFormLiberar && (
+                      <button
+                        type="button"
+                        onClick={() => setMostrarFormLiberar(true)}
+                        className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline"
+                      >
+                        Alterar data e hora
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleTravarPrazo}
+                      disabled={alterandoPrazo}
+                      className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline disabled:opacity-60"
+                    >
+                      {alterandoPrazo ? 'Travando...' : 'Travar novamente'}
+                    </button>
+                  </div>
+                </div>
+                {mostrarFormLiberar && renderFormLiberacao('border-forest-mist')}
               </div>
             ) : (
-              !podeEditarPropostaCliente(licitacao) && (
+              (!podeEditarPropostaCliente(licitacao) ||
+                classificarUrgenciaPrazo(licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao) === 'atencao') && (
                 <div className="mb-4 rounded-lg border border-brass-pale bg-brass-pale/40 px-3 py-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="font-body text-xs text-brass">
-                      🔒 O prazo do Cliente encerrou (mais de {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias úteis
-                      antes da sessão, 18h30). Ele não consegue mais editar a proposta.
+                      {podeEditarPropostaCliente(licitacao)
+                        ? '⏳ O prazo do Cliente está perto de vencer (4 dias úteis antes da sessão, 18h30). Se precisar, libere uma nova data e hora de retorno.'
+                        : `🔒 O prazo do Cliente encerrou (mais de ${DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE} dias úteis antes da sessão, 18h30). Ele não consegue mais editar a proposta. Se precisar, libere uma nova data e hora de retorno.`}
                     </p>
                     {!mostrarFormLiberar && (
                       <button
@@ -551,59 +617,11 @@ export function PropostaComercialPage() {
                         onClick={() => setMostrarFormLiberar(true)}
                         className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline"
                       >
-                        Liberar novamente para o Cliente
+                        Liberar nova data e hora de retorno
                       </button>
                     )}
                   </div>
-
-                  {mostrarFormLiberar && (
-                    <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-brass-pale/60 pt-3">
-                      <label className="flex flex-col gap-1">
-                        <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-                          Liberar até a data
-                        </span>
-                        <input
-                          type="date"
-                          value={novaDataLiberacao}
-                          onChange={(e) => setNovaDataLiberacao(e.target.value)}
-                          className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <span className="font-body text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-                          Horário
-                        </span>
-                        <input
-                          type="time"
-                          value={novaHoraLiberacao}
-                          onChange={(e) => setNovaHoraLiberacao(e.target.value)}
-                          className="rounded-lg border border-ink-soft/20 bg-white px-2.5 py-1.5 font-body text-sm text-ink"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleConfirmarLiberacao}
-                        disabled={alterandoPrazo}
-                        className="rounded-lg bg-forest px-3.5 py-1.5 font-body text-xs font-semibold text-white hover:bg-forest-deep disabled:opacity-60"
-                      >
-                        {alterandoPrazo ? 'Liberando...' : 'Confirmar'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMostrarFormLiberar(false)
-                          setErroLiberacao(null)
-                        }}
-                        disabled={alterandoPrazo}
-                        className="font-body text-xs font-semibold text-ink-soft hover:underline disabled:opacity-60"
-                      >
-                        Cancelar
-                      </button>
-                      {erroLiberacao && (
-                        <p className="w-full font-body text-xs text-red-700">{erroLiberacao}</p>
-                      )}
-                    </div>
-                  )}
+                  {mostrarFormLiberar && renderFormLiberacao('border-brass-pale/60')}
                 </div>
               )
             )
