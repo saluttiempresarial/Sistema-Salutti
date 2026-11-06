@@ -128,6 +128,34 @@ export const SITUACAO_PROCESSO_LABEL: Record<SituacaoProcesso, string> = {
   anulada: 'Anulada',
 };
 
+/** Situações que o usuário pode escolher (04/11/2026: "Deserta" saiu da lista;
+ *  o valor continua no tipo só para não quebrar disputas antigas). */
+export const SITUACOES_SELECIONAVEIS: SituacaoProcesso[] = [
+  'em_julgamento',
+  'em_habilitacao',
+  'em_fase_recursal',
+  'adjudicada',
+  'homologada',
+  'suspensa',
+  'fracassada',
+  'revogada',
+  'anulada',
+];
+
+/** Situações em que o processo já se encerrou sem vencedor ou foi adjudicado:
+ *  não existe ação pendente. */
+export const SITUACOES_SEM_ACAO_PENDENTE: SituacaoProcesso[] = [
+  'adjudicada',
+  'fracassada',
+  'revogada',
+  'anulada',
+  'deserta',
+];
+
+export function situacaoSemAcaoPendente(situacao?: SituacaoProcesso | null): boolean {
+  return !!situacao && SITUACOES_SEM_ACAO_PENDENTE.includes(situacao);
+}
+
 /** Ação pendente do processo (migração 059). */
 export type AcaoPendente =
   | 'nenhuma'

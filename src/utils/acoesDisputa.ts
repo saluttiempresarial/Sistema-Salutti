@@ -10,7 +10,7 @@
 // de `acaoPendente` e `prazoAcao` da própria disputa.
 
 import type { AcaoPendente, Disputa } from '@/types/disputa'
-import { ACAO_PENDENTE_LABEL } from '@/types/disputa'
+import { ACAO_PENDENTE_LABEL, situacaoSemAcaoPendente } from '@/types/disputa'
 import type { Licitacao } from '@/types/licitacao'
 
 export type SituacaoAlertaAcao = 'vencida' | 'proxima' | 'sem_prazo'
@@ -51,6 +51,7 @@ export function alertasDeAcoesDisputa(
 
   disputas.forEach((d) => {
     if (!d.acaoPendente || d.acaoPendente === 'nenhuma') return
+    if (situacaoSemAcaoPendente(d.situacaoProcesso)) return
     const licitacao = licitacaoPorId.get(d.licitacaoId)
     if (!licitacao) return
 

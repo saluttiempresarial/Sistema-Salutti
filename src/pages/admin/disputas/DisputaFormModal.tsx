@@ -54,6 +54,8 @@ import {
   MOTIVO_PERDA_EVITAVEL_LABEL,
   MotivoPerdaHabilitacao,
   SituacaoProcesso,
+  SITUACOES_SELECIONAVEIS,
+  situacaoSemAcaoPendente,
   SITUACAO_PROCESSO_LABEL,
   AcaoPendente,
   ACAO_PENDENTE_LABEL,
@@ -876,6 +878,7 @@ export function DisputaFormModal({
   const situacaoProcesso = form.situacaoProcesso ?? 'em_julgamento';
   // "Homologada em" só vale quando a situação do processo é "Homologada";
   // "Adjudicada em" vale em "Adjudicada" e "Homologada".
+  const semAcaoPendente = situacaoSemAcaoPendente(situacaoProcesso);
   const homologadaEmLiberada = situacaoProcesso === 'homologada';
   const adjudicadaEmLiberada = situacaoProcesso === 'adjudicada' || situacaoProcesso === 'homologada';
   const resultadoDefinitivo = homologadaEmLiberada && !!dataHomologacao;
@@ -963,7 +966,7 @@ export function DisputaFormModal({
       setErroSalvar('Informe a data em "Homologada em" (a situação do processo é Homologada).');
       return;
     }
-    if (form.acaoPendente && form.acaoPendente !== 'nenhuma' && !prazoAcaoTexto) {
+    if (!semAcaoPendente && form.acaoPendente && form.acaoPendente !== 'nenhuma' && !prazoAcaoTexto) {
       setErroSalvar('Informe o "Prazo da ação" para a ação pendente escolhida.');
       return;
     }
@@ -1035,8 +1038,8 @@ export function DisputaFormModal({
         ...form,
         resultado: resultadoGeral,
         situacaoProcesso,
-        acaoPendente: form.acaoPendente ?? 'nenhuma',
-        prazoAcao: prazoAcaoTexto ? new Date(prazoAcaoTexto).toISOString() : undefined,
+        acaoPendente: semAcaoPendente ? 'nenhuma' : (form.acaoPendente ?? 'nenhuma'),
+        prazoAcao: !semAcaoPendente && prazoAcaoTexto ? new Date(prazoAcaoTexto).toISOString() : undefined,
         adjudicadaEm: adjudicadaEmLiberada && dataAdjudicacao ? dataAdjudicacao : undefined,
         homologadoEm,
         itens,
@@ -1112,10 +1115,17 @@ export function DisputaFormModal({
               <span className={CLASSE_ROTULO}>Situação do processo *</span>
               <select
                 value={situacaoProcesso}
-                onChange={(e) => atualizarCampo('situacaoProcesso', e.target.value as SituacaoProcesso)}
+                onChange={(e) => {
+                  const nova = e.target.value as SituacaoProcesso;
+                  atualizarCampo('situacaoProcesso', nova);
+                  if (situacaoSemAcaoPendente(nova)) {
+                    atualizarCampo('acaoPendente', 'nenhuma');
+                    setPrazoAcaoTexto('');
+                  }
+                }}
                 className={`${CLASSE_CAMPO} !border-2 !border-[#1E4D3A]`}
               >
-                {(Object.keys(SITUACAO_PROCESSO_LABEL) as SituacaoProcesso[]).map((valor) => (
+                {SITUACOES_SELECIONAVEIS.concat(situacaoProcesso === 'deserta' ? ['deserta'] : []).map((valor) => (
                   <option key={valor} value={valor}>
                     {SITUACAO_PROCESSO_LABEL[valor]}
                   </option>
@@ -1168,7 +1178,8 @@ export function DisputaFormModal({
             <label className="flex flex-col gap-1.5">
               <span className={`${CLASSE_ROTULO} !text-[#6B4206]`}>Ação pendente</span>
               <select
-                value={form.acaoPendente ?? 'nenhuma'}
+                value={semAcaoPendente ? 'nenhuma' : (form.acaoPendente ?? 'nenhuma')}
+                disabled={semAcaoPendente}
                 onChange={(e) => {
                   const acao = e.target.value as AcaoPendente;
                   atualizarCampo('acaoPendente', acao);
@@ -1191,7 +1202,7 @@ export function DisputaFormModal({
                 type="datetime-local"
                 value={prazoAcaoTexto}
                 onChange={(e) => setPrazoAcaoTexto(e.target.value)}
-                disabled={!form.acaoPendente || form.acaoPendente === 'nenhuma'}
+                disabled={semAcaoPendente || !form.acaoPendente || form.acaoPendente === 'nenhuma'}
                 className={CLASSE_CAMPO}
               />
             </label>

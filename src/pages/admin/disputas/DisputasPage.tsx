@@ -31,6 +31,8 @@ import {
   SITUACAO_PROCESSO_LABEL,
   ACAO_PENDENTE_LABEL,
   situacaoDaDisputa,
+  situacaoSemAcaoPendente,
+  SITUACOES_SELECIONAVEIS,
 } from '../../../types/disputa';
 import { Licitacao } from '../../../types/licitacao';
 import { formatarDataHora } from '../../../utils/prazoUtils';
@@ -65,7 +67,18 @@ function situacaoDoProcesso(d: Disputa): SituacaoProcessoTipo {
   return d.situacaoProcesso ?? (d.homologadoEm ? 'homologada' : 'em_julgamento');
 }
 
+/** Resultado exibido: "Ganho"/"Homologado" só valem quando o processo está
+ *  Adjudicado ou Homologado; antes disso a disputa segue "Em andamento". */
+function resultadoExibido(d: Disputa): ResultadoDisputa {
+  if (d.resultado !== 'ganho' && d.resultado !== 'homologado') return d.resultado;
+  const sit = situacaoDoProcesso(d);
+  if (sit === 'adjudicada') return 'ganho';
+  if (sit === 'homologada') return 'homologado';
+  return 'em_andamento';
+}
+
 function temAcaoPendente(d: Disputa): boolean {
+  if (situacaoSemAcaoPendente(situacaoDoProcesso(d))) return false;
   return !!d.acaoPendente && d.acaoPendente !== 'nenhuma';
 }
 
@@ -152,7 +165,7 @@ export function DisputasPage() {
   const disputasFiltradas = useMemo(() => {
     const filtradas = disputas.filter(
       (d) =>
-        (!filtroResultado || d.resultado === filtroResultado) &&
+        (!filtroResultado || (filtroResultado === 'ganho' ? ['ganho', 'homologado'].includes(resultadoExibido(d)) : resultadoExibido(d) === filtroResultado)) &&
         (!filtroSituacao || situacaoDoProcesso(d) === filtroSituacao) &&
         (!filtroAcao || (filtroAcao === 'com_acao' ? temAcaoPendente(d) : !temAcaoPendente(d))),
     );
@@ -242,9 +255,9 @@ export function DisputasPage() {
           className="ml-3 rounded-md border border-charcoal-3/20 bg-white px-3 py-2 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
         >
           <option value="">Todas as situações do processo</option>
-          {Object.entries(SITUACAO_PROCESSO_LABEL).map(([value, label]) => (
+          {SITUACOES_SELECIONAVEIS.map((value) => (
             <option key={value} value={value}>
-              {label}
+              {SITUACAO_PROCESSO_LABEL[value]}
             </option>
           ))}
         </select>
@@ -257,6 +270,19 @@ export function DisputasPage() {
           <option value="com_acao">Com ação pendente</option>
           <option value="sem_acao">Sem ação pendente</option>
         </select>
+        {(filtroResultado || filtroSituacao || filtroAcao) && (
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroResultado('');
+              setFiltroSituacao('');
+              setFiltroAcao('');
+            }}
+            className="ml-3 rounded-md border border-charcoal-3/20 bg-white px-3 py-2 text-ink-soft hover:bg-paper-2"
+          >
+            Limpar filtros
+          </button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-charcoal-3/10 bg-white shadow-soft">
@@ -290,7 +316,9 @@ export function DisputasPage() {
             {!carregando && !erroCarregar && disputasFiltradas.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
-                  Nenhuma disputa registrada ainda.
+                  {disputas.length > 0
+                    ? 'Nenhuma disputa encontrada com esses filtros.'
+                    : 'Nenhuma disputa registrada ainda.'}
                 </td>
               </tr>
             )}
@@ -347,8 +375,8 @@ export function DisputasPage() {
                     </td>
                     <td className="px-4 py-3">
                       <StatusPill
-                        label={RESULTADO_DISPUTA_LABEL[disputa.resultado]}
-                        tone={RESULTADO_TONE[disputa.resultado]}
+                        label={RESULTADO_DISPUTA_LABEL[resultadoExibido(disputa)]}
+                        tone={RESULTADO_TONE[resultadoExibido(disputa)]}
                       />
                     </td>
                     <td className="px-4 py-3 text-right">
