@@ -54,6 +54,13 @@ function calcularLimiteAbsoluto(dataSessao: Date): Date {
   return limite;
 }
 
+/** Limite absoluto da Proposta Comercial para uma data de sessão (ISO): 1 dia
+ *  útil antes, às 18h30. Usado no cadastro da licitação para validar a
+ *  liberação de prazo para o Cliente. */
+export function limiteAbsolutoProposta(dataSessaoIso: string): Date {
+  return calcularLimiteAbsoluto(new Date(dataSessaoIso));
+}
+
 /** true quando a Proposta Comercial já passou do limite absoluto (1 dia
  *  útil antes da sessão, 18h30) — a partir daí ninguém mais edita, nem
  *  Cliente, nem Admin, nem Analista, e liberação manual não tem efeito. */
@@ -290,4 +297,20 @@ export function valorParticipacaoCliente(licitacao: Licitacao): number | null {
     }
   });
   return algum ? total : null;
+}
+
+/** Situação de análise da licitação para o Cliente (filtro da tabela "Minhas
+ *  licitações", 09/11/2026):
+ *  - pendente: ainda aguardando a decisão do Cliente;
+ *  - em_analise: confirmou participação, mas a proposta ainda tem item/grupo
+ *    sem preço (itens marcados "Não participar" não contam);
+ *  - analisada: recusou, ou confirmou e a proposta está toda preenchida. */
+export type SituacaoAnaliseCliente = 'pendente' | 'em_analise' | 'analisada'
+
+export function situacaoAnaliseCliente(licitacao: Licitacao): SituacaoAnaliseCliente {
+  if (licitacao.decisaoCliente === 'recusar') return 'analisada'
+  if (licitacao.decisaoCliente !== 'participar') return 'pendente'
+  const itensConsiderados = licitacao.itens.filter((i) => !(!i.grupoId && i.decisaoAcimaReferencia === 'barrado'))
+  if (itensConsiderados.length === 0) return 'em_analise'
+  return itensConsiderados.every((i) => i.propostaCliente?.precoMinimo != null) ? 'analisada' : 'em_analise'
 }

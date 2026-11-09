@@ -63,6 +63,7 @@ interface DisputaItemRow {
   resultado_item: ResultadoItemDisputa | null
   valor_vencedor: number | null
   nome_vencedor: string | null
+  marca_vencedora?: string | null
   observacao: string | null
   // Migração 054 — opcionais porque a função do portal do cliente ainda não as devolve.
   motivo_perda_habilitacao?: MotivoPerdaHabilitacao | null
@@ -86,6 +87,7 @@ function paraDisputaResultadoLinha(row: DisputaItemRow): DisputaResultadoLinha {
     resultadoItem: row.resultado_item ?? undefined,
     valorVencedor: row.valor_vencedor ?? undefined,
     nomeVencedor: row.nome_vencedor ?? undefined,
+    marcaVencedora: row.marca_vencedora ?? undefined,
     observacao: row.observacao ?? undefined,
     motivoPerdaHabilitacao: row.motivo_perda_habilitacao ?? undefined,
     motivoPerdaEvitavel: row.motivo_perda_evitavel ?? undefined,
@@ -145,6 +147,7 @@ function paraColunasItem(linha: DisputaResultadoLinhaFormData, disputaId: string
     resultado_item: linha.resultadoItem ?? null,
     valor_vencedor: linha.valorVencedor ?? null,
     nome_vencedor: linha.nomeVencedor ?? null,
+    marca_vencedora: linha.marcaVencedora ?? null,
     observacao: linha.observacao ?? null,
     motivo_perda_habilitacao: linha.motivoPerdaHabilitacao ?? null,
     motivo_perda_evitavel: linha.motivoPerdaEvitavel ?? null,

@@ -135,3 +135,13 @@ export function rotuloDoMotivo(chave: string | undefined | null): string {
   if (!chave) return ''
   return definicaoDoMotivo(chave)?.rotulo ?? chave
 }
+
+/** Motivos gravados na recusa, em texto único ("A; B; C"). Usa a lista de
+ *  vários motivos (migração 064) quando existe; senão, o motivo principal. */
+export function textoDosMotivos(
+  principal: string | undefined | null,
+  lista?: ReadonlyArray<string> | null
+): string {
+  const chaves = lista && lista.length > 0 ? lista : principal ? [principal] : []
+  return chaves.map((c) => rotuloDoMotivo(c)).join('; ')
+}

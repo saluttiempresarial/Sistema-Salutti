@@ -200,6 +200,7 @@ export function LicitacoesPage() {
 
   async function salvar(dados: LicitacaoFormData, opcoes: OpcoesSalvarLicitacao) {
     const jaLiberada = !!licitacaoEmEdicao?.liberadaAoClienteEm;
+    let criada: Licitacao | undefined;
     if (licitacaoEmEdicao) {
       // Licitação já liberada ao cliente: o motivo da alteração vai para o histórico.
       await licitacaoService.atualizar(
@@ -209,7 +210,28 @@ export function LicitacoesPage() {
         jaLiberada ? opcoes.motivoAlteracao : undefined
       );
     } else {
-      await licitacaoService.criar(dados, usuarioAtual);
+      criada = await licitacaoService.criar(dados, usuarioAtual);
+    }
+
+    // Liberação do prazo do Cliente (09/11/2026): feita depois de salvar, porque
+    // a licitação nova só tem id agora. Se falhar, a licitação já está salva —
+    // avisa em vez de impedir o fechamento (evita cadastrar em duplicidade).
+    const idLicitacao = licitacaoEmEdicao?.id ?? criada?.id;
+    if (idLicitacao && (opcoes.liberarPrazoAte || opcoes.removerLiberacaoPrazo)) {
+      try {
+        await licitacaoService.liberarPrazoPropostaCliente(
+          idLicitacao,
+          !!opcoes.liberarPrazoAte,
+          usuarioAtual,
+          opcoes.liberarPrazoAte
+        );
+      } catch (erro) {
+        window.alert(
+          `A licitação foi salva, mas não foi possível ${opcoes.liberarPrazoAte ? 'liberar' : 'retirar a liberação d'}o prazo do cliente: ${
+            erro instanceof Error ? erro.message : 'erro desconhecido'
+          }. Abra a licitação de novo e tente liberar.`
+        );
+      }
     }
     limparCacheLicitacoesInternas();
     await carregar();

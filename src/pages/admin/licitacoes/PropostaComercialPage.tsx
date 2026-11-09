@@ -20,7 +20,7 @@ import { Link, useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { rotuloDoMotivo } from '@/types/motivoNaoParticipacao'
+import { textoDosMotivos } from '@/types/motivoNaoParticipacao'
 import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
 import { PropostaComercialCards, SalvarPropostaComercialPayload } from '@/components/Licitacoes/PropostaComercialCards'
@@ -528,7 +528,12 @@ export function PropostaComercialPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="font-body text-xs text-brass">
                   O Cliente recusou participar desta licitação
-                  {licitacao.motivoNaoParticipacao && ` — ${rotuloDoMotivo(licitacao.motivoNaoParticipacao)}`}
+                  {licitacao.motivoNaoParticipacao && (
+                    <span className="font-medium text-red-700">
+                      {' — '}
+                      {textoDosMotivos(licitacao.motivoNaoParticipacao, licitacao.motivosNaoParticipacao)}
+                    </span>
+                  )}
                   {licitacao.motivoRecusaCliente && ` ("${licitacao.motivoRecusaCliente}")`}. Se foi um engano, você
                   pode reabrir a decisão: a licitação volta para "Aguardando decisão" e ele escolhe de novo.
                 </p>

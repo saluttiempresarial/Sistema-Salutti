@@ -57,7 +57,7 @@ import {
 import { formatarDataHora, formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
-import { MOTIVOS_ESCOLHIDOS_CLIENTE, rotuloDoMotivo } from '@/types/motivoNaoParticipacao'
+import { MOTIVOS_ESCOLHIDOS_CLIENTE, rotuloDoMotivo, textoDosMotivos } from '@/types/motivoNaoParticipacao'
 import type { MotivoEscolhidoCliente, MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
 import { formatarDistanciaKm, normalizarCapag } from '@/utils/licitacaoCampos'
 
@@ -177,7 +177,7 @@ export function LicitacaoDetalhePage() {
 
   const [recusando, setRecusando] = useState(false)
   const [motivoRecusa, setMotivoRecusa] = useState('')
-  const [motivoEscolhido, setMotivoEscolhido] = useState<MotivoEscolhidoCliente | ''>('')
+  const [motivosEscolhidos, setMotivosEscolhidos] = useState<MotivoEscolhidoCliente[]>([])
   const [decidindo, setDecidindo] = useState(false)
   const [porteCliente, setPorteCliente] = useState<PorteEmpresa | null>(null)
 
@@ -228,8 +228,13 @@ export function LicitacaoDetalhePage() {
       : porteCliente === 'demais' && licitacao && licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens)
         ? 'exclusiva_me_epp'
         : null
-  const motivoParaGravar: MotivoNaoParticipacao | '' = motivoAutomatico ?? motivoEscolhido
-  const explicacaoObrigatoria = motivoParaGravar === 'outro'
+  // Vários motivos podem ser marcados (09/11/2026). O PRINCIPAL é o primeiro na
+  // ordem da lista e alimenta os indicadores; todos ficam gravados.
+  const motivosOrdenados = MOTIVOS_ESCOLHIDOS_CLIENTE.map((m) => m.chave as MotivoEscolhidoCliente).filter((c) =>
+    motivosEscolhidos.includes(c)
+  )
+  const motivoParaGravar: MotivoNaoParticipacao | '' = motivoAutomatico ?? (motivosOrdenados.length > 0 ? motivosOrdenados[0] : '')
+  const explicacaoObrigatoria = !motivoAutomatico && motivosOrdenados.includes('outro')
   const recusaValida = motivoParaGravar !== '' && (!explicacaoObrigatoria || motivoRecusa.trim() !== '')
 
   async function confirmarRecusa() {
@@ -238,6 +243,7 @@ export function LicitacaoDetalhePage() {
     try {
       await licitacaoService.registrarDecisaoCliente(id, 'recusar', user.name, {
         motivoNaoParticipacao: motivoParaGravar,
+        motivosNaoParticipacao: motivoAutomatico ? undefined : motivosOrdenados,
         motivoRecusa: explicacaoObrigatoria ? motivoRecusa.trim() || undefined : undefined,
       })
       navigate('/cliente')
@@ -318,7 +324,7 @@ export function LicitacaoDetalhePage() {
                   label="Participação"
                   value={PARTICIPACAO_LICITACAO_LABEL[licitacao.participacao as ParticipacaoLicitacao] ?? licitacao.participacao}
                 />
-                <Campo label="CAPAG" value={normalizarCapag(licitacao.capag) || licitacao.capag} alerta={normalizarCapag(licitacao.capag) === 'C'} />
+                <Campo label="CAPAG" value={normalizarCapag(licitacao.capag) || licitacao.capag} alerta={['C', 'N/D'].includes(normalizarCapag(licitacao.capag))} />
                 <Campo
                   label="Valor total"
                   value={licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}
@@ -535,17 +541,23 @@ export function LicitacaoDetalhePage() {
                 ) : (
                   <fieldset className="space-y-1.5">
                     <legend className="mb-1.5 font-mono text-xs uppercase tracking-wide text-ink-soft">
-                      Motivo para não participar (obrigatório)
+                      Motivo para não participar (obrigatório) — pode marcar mais de um
                     </legend>
                     {MOTIVOS_ESCOLHIDOS_CLIENTE.map((m) => (
                       <div key={m.chave} className="flex items-center gap-2">
                         <label className="flex cursor-pointer items-center gap-2 font-body text-sm text-ink">
                           <input
-                            type="radio"
+                            type="checkbox"
                             name="motivo-nao-participacao"
                             value={m.chave}
-                            checked={motivoEscolhido === m.chave}
-                            onChange={() => setMotivoEscolhido(m.chave as MotivoEscolhidoCliente)}
+                            checked={motivosEscolhidos.includes(m.chave as MotivoEscolhidoCliente)}
+                            onChange={() =>
+                              setMotivosEscolhidos((atual) =>
+                                atual.includes(m.chave as MotivoEscolhidoCliente)
+                                  ? atual.filter((c) => c !== m.chave)
+                                  : [...atual, m.chave as MotivoEscolhidoCliente]
+                              )
+                            }
                             className="h-4 w-4 accent-forest"
                           />
                           {m.rotulo}
@@ -614,9 +626,12 @@ export function LicitacaoDetalhePage() {
                 <p className="font-body text-xs text-ink-soft">
                   {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}
                   {licitacao.decisaoClienteEm && ` em ${formatarDataHora(licitacao.decisaoClienteEm)}`}
-                  {licitacao.decisaoCliente === 'recusar' &&
-                    licitacao.motivoNaoParticipacao &&
-                    ` — ${rotuloDoMotivo(licitacao.motivoNaoParticipacao)}`}
+                  {licitacao.decisaoCliente === 'recusar' && licitacao.motivoNaoParticipacao && (
+                    <span className="font-medium text-red-700">
+                      {' — '}
+                      {textoDosMotivos(licitacao.motivoNaoParticipacao, licitacao.motivosNaoParticipacao)}
+                    </span>
+                  )}
                   {licitacao.motivoRecusaCliente && ` — "${licitacao.motivoRecusaCliente}"`}
                 </p>
                 {licitacao.decisaoCliente === 'participar' && (

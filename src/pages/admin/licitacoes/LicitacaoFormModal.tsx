@@ -77,7 +77,7 @@ import {
 } from '../../../types/licitacao';
 import { clienteService } from '../../../services/clienteService';
 import { PorteEmpresa } from '../../../types/cliente';
-import { rotuloDoMotivo } from '../../../types/motivoNaoParticipacao';
+import { textoDosMotivos } from '../../../types/motivoNaoParticipacao';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import {
   condicoesComerciaisFaltando,
@@ -91,7 +91,13 @@ import {
   permissoesDaEstrutura,
   valorCampoKm,
 } from '../../../utils/licitacaoCampos';
-import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade } from '../../../utils/licitacaoCalculos';
+import {
+  totalReferenciaItem,
+  totalReferenciaGrupo,
+  totalReferenciaOportunidade,
+  limiteAbsolutoProposta,
+} from '../../../utils/licitacaoCalculos';
+import { CampoDataHora } from '../../../components/CampoDataHora';
 // Funções de formatação/conversão numérica BR (vírgula decimal, ponto de
 // milhar) — centralizadas aqui (02/10) para não ficarem duplicadas entre
 // este arquivo e PropostaComercialCards.tsx, o que já causou um bug real
@@ -325,6 +331,11 @@ const MOTIVOS_ALTERACAO = [
  *  motivoAlteracao é obrigatório quando a licitação já foi liberada ao cliente. */
 export interface OpcoesSalvarLicitacao {
   motivoAlteracao?: string;
+  /** Liberação do prazo do Cliente (09/11/2026): ISO da data/hora até a qual
+   *  este cliente pode preencher a proposta. Ausente = não mexer. */
+  liberarPrazoAte?: string;
+  /** Retira a liberação feita antes (volta ao prazo automático). */
+  removerLiberacaoPrazo?: boolean;
 }
 
 interface LicitacaoFormModalProps {
@@ -359,6 +370,10 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [motivoAlteracao, setMotivoAlteracao] = useState('');
   const [motivoOpcao, setMotivoOpcao] = useState('');
   const [erroMotivo, setErroMotivo] = useState(false);
+  // Liberação do prazo do Cliente: 'AAAA-MM-DDTHH:mm' (hora local) ou ''.
+  const [liberarPrazoTexto, setLiberarPrazoTexto] = useState('');
+  const [mostrarLiberarPrazo, setMostrarLiberarPrazo] = useState(false);
+  const [removerLiberacaoPrazo, setRemoverLiberacaoPrazo] = useState(false);
   const [clientes, setClientes] = useState<Array<{ value: string; label: string; porte: PorteEmpresa }>>([]);
   const [rascunhoRestaurado, setRascunhoRestaurado] = useState(false);
   // Texto exibido no campo "Valor total da licitação" — separado do número
@@ -480,6 +495,15 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     setMotivoAlteracao('');
     setMotivoOpcao('');
     setErroMotivo(false);
+    setRemoverLiberacaoPrazo(false);
+    {
+      const liberadaAte =
+        licitacaoEmEdicao?.prazoPropostaLiberado && licitacaoEmEdicao.prazoPropostaLiberadoAte
+          ? licitacaoEmEdicao.prazoPropostaLiberadoAte
+          : undefined;
+      setLiberarPrazoTexto(paraInputDatetimeLocal(liberadaAte));
+      setMostrarLiberarPrazo(!!liberadaAte);
+    }
 
     if (licitacaoEmEdicao) {
       // Editando uma licitação existente — rascunho local não se aplica.
@@ -971,9 +995,40 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     }
     setErroChecklist(null);
 
+    // Liberação de prazo para o Cliente: mesmas regras do banco (no futuro e
+    // até 1 dia útil antes da sessão, 18h30).
+    let liberarPrazoAte: string | undefined;
+    if (mostrarLiberarPrazo && liberarPrazoTexto && !removerLiberacaoPrazo) {
+      const escolhida = new Date(liberarPrazoTexto);
+      const dataSessao = form.dataEfetivaLicitacao || form.dataLicitacao;
+      const mudouLiberacao =
+        paraInputDatetimeLocal(licitacaoEmEdicao?.prazoPropostaLiberadoAte) !== liberarPrazoTexto ||
+        !licitacaoEmEdicao?.prazoPropostaLiberado;
+      if (mudouLiberacao) {
+        if (Number.isNaN(escolhida.getTime()) || escolhida <= new Date()) {
+          setAbaAtiva('gerais');
+          setErroChecklist('A data e hora da liberação do prazo do Cliente precisam ser no futuro.');
+          return;
+        }
+        if (dataSessao) {
+          const limite = limiteAbsolutoProposta(dataSessao);
+          if (escolhida > limite) {
+            setAbaAtiva('gerais');
+            setErroChecklist(
+              `A liberação do prazo não pode passar de ${formatarDataHora(limite.toISOString())} (1 dia útil antes da licitação, 18h30).`
+            );
+            return;
+          }
+        }
+        liberarPrazoAte = escolhida.toISOString();
+      }
+    }
+
     setSalvando(true);
     try {
       await onSave(licitacaoEmEdicao ? form : { ...form, status: 'pendente' }, {
+        liberarPrazoAte,
+        removerLiberacaoPrazo: removerLiberacaoPrazo && !!licitacaoEmEdicao?.prazoPropostaLiberado,
         motivoAlteracao: jaLiberada
           ? motivoAlteracao.trim()
             ? `${motivoOpcao}: ${motivoAlteracao.trim()}`
@@ -1213,6 +1268,66 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                     <span className="ml-1 text-xs opacity-80">
                       (cadastrada em {formatarDataHora(licitacaoEmEdicao.criadoEm)})
                     </span>
+                  )}
+                </div>
+              )}
+              {dataParaPrazo && (
+                <div className="col-span-2 rounded-lg border border-ink-soft/15 bg-paper-2/50 px-4 py-3 font-body text-sm">
+                  {!mostrarLiberarPrazo ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-ink-soft">
+                        O cliente trava no limite automático acima. Precisa de mais tempo para este cliente?
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setMostrarLiberarPrazo(true)}
+                        className="font-semibold text-forest-deep hover:underline"
+                      >
+                        Liberar prazo para este cliente
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="font-semibold text-ink">Liberar prazo para este cliente</p>
+                      {licitacaoEmEdicao?.prazoPropostaLiberado && licitacaoEmEdicao.prazoPropostaLiberadoAte && (
+                        <p className="text-xs text-ink-soft">
+                          Liberação atual: até {formatarDataHora(licitacaoEmEdicao.prazoPropostaLiberadoAte)}.
+                        </p>
+                      )}
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">
+                            Pode preencher até
+                          </span>
+                          <CampoDataHora
+                            ariaLabel="Liberar prazo até"
+                            value={liberarPrazoTexto}
+                            onChange={(v) => {
+                              setLiberarPrazoTexto(v);
+                              setRemoverLiberacaoPrazo(false);
+                            }}
+                            horaPadrao="18:30"
+                            className="box-border h-10 w-full rounded-md border border-ink-soft/25 bg-white px-2 text-sm text-ink focus:border-forest focus:outline-none"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLiberarPrazoTexto('');
+                            setMostrarLiberarPrazo(false);
+                            setRemoverLiberacaoPrazo(!!licitacaoEmEdicao?.prazoPropostaLiberado);
+                          }}
+                          className="pb-2 text-xs font-semibold text-ink-soft hover:underline"
+                        >
+                          {licitacaoEmEdicao?.prazoPropostaLiberado ? 'Remover liberação' : 'Cancelar'}
+                        </button>
+                      </div>
+                      <p className="text-xs text-ink-soft">
+                        Vale só para este cliente nesta licitação e é gravada ao salvar. O limite máximo é{' '}
+                        <strong>{formatarDataHora(limiteAbsolutoProposta(dataParaPrazo).toISOString())}</strong> (1 dia
+                        útil antes da licitação, 18h30); depois disso ninguém mais edita a proposta.
+                      </p>
+                    </div>
                   )}
                 </div>
               )}
@@ -1508,9 +1623,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 <p className="text-ink-soft">
                   {DECISAO_CLIENTE_LABEL[licitacaoEmEdicao.decisaoCliente]}
                   {licitacaoEmEdicao.decisaoClienteEm && ` em ${formatarDataHora(licitacaoEmEdicao.decisaoClienteEm)}`}
-                  {licitacaoEmEdicao.decisaoCliente === 'recusar' &&
-                    licitacaoEmEdicao.motivoNaoParticipacao &&
-                    ` — ${rotuloDoMotivo(licitacaoEmEdicao.motivoNaoParticipacao)}`}
+                  {licitacaoEmEdicao.decisaoCliente === 'recusar' && licitacaoEmEdicao.motivoNaoParticipacao && (
+                    <span className="font-medium text-red-700">
+                      {' — '}
+                      {textoDosMotivos(licitacaoEmEdicao.motivoNaoParticipacao, licitacaoEmEdicao.motivosNaoParticipacao)}
+                    </span>
+                  )}
                   {licitacaoEmEdicao.motivoRecusaCliente && ` — "${licitacaoEmEdicao.motivoRecusaCliente}"`}
                 </p>
                 <p className="mt-1 text-xs text-ink-soft/70">

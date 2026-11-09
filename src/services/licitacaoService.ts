@@ -82,6 +82,7 @@ interface LicitacaoRow {
   decisao_cliente: Licitacao['decisaoCliente']
   motivo_recusa_cliente: string | null
   motivo_nao_participacao: Licitacao['motivoNaoParticipacao'] | null
+  motivos_nao_participacao?: MotivoNaoParticipacao[] | null
   decisao_cliente_em: string | null
   liberada_ao_cliente_em: string | null
   liberada_ao_cliente_por: string | null
@@ -223,6 +224,7 @@ function paraLicitacao(
     decisaoCliente: row.decisao_cliente,
     motivoRecusaCliente: row.motivo_recusa_cliente ?? undefined,
     motivoNaoParticipacao: row.motivo_nao_participacao ?? undefined,
+    motivosNaoParticipacao: row.motivos_nao_participacao ?? undefined,
     decisaoClienteEm: row.decisao_cliente_em ?? undefined,
     liberadaAoClienteEm: row.liberada_ao_cliente_em ?? undefined,
     liberadaAoClientePor: row.liberada_ao_cliente_por ?? undefined,
@@ -640,6 +642,8 @@ export const licitacaoService = {
     opcoes: {
       motivoRecusa?: string
       motivoNaoParticipacao?: MotivoNaoParticipacao
+      /** Todos os motivos marcados (o principal vai em motivoNaoParticipacao). */
+      motivosNaoParticipacao?: MotivoNaoParticipacao[]
       cobrarFrete?: boolean
       percentualFrete?: number
     } = {}
@@ -654,6 +658,17 @@ export const licitacaoService = {
       p_percentual_frete: opcoes.cobrarFrete ? opcoes.percentualFrete ?? null : null,
     })
     if (error) throw new Error(error.message)
+
+    // Vários motivos (migração 064): grava a lista completa; com um só motivo
+    // não precisa (o motivo principal já foi gravado acima).
+    if (decisao === 'recusar' && (opcoes.motivosNaoParticipacao?.length ?? 0) > 1) {
+      const { error: erroLista } = await supabase.rpc('registrar_motivos_nao_participacao', {
+        p_licitacao_id: id,
+        p_motivos: opcoes.motivosNaoParticipacao,
+        p_usuario: nomeCliente,
+      })
+      if (erroLista) throw new Error(erroLista.message)
+    }
 
     const atualizada = await this.buscarPorId(id)
     if (!atualizada) throw new Error('Licitação não encontrada após registrar decisão')

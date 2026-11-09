@@ -61,46 +61,20 @@ import {
   ACAO_PENDENTE_LABEL,
 } from '../../../types/disputa';
 import { Licitacao, ItemLicitacao } from '../../../types/licitacao';
+import { CampoDataHora } from '../../../components/CampoDataHora';
 import { licitacaoService } from '../../../services/licitacaoService';
 import { calcularAnaliseItem } from '../../../utils/licitacaoCalculos';
 import { formatarNumero, formatarMoeda } from '../../../utils/prazoUtils';
 
-// Insere o ponto de milhar na parte inteira de um texto já no padrão BR
-// (vírgula decimal) — "305978,18" -> "305.978,18". A pedido do Márcio
-// (01/10): todo valor numérico exibido no sistema tem que vir com ponto
-// separando milhar, vírgula separando decimal (ex.: 4.578.122,15) — não só
-// em texto de leitura, mas também no que aparece dentro dos campos de
-// digitação assim que o valor é carregado/salvo (ver onBlur do campo
-// "Valor ofertado" abaixo, que reformata o texto digitado nesse padrão).
-function aplicarSeparadorMilhar(texto: string): string {
-  const negativo = texto.startsWith('-');
-  const semSinal = negativo ? texto.slice(1) : texto;
-  const [parteInteira, parteDecimal] = semSinal.split(',');
-  const parteInteiraComPontos = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const resultado = parteDecimal !== undefined ? `${parteInteiraComPontos},${parteDecimal}` : parteInteiraComPontos;
-  return negativo ? `-${resultado}` : resultado;
-}
-
-// Mesmo padrão de formatação BR (ponto de milhar, vírgula decimal) já usado
-// no resto do sistema — substitui o <input type="number"> nativo, que
-// corrompe silenciosamente valores digitados com separador de milhar.
-function numeroParaCampoDecimal(valor: number | null | undefined, casas: number): string {
+// Valor em dinheiro dentro do campo de digitação: "R$ 4,50" (sempre 2 casas).
+function numeroParaCampoMoeda(valor: number | null | undefined): string {
   if (valor == null) return '';
-  // O corte de "zeros sobrando" só pode acontecer quando existe separador
-  // decimal (casas > 0) — ex.: "100,4000" -> "100,4". Sem essa checagem, um
-  // valor inteiro terminado em zero (ex.: 100, 1000) teria o próprio número
-  // cortado por engano (100 -> 1) — bug encontrado em numeroParaCampoDecimal
-  // de LicitacaoFormModal.tsx (01/10), corrigido aqui também por segurança.
-  let textoBruto = valor.toFixed(casas);
-  if (casas > 0) {
-    textoBruto = textoBruto.replace(/0+$/, '').replace(/\.$/, '');
-  }
-  const texto = textoBruto === '' || textoBruto === '-' ? '0' : textoBruto.replace('.', ',');
-  return aplicarSeparadorMilhar(texto);
+  return formatarMoeda(valor).replace(/\u00a0/g, ' ');
 }
 
 function campoParaNumeroDecimal(texto: string, casas: number): number | undefined {
-  const limpo = texto.trim();
+  // Aceita o texto com "R$" e espaços (campos de dinheiro).
+  const limpo = texto.replace(/R\$|\s|\u00a0/g, '');
   if (!limpo) return undefined;
   const semSeparadorMilhar = limpo.includes(',')
     ? limpo.replace(/\./g, '').replace(',', '.')
@@ -243,6 +217,7 @@ interface ValoresLinha {
   resultadoItem: ResultadoItemDisputa | '';
   valorVencedorTexto: string;
   nomeVencedor: string;
+  marcaVencedor: string;
   motivoPerda: MotivoPerda | '';
   // Por que a perda foi evitável (só quando o vencedor ficou igual ou acima do
   // nosso mínimo). '' = ainda não informado.
@@ -263,6 +238,7 @@ const VALORES_VAZIOS: ValoresLinha = {
   resultadoItem: '',
   valorVencedorTexto: '',
   nomeVencedor: '',
+  marcaVencedor: '',
   motivoPerda: '',
   motivoPerdaEvitavel: '',
   origemDesclassificacao: '',
@@ -302,8 +278,6 @@ interface DetalheLegado {
 const CLASSE_ROTULO = 'font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#4B5651]';
 const CLASSE_CAMPO =
   'box-border h-11 w-full rounded-md border border-[#C9D3CD] bg-white px-3 text-sm text-ink focus:border-forest focus:outline-none disabled:bg-[#F1F3F1] disabled:text-[#5E6863]';
-const CLASSE_CALCULO =
-  'box-border flex h-11 items-center rounded-md bg-[#E6EFE9] px-3 text-sm font-semibold text-[#1E4D3A]';
 const CLASSE_LEITURA =
   'box-border flex h-11 items-center rounded-md border border-[#C9D3CD] bg-white px-3 text-sm font-semibold text-ink';
 
@@ -395,6 +369,19 @@ function CartaoResultado({
           <div className="text-[15px] font-semibold text-ink">{titulo}</div>
           {subtitulo && <div className="mt-0.5 text-[13px] text-[#5E6863]">{subtitulo}</div>}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-[#E6EFE9] px-2.5 py-1 text-xs font-semibold text-[#1E4D3A]">
+            Deságio s/ referência: {formatarPercentual(desagio, false)}
+          </span>
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              mostrarDiferencaVencedor ? 'bg-[#F6E0E0] text-[#8A2323]' : 'bg-[#E6EFE9] text-[#1E4D3A]'
+            }`}
+          >
+            {mostrarDiferencaVencedor ? 'Diferença p/ vencedor' : 'Acima do mínimo'}:{' '}
+            {formatarPercentual(mostrarDiferencaVencedor ? diferencaVencedor : acimaDoMinimo, true)}
+          </span>
+        </div>
         {emPrimeiro && (
           <span className="rounded-full bg-[#DCEEE3] px-2.5 py-1 text-xs font-bold text-[#1E4D3A]">Cliente em 1º</span>
         )}
@@ -405,7 +392,15 @@ function CartaoResultado({
         )}
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3.5">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3.5">
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Valor de referência</span>
+          <div className={CLASSE_LEITURA}>{referencia > 0 ? formatarMoeda(referencia) : '—'}</div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Mínimo (c/ frete)</span>
+          <div className={CLASSE_LEITURA}>{minimo != null && minimo > 0 ? formatarMoeda(minimo) : '—'}</div>
+        </div>
         <div className="flex flex-col gap-1.5">
           <span className={CLASSE_ROTULO}>Posição</span>
           {posicaoSomenteLeitura !== undefined ? (
@@ -422,52 +417,6 @@ function CartaoResultado({
             />
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={CLASSE_ROTULO}>Valor de referência</span>
-          <div className={CLASSE_LEITURA}>{referencia > 0 ? formatarMoeda(referencia) : '—'}</div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={CLASSE_ROTULO}>Mínimo (c/ frete)</span>
-          <div className={CLASSE_LEITURA}>{minimo != null && minimo > 0 ? formatarMoeda(minimo) : '—'}</div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={CLASSE_ROTULO}>
-            Valor ofertado <span className="normal-case tracking-normal">({baseValor})</span>
-          </span>
-          {ofertadoSomenteLeitura !== undefined ? (
-            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-[#5E6863]`}>{ofertadoSomenteLeitura}</div>
-          ) : (
-            <input
-              type="text"
-              inputMode="decimal"
-              aria-label="Valor ofertado"
-              value={valores.valorOfertadoTexto}
-              onChange={(e) => onChange('valorOfertadoTexto', e.target.value)}
-              onBlur={() =>
-                onChange(
-                  'valorOfertadoTexto',
-                  numeroParaCampoDecimal(campoParaNumeroDecimal(valores.valorOfertadoTexto, 2), 2),
-                )
-              }
-              placeholder="R$ 0,00"
-              className={CLASSE_CAMPO}
-            />
-          )}
-          {ofertadoAjuda && <span className="text-[11px] text-[#5E6863]">{ofertadoAjuda}</span>}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={CLASSE_ROTULO}>Deságio s/ referência</span>
-          <div className={CLASSE_CALCULO}>{formatarPercentual(desagio, false)}</div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={CLASSE_ROTULO}>{mostrarDiferencaVencedor ? 'Diferença p/ vencedor' : 'Acima do mínimo'}</span>
-          <div className={`${CLASSE_CALCULO} ${mostrarDiferencaVencedor ? '!bg-[#F6E0E0] !text-[#8A2323]' : ''}`}>
-            {formatarPercentual(mostrarDiferencaVencedor ? diferencaVencedor : acimaDoMinimo, true)}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3.5">
         <div className="flex flex-col gap-1.5">
           <span className={CLASSE_ROTULO}>Resultado do cliente *</span>
           <select
@@ -487,6 +436,34 @@ function CartaoResultado({
             })}
           </select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3.5">
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>
+            Valor ofertado <span className="normal-case tracking-normal">({baseValor})</span>
+          </span>
+          {ofertadoSomenteLeitura !== undefined ? (
+            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-[#5E6863]`}>{ofertadoSomenteLeitura}</div>
+          ) : (
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Valor ofertado"
+              value={valores.valorOfertadoTexto}
+              onChange={(e) => onChange('valorOfertadoTexto', e.target.value)}
+              onBlur={() =>
+                onChange(
+                  'valorOfertadoTexto',
+                  numeroParaCampoMoeda(campoParaNumeroDecimal(valores.valorOfertadoTexto, 2)),
+                )
+              }
+              placeholder="R$ 0,00"
+              className={CLASSE_CAMPO}
+            />
+          )}
+          {ofertadoAjuda && <span className="text-[11px] text-[#5E6863]">{ofertadoAjuda}</span>}
+        </div>
         <div className="flex flex-col gap-1.5">
           <span className={CLASSE_ROTULO}>Valor do vencedor</span>
           {vencedorLiberado ? (
@@ -499,7 +476,7 @@ function CartaoResultado({
               onBlur={() =>
                 onChange(
                   'valorVencedorTexto',
-                  numeroParaCampoDecimal(campoParaNumeroDecimal(valores.valorVencedorTexto, 2), 2),
+                  numeroParaCampoMoeda(campoParaNumeroDecimal(valores.valorVencedorTexto, 2)),
                 )
               }
               placeholder="R$ 0,00"
@@ -522,6 +499,21 @@ function CartaoResultado({
             />
           ) : (
             <input type="text" aria-label="Empresa vencedora" value={textoVencedorBloqueado} disabled className={CLASSE_CAMPO} />
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className={CLASSE_ROTULO}>Marca vencedora</span>
+          {vencedorLiberado ? (
+            <input
+              type="text"
+              aria-label="Marca vencedora"
+              value={valores.marcaVencedor}
+              onChange={(e) => onChange('marcaVencedor', e.target.value)}
+              placeholder="Marca do produto"
+              className={CLASSE_CAMPO}
+            />
+          ) : (
+            <input type="text" aria-label="Marca vencedora" value={textoVencedorBloqueado} disabled className={CLASSE_CAMPO} />
           )}
         </div>
         {mostrarMotivo && (
@@ -733,10 +725,11 @@ export function DisputaFormModal({
     (disputaEmEdicao?.itens ?? []).forEach((linha) => {
       const valoresLinha: ValoresLinha = {
         posicaoTexto: linha.posicao != null ? String(linha.posicao) : '',
-        valorOfertadoTexto: numeroParaCampoDecimal(linha.valorFechado, 2),
+        valorOfertadoTexto: numeroParaCampoMoeda(linha.valorFechado),
         resultadoItem: linha.resultadoItem ?? '',
-        valorVencedorTexto: numeroParaCampoDecimal(linha.valorVencedor, 2),
+        valorVencedorTexto: numeroParaCampoMoeda(linha.valorVencedor),
         nomeVencedor: linha.nomeVencedor ?? '',
+        marcaVencedor: linha.marcaVencedora ?? '',
         motivoPerda: linha.motivoPerda ?? '',
         motivoPerdaEvitavel: linha.motivoPerdaEvitavel ?? '',
         origemDesclassificacao: origemDesclassificacaoDe(linha.motivoPerdaHabilitacao),
@@ -748,6 +741,17 @@ export function DisputaFormModal({
     setValoresPorLinha(valoresItem);
     setValoresPorGrupo(valoresGrupo);
   }, [isOpen, disputaEmEdicao, licitacaoId]);
+
+  // 09/11/2026: "Data/hora da sessão" já vem preenchida com a data da licitação
+  // (Informações gerais; vale a data efetiva se a sessão foi remarcada). Só
+  // preenche quando o campo está vazio — o que já foi salvo na disputa não é
+  // trocado, e o usuário ainda pode alterar.
+  useEffect(() => {
+    if (!isOpen || !licitacao || licitacao.id !== licitacaoId) return;
+    const dataDaLicitacao = licitacao.dataEfetivaLicitacao || licitacao.dataLicitacao;
+    if (!dataDaLicitacao) return;
+    setForm((atual) => (atual.dataSessaoRealizada ? atual : { ...atual, dataSessaoRealizada: dataDaLicitacao }));
+  }, [isOpen, licitacao, licitacaoId, disputaEmEdicao]);
 
   // Decide o modo de preenchimento (grupo / item / grupo e item): numa
   // disputa já salva, detecta pelo que já está gravado; numa disputa nova,
@@ -921,6 +925,7 @@ export function DisputaFormModal({
       // cliente não está em 1º ou quando o resultado é de perda).
       valorVencedor: emPerda && valores ? campoParaNumeroDecimal(valores.valorVencedorTexto, 2) : undefined,
       nomeVencedor: emPerda && valores?.nomeVencedor.trim() ? valores.nomeVencedor.trim() : undefined,
+      marcaVencedora: emPerda && valores?.marcaVencedor.trim() ? valores.marcaVencedor.trim() : undefined,
       motivoPerda: emPerda && valores?.motivoPerda ? valores.motivoPerda : undefined,
       vitoriaPorConvocacao:
         resultadoItem === 'convocado' || (resultadoItem === 'ganho' && !!valores?.convocacao),
@@ -1099,17 +1104,15 @@ export function DisputaFormModal({
           </div>
 
           <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-[18px]">
-            <label className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5">
               <span className={CLASSE_ROTULO}>Data/hora da sessão</span>
-              <input
-                type="datetime-local"
+              <CampoDataHora
+                ariaLabel="Data e hora da sessão"
                 value={isoParaDataHoraLocal(form.dataSessaoRealizada)}
-                onChange={(e) =>
-                  atualizarCampo('dataSessaoRealizada', e.target.value ? new Date(e.target.value).toISOString() : undefined)
-                }
+                onChange={(valor) => atualizarCampo('dataSessaoRealizada', valor ? new Date(valor).toISOString() : undefined)}
                 className={CLASSE_CAMPO}
               />
-            </label>
+            </div>
 
             <label className="flex flex-col gap-1.5">
               <span className={CLASSE_ROTULO}>Situação do processo *</span>
@@ -1194,18 +1197,19 @@ export function DisputaFormModal({
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5">
               <span className={`${CLASSE_ROTULO} !text-[#6B4206]`}>
                 Prazo da ação {form.acaoPendente && form.acaoPendente !== 'nenhuma' ? '*' : ''}
               </span>
-              <input
-                type="datetime-local"
+              <CampoDataHora
+                ariaLabel="Prazo da ação"
                 value={prazoAcaoTexto}
-                onChange={(e) => setPrazoAcaoTexto(e.target.value)}
+                onChange={setPrazoAcaoTexto}
+                horaPadrao="18:00"
                 disabled={semAcaoPendente || !form.acaoPendente || form.acaoPendente === 'nenhuma'}
                 className={CLASSE_CAMPO}
               />
-            </label>
+            </div>
             <div className="flex flex-col justify-end">
               <span className="text-[13px] leading-snug text-[#6B4206]">
                 <strong>Alerta:</strong> o prazo fica registrado na disputa e gera aviso no sino e no cartão de
@@ -1372,7 +1376,7 @@ export function DisputaFormModal({
                                 bloco.linhas
                                   .map((linha) => valoresPorLinha[linha.chave]?.posicaoTexto)
                                   .find((texto) => texto && texto.trim() !== '') ?? '',
-                              valorOfertadoTexto: somaItens != null ? numeroParaCampoDecimal(somaItens, 2) : '',
+                              valorOfertadoTexto: somaItens != null ? numeroParaCampoMoeda(somaItens) : '',
                             }}
                             onChange={() => undefined}
                             referencia={totalReferenciaGrupo}

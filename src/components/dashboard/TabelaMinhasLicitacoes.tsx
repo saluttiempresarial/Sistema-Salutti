@@ -6,14 +6,28 @@
 // uma lista de cartões. Ordenada pelo prazo interno mais próximo de vencer.
 // Clicar numa licitação abre o detalhe (/cliente/licitacoes/:id).
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Etiqueta } from '@/components/dashboard/Etiqueta'
 import { IconeDocumento, IconeSetaDireita } from '@/components/icones'
 import { DECISAO_CLIENTE_LABEL, type DecisaoCliente, type Licitacao } from '@/types/licitacao'
 import type { TomEtiqueta } from '@/utils/eventosPainel'
 import { formatarDataHora, formatarMoeda, calcularPrazoInterno, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
-import { prazoPropostaClienteInfo, valorParticipacaoCliente } from '@/utils/licitacaoCalculos'
+import {
+  prazoPropostaClienteInfo,
+  situacaoAnaliseCliente,
+  valorParticipacaoCliente,
+  type SituacaoAnaliseCliente,
+} from '@/utils/licitacaoCalculos'
+
+type FiltroAnalise = SituacaoAnaliseCliente | 'todos'
+
+const OPCOES_FILTRO: { valor: FiltroAnalise; rotulo: string }[] = [
+  { valor: 'pendente', rotulo: 'Pendente' },
+  { valor: 'em_analise', rotulo: 'Em análise' },
+  { valor: 'analisada', rotulo: 'Analisadas' },
+  { valor: 'todos', rotulo: 'Todos' },
+]
 
 const URGENCIA_CLASSE: Record<string, string> = {
   vencido: 'font-medium text-red-600',
@@ -46,19 +60,32 @@ interface TabelaMinhasLicitacoesProps {
   limite?: number
   /** Quando há mais licitações que o limite, mostra este link ("Ver todas"). */
   linkVerTodas?: string
+  /** Mostra o filtro Pendente / Em análise / Analisadas / Todos (tela Licitações). */
+  comFiltro?: boolean
 }
 
-export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVerTodas }: TabelaMinhasLicitacoesProps) {
+export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVerTodas, comFiltro }: TabelaMinhasLicitacoesProps) {
   const navigate = useNavigate()
+  const [filtro, setFiltro] = useState<FiltroAnalise>('todos')
+
+  const contagens = useMemo(() => {
+    const c: Record<FiltroAnalise, number> = { pendente: 0, em_analise: 0, analisada: 0, todos: licitacoes.length }
+    licitacoes.forEach((l) => {
+      c[situacaoAnaliseCliente(l)] += 1
+    })
+    return c
+  }, [licitacoes])
 
   // Ordenada pelo prazo interno mais próximo de vencer primeiro.
   const ordenadas = useMemo(() => {
-    return [...licitacoes].sort((a, b) => {
+    const base =
+      comFiltro && filtro !== 'todos' ? licitacoes.filter((l) => situacaoAnaliseCliente(l) === filtro) : licitacoes
+    return [...base].sort((a, b) => {
       const prazoA = calcularPrazoInterno(a.dataEfetivaLicitacao || a.dataLicitacao).getTime()
       const prazoB = calcularPrazoInterno(b.dataEfetivaLicitacao || b.dataLicitacao).getTime()
       return prazoA - prazoB
     })
-  }, [licitacoes])
+  }, [licitacoes, comFiltro, filtro])
 
   const visiveis = limite ? ordenadas.slice(0, limite) : ordenadas
   const restantes = ordenadas.length - visiveis.length
@@ -70,13 +97,35 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
         <h2 className="font-display text-xl font-semibold text-forest-deep">Minhas licitações</h2>
       </header>
 
+      {comFiltro && !carregando && licitacoes.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filtrar licitações">
+          {OPCOES_FILTRO.map((opcao) => (
+            <button
+              key={opcao.valor}
+              type="button"
+              onClick={() => setFiltro(opcao.valor)}
+              aria-pressed={filtro === opcao.valor}
+              className={`rounded-full border px-4 py-1.5 font-body text-sm transition-colors ${
+                filtro === opcao.valor
+                  ? 'border-forest bg-forest font-semibold text-white'
+                  : 'border-ink-soft/20 bg-white text-ink hover:bg-paper-2'
+              }`}
+            >
+              {opcao.rotulo} ({contagens[opcao.valor]})
+            </button>
+          ))}
+        </div>
+      )}
+
       {carregando && (
         <p className="py-8 text-center font-body text-sm text-ink-soft">Carregando suas licitações...</p>
       )}
 
       {!carregando && visiveis.length === 0 && (
         <p className="py-8 text-center font-body text-sm text-ink-soft">
-          Nenhuma licitação atribuída a você ainda.
+          {comFiltro && licitacoes.length > 0 && filtro !== 'todos'
+            ? 'Nenhuma licitação nesta situação.'
+            : 'Nenhuma licitação atribuída a você ainda.'}
         </p>
       )}
 

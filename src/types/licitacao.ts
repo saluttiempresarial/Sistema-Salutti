@@ -669,6 +669,9 @@ export interface Licitacao {
   // Motivo padronizado da recusa (lista fixa, obrigatório ao recusar — migração 052).
   // O texto livre acima passa a ser só a explicação complementar.
   motivoNaoParticipacao?: MotivoNaoParticipacao;
+  // Todos os motivos marcados pelo cliente (migração 064). O campo acima guarda
+  // o motivo principal (o primeiro da lista) e alimenta os indicadores.
+  motivosNaoParticipacao?: MotivoNaoParticipacao[];
   decisaoClienteEm?: string;
   // Liberação ao cliente (22/10, migrações 054 e 055): enquanto estiver vazio,
   // a licitação NÃO aparece no Portal do Cliente. Quem libera é o Administrador

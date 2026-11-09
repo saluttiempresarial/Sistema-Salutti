@@ -1,8 +1,8 @@
 // src/components/AdminSidebar.tsx
 //
 // Menu lateral do Admin/Funcionário — visível em todas as telas internas
-// (Início, Clientes, Funcionários, Licitações, Disputas, Relatórios,
-// Indicadores, Calendário, Configurações). Os itens dependem do perfil:
+// (Início, Licitações, Disputas, Relatórios, Configurações, Cadastro de
+// Clientes, Cadastro de Funcionários). Os itens dependem do perfil:
 // Administrador vê tudo; Funcionário só vê os módulos liberados nas
 // permissões dele (mesma lógica já usada no painel do Funcionário).
 //
@@ -56,8 +56,6 @@ export function AdminSidebar({ aberta = false, onFechar }: AdminSidebarProps) {
 
   const itens: ItemMenu[] = [
     { label: 'Início', to: rotaInicio, icon: <IconeInicio />, exato: true },
-    ...(isAdmin ? [{ label: 'Cadastro de Clientes', to: '/admin/clientes', icon: <IconePessoa /> }] : []),
-    ...(isAdmin ? [{ label: 'Cadastro de Funcionários', to: '/admin/funcionarios', icon: <IconePessoas /> }] : []),
     ...(isAdmin || podeAcessarModulo('licitacoes')
       ? [{ label: 'Licitações', to: '/admin/licitacoes', icon: <IconeDocumento /> }]
       : []),
@@ -71,6 +69,9 @@ export function AdminSidebar({ aberta = false, onFechar }: AdminSidebarProps) {
     // perfis internos; não há mais item próprio no menu.
     // O Calendário fica só na tela Início (05/11, Márcio); sem item próprio no menu.
     ...(isAdmin ? [{ label: 'Configurações', to: '/admin/configuracoes', icon: <IconeEngrenagem /> }] : []),
+    // Cadastros ao final do menu (09/11/2026).
+    ...(isAdmin ? [{ label: 'Cadastro de Clientes', to: '/admin/clientes', icon: <IconePessoa /> }] : []),
+    ...(isAdmin ? [{ label: 'Cadastro de Funcionários', to: '/admin/funcionarios', icon: <IconePessoas /> }] : []),
   ]
 
   function estaAtivo(item: ItemMenu): boolean {

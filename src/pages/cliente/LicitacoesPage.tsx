@@ -60,7 +60,7 @@ export function LicitacoesPage() {
         <p className="font-body text-sm text-ink-soft">Todas as licitações atribuídas a você.</p>
       </header>
 
-      <TabelaMinhasLicitacoes licitacoes={licitacoes} carregando={carregando} />
+      <TabelaMinhasLicitacoes licitacoes={licitacoes} carregando={carregando} comFiltro />
     </div>
   )
 }

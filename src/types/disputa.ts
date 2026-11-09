@@ -251,6 +251,7 @@ export interface DisputaResultadoLinha {
   resultadoItem?: ResultadoItemDisputa; // resultado deste item (migração 036)
   valorVencedor?: number; // unitário do vencedor — só quando resultadoItem = 'perdido'
   nomeVencedor?: string; // empresa vencedora — só quando resultadoItem = 'perdido'
+  marcaVencedora?: string; // marca do produto vencedor (migração 065) — só em resultado de perda
   observacao?: string;
   // Campos de gestão (migração 054, 22/10):
   motivoPerdaHabilitacao?: MotivoPerdaHabilitacao; // só quando resultadoItem = 'perdido_habilitacao'
