@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Logo } from '@/components/Logo'
 import { TextField } from '@/components/TextField'
 import { Button } from '@/components/Button'
+import { LOGO_SALUTTI_CLARO } from '@/assets/logoSaluttiClaro'
 import { IconeDocumento, IconeGrafico, IconeMartelo } from '@/components/icones'
 import { ROLE_HOME_ROUTE } from '@/types/auth'
 
@@ -70,7 +71,7 @@ export function LoginPage() {
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-48 -left-32 h-[30rem] w-[30rem] rounded-full border border-white/10" />
 
         <img
-          src={`${import.meta.env.BASE_URL}brand/logo-salutti-claro.png`}
+          src={LOGO_SALUTTI_CLARO}
           alt="Salutti"
           className="relative h-14 w-auto self-start"
         />
