@@ -99,6 +99,7 @@ export function FiltrosIndicadoresBar({
   mostrarStatus = true,
 }: FiltrosIndicadoresBarProps) {
   const [atalho, setAtalho] = useState<AtalhoPeriodo>('todo')
+  const [maisFiltros, setMaisFiltros] = useState(false)
 
   const opcoesClientes = useMemo(
     () => [
@@ -220,10 +221,22 @@ export function FiltrosIndicadoresBar({
       filtros.incluirProvisorios,
   )
 
+  // Filtros que ficam sob "Mais filtros" (os principais ficam sempre à vista).
+  const qtdAvancados = [
+    filtros.familiaId,
+    filtros.orgao,
+    filtros.uf,
+    filtros.esfera,
+    filtros.marca,
+    filtros.resultado,
+    filtros.fase,
+    filtros.incluirProvisorios,
+  ].filter(Boolean).length
+
   return (
     <section
       aria-label="Filtros dos indicadores"
-      className="rounded-xl border border-ink-soft/15 bg-white p-4 shadow-soft"
+      className="rounded-xl border border-ink-soft/15 bg-white p-3 shadow-soft"
     >
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Período">
         <span className="mr-1 font-mono text-xs uppercase tracking-wide text-ink-soft">Período</span>
@@ -244,7 +257,33 @@ export function FiltrosIndicadoresBar({
         ))}
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {mostrarCliente && (
+          <SelectField
+            label="Cliente"
+            value={filtros.clienteId ?? ''}
+            options={opcoesClientes}
+            onChange={(e) => alterarCliente(e.target.value)}
+          />
+        )}
+        {analistas.length > 0 && (
+          <SelectField
+            label="Analista"
+            value={filtros.analistaId ?? ''}
+            options={[{ value: '', label: 'Todos os analistas' }, ...analistas]}
+            onChange={(e) => onChange({ ...filtros, analistaId: e.target.value || undefined })}
+          />
+        )}
+        <SelectField
+          label="Modalidade"
+          value={filtros.modalidade ?? ''}
+          options={opcoesModalidades}
+          onChange={(e) => onChange({ ...filtros, modalidade: e.target.value || undefined })}
+        />
+      </div>
+
+      {atalho === 'personalizado' && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="ind-data-de" className="font-mono text-xs uppercase tracking-wide text-ink-soft">
             Sessão de
@@ -275,28 +314,23 @@ export function FiltrosIndicadoresBar({
             className="rounded-lg border border-ink-soft/25 bg-white px-3.5 py-2.5 font-body text-sm text-ink outline-none focus:border-forest focus:ring-2 focus:ring-forest-mist"
           />
         </div>
-        {mostrarCliente && (
-          <SelectField
-            label="Cliente"
-            value={filtros.clienteId ?? ''}
-            options={opcoesClientes}
-            onChange={(e) => alterarCliente(e.target.value)}
-          />
-        )}
-        {analistas.length > 0 && (
-          <SelectField
-            label="Analista"
-            value={filtros.analistaId ?? ''}
-            options={[{ value: '', label: 'Todos os analistas' }, ...analistas]}
-            onChange={(e) => onChange({ ...filtros, analistaId: e.target.value || undefined })}
-          />
-        )}
-        <SelectField
-          label="Modalidade"
-          value={filtros.modalidade ?? ''}
-          options={opcoesModalidades}
-          onChange={(e) => onChange({ ...filtros, modalidade: e.target.value || undefined })}
-        />
+        </div>
+      )}
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setMaisFiltros((v) => !v)}
+          aria-expanded={maisFiltros}
+          className="font-body text-sm text-forest underline-offset-2 hover:underline"
+        >
+          {maisFiltros ? 'Menos filtros' : 'Mais filtros'}
+          {qtdAvancados > 0 ? ` (${qtdAvancados} ativo${qtdAvancados === 1 ? '' : 's'})` : ''}
+        </button>
+      </div>
+
+      {maisFiltros && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SelectField
           label="Família"
           value={filtros.familiaId ?? ''}
@@ -345,8 +379,10 @@ export function FiltrosIndicadoresBar({
             onChange={(e) => onChange({ ...filtros, fase: (e.target.value || undefined) as FasePipeline | undefined })}
           />
         )}
-      </div>
+        </div>
+      )}
 
+      {maisFiltros && (
       <label className="mt-3 flex items-start gap-2 font-body text-sm text-ink">
         <input
           type="checkbox"
@@ -361,6 +397,7 @@ export function FiltrosIndicadoresBar({
           </span>
         </span>
       </label>
+      )}
 
       {avisoResultado && (
         <p className="mt-3 rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft" role="status">

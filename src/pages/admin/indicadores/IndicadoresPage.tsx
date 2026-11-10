@@ -31,6 +31,7 @@ import {
 } from '../../../utils/indicadoresCalculos'
 import type { DadosBaseIndicadores, FiltrosIndicadores } from '../../../types/indicadores'
 import { formatarNumero } from '../../../utils/prazoUtils'
+import { exportarIndicadoresExcel } from '../../../utils/exportarIndicadoresExcel'
 import { descreverFiltros } from '../../../utils/descricaoFiltrosIndicadores'
 
 export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {}) {
@@ -106,6 +107,20 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
     [dados, filtros],
   )
 
+  // Período anterior de mesma duração, só quando há data inicial e final.
+  const indicadoresAnterior = useMemo(() => {
+    if (!dados || !filtros.dataDe || !filtros.dataAte) return null
+    const de = Date.parse(`${filtros.dataDe}T00:00:00Z`)
+    const ate = Date.parse(`${filtros.dataAte}T00:00:00Z`)
+    if (Number.isNaN(de) || Number.isNaN(ate) || ate < de) return null
+    const dia = 86_400_000
+    const dias = Math.round((ate - de) / dia) + 1
+    const anteriorAte = de - dia
+    const anteriorDe = anteriorAte - (dias - 1) * dia
+    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+    return calcularIndicadoresAdmin(dados, { ...filtros, dataDe: iso(anteriorDe), dataAte: iso(anteriorAte) })
+  }, [dados, filtros])
+
   // Opções dos filtros de órgão e marca: só o que existe nos dados que este
   // perfil enxerga (a carteira do Analista ou a própria empresa do Cliente).
   const opcoesOrgaos = useMemo(() => (dados ? listarOpcoesOrgaos(dados.licitacoes) : []), [dados])
@@ -149,6 +164,20 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
         : [],
     [dados, filtros, opcoesOrgaos, opcoesMarcas, opcoesAnalistas],
   )
+
+  const baixarExcel = useCallback(() => {
+    if (!indicadores) return
+    const abas = exportarIndicadoresExcel({
+      indicadores,
+      visiveis,
+      ocultarVazios: filtrando,
+      ocultarClientesSemAtividade: filtrandoAlemDeClienteEAnalista,
+      resultadoFiltro: filtros.resultado === 'ganho' || filtros.resultado === 'perdido' ? filtros.resultado : undefined,
+      linhasFiltros,
+      emitidoPor: user?.name ?? '',
+    })
+    if (abas === 0) window.alert('Não há dados nos indicadores visíveis para baixar com estes filtros.')
+  }, [indicadores, visiveis, filtrando, filtrandoAlemDeClienteEAnalista, filtros.resultado, linhasFiltros, user])
 
   return (
     <div className={embutido ? 'space-y-5' : 'min-h-screen space-y-5 bg-paper p-8'}>
@@ -195,7 +224,14 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
             </ul>
           </div>
 
-          <div className="no-print flex justify-end">
+          <div className="no-print flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={baixarExcel}
+              className="rounded-md border border-forest/40 px-4 py-2 font-body text-sm font-medium text-forest-deep hover:bg-forest-mist"
+            >
+              Baixar Excel
+            </button>
             <button
               type="button"
               onClick={imprimir}
@@ -205,7 +241,7 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
             </button>
           </div>
 
-          <div className="no-print">
+          <div className="no-print sticky top-0 z-20 -mx-1 bg-paper px-1 py-1">
             <FiltrosIndicadoresBar
               filtros={filtros}
               onChange={setFiltros}
@@ -232,6 +268,7 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
             visiveis={visiveis}
             ocultarVazios={filtrando}
             ocultarClientesSemAtividade={filtrandoAlemDeClienteEAnalista}
+            anterior={indicadoresAnterior}
             resultadoFiltro={filtros.resultado === 'ganho' || filtros.resultado === 'perdido' ? filtros.resultado : undefined}
           />
         </>

@@ -1289,6 +1289,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   ) : (
                     <div className="space-y-2">
                       <p className="font-semibold text-ink">Liberar prazo para este cliente</p>
+                      {licitacaoEmEdicao?.decisaoCliente === 'recusar' && (
+                        <p className="rounded-md bg-brass-pale/50 px-2.5 py-1.5 text-xs text-brass">
+                          Este cliente <strong>recusou</strong> a licitação. Ao salvar com a liberação, a decisão é
+                          reaberta: a licitação volta para "Aguardando decisão" e ele vê o botão "Quero Participar".
+                        </p>
+                      )}
                       {licitacaoEmEdicao?.prazoPropostaLiberado && licitacaoEmEdicao.prazoPropostaLiberadoAte && (
                         <p className="text-xs text-ink-soft">
                           Liberação atual: até {formatarDataHora(licitacaoEmEdicao.prazoPropostaLiberadoAte)}.

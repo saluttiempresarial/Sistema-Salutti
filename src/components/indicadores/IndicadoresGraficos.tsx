@@ -10,12 +10,13 @@
 // dourado para alertas/comparações — nunca só a cor carrega o sentido: todo
 // gráfico tem legenda e valores no rótulo ou na dica.
 
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -51,6 +52,7 @@ import type {
 } from '../../types/indicadores'
 import { FILTRO_SEM_ESFERA, SITUACAO_INATIVIDADE_LABEL } from '../../types/indicadores'
 import type { ResultadoLicitacaoFiltro } from '../../types/indicadores'
+import { FaixaIndicadoresResumo } from './FaixaIndicadoresResumo'
 import { MOTIVO_PERDA_EVITAVEL_LABEL } from '../../types/disputa'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '../../utils/prazoUtils'
 
@@ -309,29 +311,88 @@ function TaxaVitoriaBloco({ atual, meses }: { atual: TaxaVitoria; meses: TaxaVit
 }
 
 // ---------------------------------------------------------------------------
-// 3. Volume por mês
+// 3. Volume e valor adjudicado por mês
 // ---------------------------------------------------------------------------
-function VolumeMensal({ dados }: { dados: IndicadoresAdmin['volumePorMes'] }) {
+// Volume (barras, eixo esquerdo) e valor adjudicado (linha, eixo direito) por
+// mês da sessão, no mesmo gráfico: mostra se o crescimento de licitações vira
+// valor ganho. A linha só aparece se o perfil pode ver o valor adjudicado.
+function VolumeEValorMensal({
+  volume,
+  valor,
+}: {
+  volume: IndicadoresAdmin['volumePorMes']
+  valor?: ValorAdjudicado
+}) {
+  const meses = new Map<
+    string,
+    { mes: string; rotulo: string; licitacoes: number; valorReferencia: number; valorAdjudicado?: number }
+  >()
+  for (const v of volume) {
+    meses.set(v.mes, { mes: v.mes, rotulo: v.rotulo, licitacoes: v.licitacoes, valorReferencia: v.valor })
+  }
+  for (const m of valor?.porMes ?? []) {
+    const existente = meses.get(m.mes)
+    if (existente) existente.valorAdjudicado = m.valor
+    else meses.set(m.mes, { mes: m.mes, rotulo: m.rotulo, licitacoes: 0, valorReferencia: 0, valorAdjudicado: m.valor })
+  }
+  const dados = [...meses.values()]
+    .sort((a, b) => a.mes.localeCompare(b.mes))
+    .map((m) => ({ ...m, valorAdjudicado: valor ? (m.valorAdjudicado ?? 0) : undefined }))
   if (dados.length === 0) return <SemDados />
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={dados} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid vertical={false} stroke={COR_GRADE} />
-          <XAxis dataKey="rotulo" tick={{ fill: COR_TEXTO, fontSize: 12 }} tickLine={false} axisLine={false} />
-          <YAxis allowDecimals={false} tick={{ fill: COR_TEXTO, fontSize: 12 }} tickLine={false} axisLine={false} width={32} />
-          <Tooltip
-            contentStyle={ESTILO_DICA}
-            cursor={{ fill: '#E7F0EA' }}
-            formatter={(valor) => [formatarNumero(Number(valor)), 'Licitações']}
-            labelFormatter={(rotulo, itens) => {
-              const valor = (itens?.[0]?.payload as { valor?: number } | undefined)?.valor ?? 0
-              return `${rotulo} — valor de referência ${formatarMoeda(valor)}`
-            }}
-          />
-          <Bar dataKey="licitacoes" name="Licitações" fill={COR_GANHO} radius={[4, 4, 0, 0]} maxBarSize={40} />
-        </BarChart>
-      </ResponsiveContainer>
+    <div>
+      <div className="h-72 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={dados} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke={COR_GRADE} />
+            <XAxis dataKey="rotulo" tick={{ fill: COR_TEXTO, fontSize: 12 }} tickLine={false} axisLine={false} />
+            <YAxis
+              yAxisId="qtd"
+              allowDecimals={false}
+              tick={{ fill: COR_TEXTO, fontSize: 12 }}
+              tickLine={false}
+              axisLine={false}
+              width={32}
+            />
+            {valor && (
+              <YAxis
+                yAxisId="valor"
+                orientation="right"
+                tick={{ fill: COR_TEXTO, fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
+                width={52}
+                tickFormatter={(v: number) => FORMATO_COMPACTO.format(v)}
+              />
+            )}
+            <Tooltip
+              contentStyle={ESTILO_DICA}
+              cursor={{ fill: '#E7F0EA' }}
+              formatter={(v, nome) => [nome === 'Licitações' ? formatarNumero(Number(v)) : formatarMoeda(Number(v)), String(nome)]}
+              labelFormatter={(rotulo, itens) => {
+                const ref = (itens?.[0]?.payload as { valorReferencia?: number } | undefined)?.valorReferencia ?? 0
+                return `${rotulo} — valor de referência ${formatarMoeda(ref)}`
+              }}
+            />
+            <Legend wrapperStyle={{ fontSize: 13, fontFamily: '"Source Sans 3", sans-serif' }} />
+            <Bar yAxisId="qtd" dataKey="licitacoes" name="Licitações" fill={COR_REFERENCIA} radius={[4, 4, 0, 0]} maxBarSize={40} />
+            {valor && (
+              <Line
+                yAxisId="valor"
+                type="monotone"
+                dataKey="valorAdjudicado"
+                name="Valor adjudicado"
+                stroke={COR_GANHO}
+                strokeWidth={2.5}
+                dot={{ r: 3, fill: COR_GANHO }}
+              />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="mt-2 font-body text-xs text-ink-soft">
+        Mês da sessão. {valor ? NOTA_ADJUDICADO : 'Barras: licitações do mês.'}
+      </p>
     </div>
   )
 }
@@ -1912,6 +1973,8 @@ interface IndicadoresGraficosProps {
   /** Filtro "Resultado da licitação" ativo. Com Ganho ou Perdido, somem os cards que não
    *  dizem respeito ao resultado pedido (processo, perdas num recorte de ganhos etc.). */
   resultadoFiltro?: ResultadoLicitacaoFiltro
+  /** Mesmos indicadores no período anterior (de mesma duração), para a faixa de resumo. */
+  anterior?: IndicadoresAdmin | null
 }
 
 /** Cards que não fazem sentido num recorte só de ganhos ou só de perdas. */
@@ -1928,12 +1991,58 @@ export const CARDS_OCULTOS_POR_RESULTADO: Partial<Record<ResultadoLicitacaoFiltr
   ]),
 }
 
+// ---------------------------------------------------------------------------
+// Abas: cada indicador pertence a uma aba, por pergunta que responde. Só a
+// aba ativa é desenhada; abas sem nenhum indicador liberado não aparecem.
+// ---------------------------------------------------------------------------
+type AbaIndicadores = 'geral' | 'funil' | 'clientes' | 'preco' | 'perdas'
+
+const ABAS: { id: AbaIndicadores; rotulo: string }[] = [
+  { id: 'geral', rotulo: 'Visão geral' },
+  { id: 'funil', rotulo: 'Funil e resultados' },
+  { id: 'clientes', rotulo: 'Clientes' },
+  { id: 'preco', rotulo: 'Preço e produtos' },
+  { id: 'perdas', rotulo: 'Perdas e motivos' },
+]
+
+const ABA_DO_INDICADOR: Record<ChaveIndicador, AbaIndicadores> = {
+  funil: 'geral',
+  taxa_vitoria: 'geral',
+  volume_periodo: 'geral',
+  valor_adjudicado: 'preco',
+  pipeline: 'geral',
+  prazos_proximos: 'geral',
+  desempenho_modalidade: 'funil',
+  mercado_uf_esfera: 'funil',
+  orgaos: 'funil',
+  concorrentes: 'funil',
+  vitorias_convocacao: 'funil',
+  tempo_resposta: 'funil',
+  clientes_sem_atividade: 'clientes',
+  valor_por_cliente: 'clientes',
+  performance_analista: 'clientes',
+  familias: 'preco',
+  taxa_vitoria_familia: 'preco',
+  marcas: 'preco',
+  produtos_nunca_ganhos: 'preco',
+  ganho_sobre_minimo: 'preco',
+  ticket_medio: 'preco',
+  desconto_medio: 'preco',
+  motivos_nao_participacao: 'perdas',
+  perdas_evitaveis: 'perdas',
+  perdas_habilitacao: 'perdas',
+  fora_de_mercado: 'perdas',
+  distancia_derrota: 'perdas',
+  alerta_acompanhamento: 'perdas',
+}
+
 export function IndicadoresGraficos({
   indicadores,
   visiveis,
   ocultarVazios = false,
   ocultarClientesSemAtividade = false,
   resultadoFiltro,
+  anterior,
 }: IndicadoresGraficosProps) {
   // Com filtro ativo, analista sem nenhuma licitação no recorte é só ruído.
   const linhasAnalistas = ocultarVazios
@@ -1941,6 +2050,20 @@ export function IndicadoresGraficos({
     : indicadores.performanceAnalistas
   const ocultosPorResultado = resultadoFiltro ? CARDS_OCULTOS_POR_RESULTADO[resultadoFiltro] : undefined
   const ver = (chave: ChaveIndicador) => (!visiveis || visiveis.has(chave)) && !ocultosPorResultado?.has(chave)
+  const [abaEscolhida, setAbaEscolhida] = useState<AbaIndicadores>('geral')
+  const abasDisponiveis = useMemo(
+    () =>
+      ABAS.filter((a) =>
+        (Object.keys(ABA_DO_INDICADOR) as ChaveIndicador[]).some(
+          (chave) => ABA_DO_INDICADOR[chave] === a.id && ver(chave),
+        ),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visiveis, resultadoFiltro],
+  )
+  const abaAtiva = abasDisponiveis.some((a) => a.id === abaEscolhida) ? abaEscolhida : abasDisponiveis[0]?.id
+  // Mostra o indicador só se estiver liberado e for da aba aberta.
+  const mostrar = (chave: ChaveIndicador) => ver(chave) && ABA_DO_INDICADOR[chave] === abaAtiva
 
   if (visiveis && visiveis.size === 0) {
     return (
@@ -1952,33 +2075,62 @@ export function IndicadoresGraficos({
 
   return (
     <OcultarVaziosContexto.Provider value={ocultarVazios}>
+    <div
+      role="tablist"
+      aria-label="Grupos de indicadores"
+      className="no-print mb-5 flex flex-wrap gap-1 border-b border-ink-soft/15"
+    >
+      {abasDisponiveis.map((a) => (
+        <button
+          key={a.id}
+          type="button"
+          role="tab"
+          aria-selected={abaAtiva === a.id}
+          onClick={() => setAbaEscolhida(a.id)}
+          className={`-mb-px border-b-2 px-4 py-2.5 font-body text-sm transition-colors ${
+            abaAtiva === a.id
+              ? 'border-forest font-semibold text-forest-deep'
+              : 'border-transparent text-ink-soft hover:text-ink'
+          }`}
+        >
+          {a.rotulo}
+        </button>
+      ))}
+    </div>
+    {abaAtiva === 'geral' && (
+      <FaixaIndicadoresResumo atual={indicadores} anterior={anterior} pode={(chave) => ver(chave)} />
+    )}
     <div className="grid grid-flow-dense gap-5 lg:grid-cols-2">
       {/* Os três indicadores principais vêm primeiro, para todos os perfis. */}
-      {ver('funil') && (
+      {mostrar('volume_periodo') && (
+        <Cartao
+          titulo="Volume e valor adjudicado por mês"
+          subtitulo="Barras: licitações por mês da sessão. Linha: valor dos itens e grupos ganhos (passe o mouse para ver o valor de referência)"
+          className="lg:col-span-2"
+        >
+          <VolumeEValorMensal volume={indicadores.volumePorMes} valor={ver('valor_adjudicado') ? indicadores.valorAdjudicado : undefined} />
+        </Cartao>
+      )}
+
+      {mostrar('funil') && (
         <Cartao titulo="Relatório principal" subtitulo="Total de licitações do período: enviadas, retornadas, disputadas e resultado (por licitação)">
           <RelatorioPrincipalBloco dados={indicadores.relatorioPrincipal} resultadoFiltro={resultadoFiltro} />
         </Cartao>
       )}
 
-      {ver('taxa_vitoria') && (
+      {mostrar('taxa_vitoria') && (
         <Cartao titulo="Taxa de vitória" subtitulo="Contagem por item: só itens e grupos ganhos ou perdidos">
           <TaxaVitoriaBloco atual={indicadores.taxaVitoria.atual} meses={indicadores.taxaVitoriaPorMes} />
         </Cartao>
       )}
 
-      {ver('volume_periodo') && (
-        <Cartao titulo="Volume por mês" subtitulo="Licitações por mês da sessão (passe o mouse para ver o valor)" className="lg:col-span-2">
-          <VolumeMensal dados={indicadores.volumePorMes} />
-        </Cartao>
-      )}
-
-      {ver('pipeline') && (
+      {mostrar('pipeline') && (
         <Cartao titulo="Pipeline" subtitulo="Licitações por fase, da decisão do cliente ao resultado">
           <PipelineBloco dados={indicadores.pipeline} />
         </Cartao>
       )}
 
-      {ver('prazos_proximos') && (
+      {mostrar('prazos_proximos') && (
         <Cartao
           titulo="Prazos dos próximos 7 dias"
           subtitulo="Licitações em aberto com prazo interno vencido ou vencendo (ignora o filtro de período)"
@@ -1988,7 +2140,7 @@ export function IndicadoresGraficos({
       )}
 
 
-      {ver('tempo_resposta') && (
+      {mostrar('tempo_resposta') && (
         <Cartao
           titulo="Tempos de envio e de resposta"
           subtitulo="Com quanta antecedência a Salutti libera a licitação e quanto o cliente demora a responder (dias úteis)"
@@ -1998,19 +2150,19 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('clientes_sem_atividade') && !ocultarClientesSemAtividade && (
+      {mostrar('clientes_sem_atividade') && !ocultarClientesSemAtividade && (
         <Cartao titulo="Clientes sem atividade" subtitulo="Risco de perder o cliente: do mais parado para o mais ativo">
           <ClientesSemAtividadeBloco dados={indicadores.clientesSemAtividade} />
         </Cartao>
       )}
 
-      {ver('valor_por_cliente') && (
+      {mostrar('valor_por_cliente') && (
         <Cartao titulo="Valor por cliente" subtitulo="Valor em disputa, valor adjudicado e peso na carteira (todos os clientes, do maior valor adjudicado para o menor)">
           <ValorPorClienteBloco dados={indicadores.valorPorCliente} segmentos={indicadores.concentracaoCarteira.porSegmento} />
         </Cartao>
       )}
 
-      {ver('performance_analista') && linhasAnalistas.length > 0 && (
+      {mostrar('performance_analista') && linhasAnalistas.length > 0 && (
         <Cartao
           titulo="Performance por analista"
           subtitulo="Resultado da carteira de cada analista, dentro dos filtros escolhidos (uso interno)"
@@ -2020,13 +2172,13 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('desempenho_modalidade') && (
+      {mostrar('desempenho_modalidade') && (
         <Cartao titulo="Desempenho por modalidade" subtitulo="Participações x licitações com vitória">
           <ModalidadeBloco dados={indicadores.desempenhoModalidade} />
         </Cartao>
       )}
 
-      {ver('mercado_uf_esfera') && (
+      {mostrar('mercado_uf_esfera') && (
         <Cartao
           titulo="Mercado por UF e por esfera"
           subtitulo="Participações x licitações com vitória, por estado e por esfera do órgão"
@@ -2036,7 +2188,7 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('motivos_nao_participacao') && (
+      {mostrar('motivos_nao_participacao') && (
         <Cartao
           titulo="Motivos de não participação"
           subtitulo="Por que o cliente não participou: recusas com motivo escolhido e licitações sem resposta"
@@ -2046,25 +2198,25 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('familias') && (
+      {mostrar('familias') && (
         <Cartao titulo="Famílias de produtos" subtitulo="Itens cotados x itens ganhos (10 maiores)">
           <Familias barras={indicadores.familias} />
         </Cartao>
       )}
 
-      {ver('ganho_sobre_minimo') && (
+      {mostrar('ganho_sobre_minimo') && (
         <Cartao titulo="Ganho sobre o mínimo" subtitulo="Quanto vendemos acima do mínimo do cliente">
           <GanhoSobreMinimoBloco dados={indicadores.ganhoSobreMinimo} />
         </Cartao>
       )}
 
-      {ver('taxa_vitoria_familia') && (
+      {mostrar('taxa_vitoria_familia') && (
         <Cartao titulo="Taxa de vitória por família" subtitulo="Ganhos ÷ disputados, por quantidade (10 mais disputadas)">
           <TaxaVitoriaFamiliaBloco dados={indicadores.taxaVitoriaFamilia} />
         </Cartao>
       )}
 
-      {ver('marcas') && (
+      {mostrar('marcas') && (
         <Cartao titulo="Marcas" subtitulo="Itens cotados x itens ganhos por marca (10 maiores; inclui as marcas de cestas e kits)">
           <MarcasBloco barras={indicadores.marcas} />
           {indicadores.categoriasServico.length > 0 && (
@@ -2078,7 +2230,7 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('perdas_evitaveis') && (
+      {mostrar('perdas_evitaveis') && (
         <Cartao
           titulo="Perdas evitáveis"
           subtitulo="Perdemos para um vencedor cujo preço ainda cobria o mínimo do cliente"
@@ -2088,7 +2240,7 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('perdas_habilitacao') && (
+      {mostrar('perdas_habilitacao') && (
         <Cartao
           titulo="Perdas na habilitação"
           subtitulo="Ganhamos no lance, mas perdemos na aceitação ou na habilitação: valor, motivo e origem"
@@ -2098,13 +2250,13 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('vitorias_convocacao') && (
+      {mostrar('vitorias_convocacao') && (
         <Cartao titulo="Vitórias por convocação" subtitulo="Ganhamos porque concorrentes foram desclassificados">
           <VitoriasConvocacaoBloco dados={indicadores.vitoriasConvocacao} />
         </Cartao>
       )}
 
-      {ver('alerta_acompanhamento') && (
+      {mostrar('alerta_acompanhamento') && (
         <Cartao
           titulo="Alerta de acompanhamento"
           subtitulo="Perdidas em análise com o cliente em 2º ou 3º lugar: pode haver convocação se o 1º for desclassificado"
@@ -2113,7 +2265,7 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('valor_adjudicado') && (
+      {mostrar('valor_adjudicado') && (
         <Cartao
           titulo="Valor adjudicado por mês"
           subtitulo="Valor dos itens e grupos ganhos, pelo mês da sessão"
@@ -2123,13 +2275,13 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('ticket_medio') && (
+      {mostrar('ticket_medio') && (
         <Cartao titulo="Ticket médio" subtitulo="Valor adjudicado por licitação ganha (ao menos 1 item ganho)">
           <TicketMedioBloco dados={indicadores.valorAdjudicado} />
         </Cartao>
       )}
 
-      {ver('desconto_medio') && (
+      {mostrar('desconto_medio') && (
         <Cartao titulo="Desconto médio sobre a referência" subtitulo="Quanto ganhamos abaixo do valor de referência do edital">
           <PercentualPorFamiliaBloco
             dados={indicadores.descontoMedio}
@@ -2141,31 +2293,31 @@ export function IndicadoresGraficos({
         </Cartao>
       )}
 
-      {ver('fora_de_mercado') && (
+      {mostrar('fora_de_mercado') && (
         <Cartao titulo="Fora de mercado" subtitulo="Perdemos para um vencedor com preço abaixo do mínimo do cliente">
           <ForaDeMercadoBloco dados={indicadores.foraDeMercado} />
         </Cartao>
       )}
 
-      {ver('distancia_derrota') && (
+      {mostrar('distancia_derrota') && (
         <Cartao titulo="Distância da derrota" subtitulo="Nas perdas por preço, quanto ficamos acima do vencedor">
           <DistanciaDerrotaBloco dados={indicadores.distanciaDerrota} />
         </Cartao>
       )}
 
-      {ver('orgaos') && (
+      {mostrar('orgaos') && (
         <Cartao titulo="Órgãos" subtitulo="Participações x licitações com vitória (10 maiores)">
           <Orgaos barras={indicadores.orgaos} />
         </Cartao>
       )}
 
-      {ver('concorrentes') && (
+      {mostrar('concorrentes') && (
         <Cartao titulo="Concorrentes que mais vencem" subtitulo="Quem ganhou de nós (10 maiores)">
           <Concorrentes lista={indicadores.concorrentes} />
         </Cartao>
       )}
 
-      {ver('produtos_nunca_ganhos') && (
+      {mostrar('produtos_nunca_ganhos') && (
         <Cartao titulo="Produtos nunca ganhos" subtitulo="Produtos disputados sem nenhuma vitória (revisão de portfólio)">
           <ProdutosNuncaGanhosBloco dados={indicadores.produtosNuncaGanhos} />
         </Cartao>

@@ -308,6 +308,9 @@ interface CartaoResultadoProps {
   homologada: boolean;
   /** Item de grupo: tom verde claro com faixa lateral. */
   dentroDeGrupo?: boolean;
+  /** Item de grupo no modo "Grupo e item": só Valor ofertado e Marca vencedora
+   *  (o resto vale para o grupo inteiro e é preenchido no card do grupo). */
+  compacto?: boolean;
   children?: React.ReactNode;
 }
 
@@ -327,6 +330,7 @@ function CartaoResultado({
   ofertadoAjuda,
   homologada,
   dentroDeGrupo,
+  compacto,
   children,
 }: CartaoResultadoProps) {
   const posicaoTexto = posicaoSomenteLeitura ?? valores.posicaoTexto;
@@ -392,6 +396,7 @@ function CartaoResultado({
         )}
       </div>
 
+      {!compacto && (
       <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3.5">
         <div className="flex flex-col gap-1.5">
           <span className={CLASSE_ROTULO}>Valor de referência</span>
@@ -437,6 +442,7 @@ function CartaoResultado({
           </select>
         </div>
       </div>
+      )}
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3.5">
         <div className="flex flex-col gap-1.5">
@@ -464,6 +470,8 @@ function CartaoResultado({
           )}
           {ofertadoAjuda && <span className="text-[11px] text-[#5E6863]">{ofertadoAjuda}</span>}
         </div>
+        {!compacto && (
+          <>
         <div className="flex flex-col gap-1.5">
           <span className={CLASSE_ROTULO}>Valor do vencedor</span>
           {vencedorLiberado ? (
@@ -501,21 +509,28 @@ function CartaoResultado({
             <input type="text" aria-label="Empresa vencedora" value={textoVencedorBloqueado} disabled className={CLASSE_CAMPO} />
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={CLASSE_ROTULO}>Marca vencedora</span>
-          {vencedorLiberado ? (
-            <input
-              type="text"
-              aria-label="Marca vencedora"
-              value={valores.marcaVencedor}
-              onChange={(e) => onChange('marcaVencedor', e.target.value)}
-              placeholder="Marca do produto"
-              className={CLASSE_CAMPO}
-            />
-          ) : (
-            <input type="text" aria-label="Marca vencedora" value={textoVencedorBloqueado} disabled className={CLASSE_CAMPO} />
-          )}
-        </div>
+          </>
+        )}
+        {/* Total do grupo não tem marca vencedora (a marca é de cada item). */}
+        {baseValor !== 'total' && (
+          <div className="flex flex-col gap-1.5">
+            <span className={CLASSE_ROTULO}>Marca vencedora</span>
+            {vencedorLiberado ? (
+              <input
+                type="text"
+                aria-label="Marca vencedora"
+                value={valores.marcaVencedor}
+                onChange={(e) => onChange('marcaVencedor', e.target.value)}
+                placeholder="Marca do produto"
+                className={CLASSE_CAMPO}
+              />
+            ) : (
+              <input type="text" aria-label="Marca vencedora" value={textoVencedorBloqueado} disabled className={CLASSE_CAMPO} />
+            )}
+          </div>
+        )}
+        {!compacto && (
+          <>
         {mostrarMotivo && (
           <div className="flex flex-col gap-1.5">
             <span className={CLASSE_ROTULO}>
@@ -574,6 +589,8 @@ function CartaoResultado({
             </select>
             <span className="text-xs text-[#5E6863]">o vencedor ficou igual ou acima do nosso mínimo</span>
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -843,8 +860,33 @@ export function DisputaFormModal({
     setValoresPorLinha((atual) => ({ ...atual, [chave]: aplicarAlteracao(atual[chave], campo, valor) }));
   }
 
+  // Campos do cartão do GRUPO que valem para todos os itens dele (10/11/2026):
+  // ao preencher o grupo, cada item recebe o mesmo resultado, empresa vencedora
+  // e motivo da perda. Valor ofertado e valor do vencedor ficam de fora (no
+  // grupo são totais; no item, unitários) e a marca vencedora é de cada item.
+  const CAMPOS_DO_GRUPO_PARA_ITENS: (keyof ValoresLinha)[] = [
+    'resultadoItem',
+    'nomeVencedor',
+    'motivoPerda',
+    'motivoPerdaEvitavel',
+    'origemDesclassificacao',
+  ];
+
   function atualizarValorGrupo<K extends keyof ValoresLinha>(grupoId: string, campo: K, valor: ValoresLinha[K]) {
     setValoresPorGrupo((atual) => ({ ...atual, [grupoId]: aplicarAlteracao(atual[grupoId], campo, valor) }));
+
+    if (modoResultado === 'grupo_e_item' && CAMPOS_DO_GRUPO_PARA_ITENS.includes(campo)) {
+      const chavesDosItens = (blocosVisuais.find((bloco) => bloco.grupoId === grupoId)?.linhas ?? []).map(
+        (linha) => linha.chave,
+      );
+      setValoresPorLinha((atual) => {
+        const novo = { ...atual };
+        chavesDosItens.forEach((chave) => {
+          novo[chave] = aplicarAlteracao(atual[chave], campo, valor);
+        });
+        return novo;
+      });
+    }
   }
 
   function alternarGrupoColapsado(grupoId: string) {
@@ -1413,9 +1455,16 @@ export function DisputaFormModal({
                             )}
                           </>
                         );
+                        const itemCompacto = !!bloco.grupoId && modoResultado === 'grupo_e_item';
                         const subtitulo = `${linha.item.propostaCliente?.marca || '—'} · ${
                           linha.item.propostaCliente?.modelo || '—'
-                        } · Qtd. ${formatarNumero(linha.item.quantidade)}`;
+                        } · Qtd. ${formatarNumero(linha.item.quantidade)}${
+                          itemCompacto
+                            ? ` · Ref. ${linha.item.precoReferencia > 0 ? formatarMoeda(linha.item.precoReferencia) : '—'} · Mín. ${
+                                linha.precoMinimoComFreteUnitario > 0 ? formatarMoeda(linha.precoMinimoComFreteUnitario) : '—'
+                              }`
+                            : ''
+                        }`;
 
                         // Modo "Por grupo": o item é só conferência (linha
                         // compacta), como no layout aprovado.
@@ -1457,6 +1506,7 @@ export function DisputaFormModal({
                             posicaoSomenteLeitura={posicaoDoGrupo}
                             homologada={resultadoDefinitivo}
                             dentroDeGrupo={!!bloco.grupoId}
+                            compacto={!!bloco.grupoId && modoResultado === 'grupo_e_item'}
                           />
                         );
                       })}

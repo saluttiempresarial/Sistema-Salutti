@@ -535,19 +535,33 @@ export function PropostaComercialPage() {
                     </span>
                   )}
                   {licitacao.motivoRecusaCliente && ` ("${licitacao.motivoRecusaCliente}")`}. Se foi um engano, você
-                  pode reabrir a decisão: a licitação volta para "Aguardando decisão" e ele escolhe de novo.
+                  pode reabrir a decisão: a licitação volta para "Aguardando decisão" e ele escolhe de novo. Se ele
+                  quer participar com uma nova data, libere a data e hora de retorno: a licitação reaparece para
+                  ele com o botão "Quero Participar".
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErroReabertura(null)
-                    setConfirmandoReabertura(true)
-                  }}
-                  className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline"
-                >
-                  Reabrir decisão
-                </button>
+                <div className="flex items-center gap-4">
+                  {!mostrarFormLiberar && !propostaComercialTravadaDeVez(licitacao) && (
+                    <button
+                      type="button"
+                      onClick={() => setMostrarFormLiberar(true)}
+                      className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline"
+                    >
+                      Liberar nova data e reabrir
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErroReabertura(null)
+                      setConfirmandoReabertura(true)
+                    }}
+                    className="whitespace-nowrap font-body text-xs font-semibold text-forest-deep hover:underline"
+                  >
+                    Reabrir decisão
+                  </button>
+                </div>
               </div>
+              {mostrarFormLiberar && renderFormLiberacao('border-brass-pale/60')}
             </div>
           )}
 
