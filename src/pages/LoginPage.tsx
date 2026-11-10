@@ -52,30 +52,42 @@ export function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.15fr_1fr]">
+    <div className="grid min-h-screen font-['Manrope',sans-serif] lg:grid-cols-[1.15fr_1fr]">
       {/* Painel da marca: só em telas largas. */}
-      <aside className="relative hidden overflow-hidden bg-forest-deep text-white lg:flex lg:flex-col lg:justify-between lg:p-14">
+      <aside className="relative hidden overflow-hidden bg-forest-deep text-white lg:flex lg:flex-col lg:justify-between lg:p-16">
+        {/* Textura geométrica muito sutil: malha fina de linhas, esmaecida nas bordas. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-100 [mask-image:radial-gradient(ellipse_at_center,black_35%,transparent_85%)]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px)',
+            backgroundSize: '56px 56px',
+          }}
+        />
         <div aria-hidden="true" className="pointer-events-none absolute -right-40 -top-40 h-[34rem] w-[34rem] rounded-full border border-white/10" />
         <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-20 h-[26rem] w-[26rem] rounded-full border border-white/10" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-48 -left-32 h-[30rem] w-[30rem] rounded-full border border-white/10" />
 
-        <div className="relative inline-flex w-fit rounded-xl bg-paper px-5 py-3">
-          <Logo />
-        </div>
+        <img
+          src={`${import.meta.env.BASE_URL}brand/logo-salutti-claro.png`}
+          alt="Salutti"
+          className="relative h-14 w-auto self-start"
+        />
 
         <div className="relative max-w-xl">
-          <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-brass-light">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brass-light">
             Consultoria Estratégica para o Mercado Público
           </p>
-          <div aria-hidden="true" className="mt-4 h-0.5 w-14 bg-brass" />
-          <h1 className="mt-6 font-display text-4xl font-semibold leading-tight xl:text-5xl">
+          <div aria-hidden="true" className="mt-5 h-px w-24 bg-brass-light" />
+          <h1 className="mt-8 font-['Lora',serif] text-4xl font-semibold leading-[1.15] tracking-tight xl:text-[3.25rem]">
             Inteligência, planejamento e segurança nas contratações públicas.
           </h1>
-          <ul className="mt-10 space-y-4">
+          <ul className="mt-12 space-y-6">
             {DESTAQUES.map(({ Icone, texto }) => (
-              <li key={texto} className="flex items-center gap-3 font-body text-base text-white/85">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-brass-light">
-                  <Icone className="h-5 w-5" />
+              <li key={texto} className="flex items-center gap-4 text-base text-white/85">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-brass-light/50 text-brass-light">
+                  <Icone className="h-[18px] w-[18px]" />
                 </span>
                 {texto}
               </li>
@@ -83,7 +95,7 @@ export function LoginPage() {
           </ul>
         </div>
 
-        <p className="relative font-body text-xs text-white/60">
+        <p className="relative text-xs text-white/50">
           © {new Date().getFullYear()} Salutti · Acesso restrito a usuários autorizados
         </p>
       </aside>
@@ -94,12 +106,16 @@ export function LoginPage() {
           <Logo size="lg" />
         </div>
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center">
-          <h2 className="font-display text-3xl font-semibold text-forest-deep">Entrar no sistema</h2>
-          <p className="mb-8 mt-2 font-body text-sm text-ink-soft">
+          <h2 className="font-['Lora',serif] text-4xl font-semibold tracking-tight text-forest-deep">Entrar no sistema</h2>
+          <p className="mb-9 mt-3 text-base text-ink-soft">
             Acesse com as credenciais do seu perfil.
           </p>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+          <form
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-4 [&_button]:font-['Manrope',sans-serif] [&_button]:font-bold [&_input]:font-['Manrope',sans-serif] [&_label]:font-['Manrope',sans-serif] [&_p]:font-['Manrope',sans-serif]"
+            noValidate
+          >
             <TextField
               label="E-mail"
               type="email"
@@ -128,11 +144,11 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-6 font-body text-sm text-ink-soft">
+          <p className="mt-6 text-sm text-ink-soft">
             Primeiro acesso ou esqueceu a senha? Fale com a Salutti.
           </p>
         </div>
-        <p className="mt-8 text-center font-body text-xs text-ink-soft lg:hidden">
+        <p className="mt-8 text-center text-xs text-ink-soft lg:hidden">
           © {new Date().getFullYear()} Salutti · Acesso restrito a usuários autorizados
         </p>
       </main>
