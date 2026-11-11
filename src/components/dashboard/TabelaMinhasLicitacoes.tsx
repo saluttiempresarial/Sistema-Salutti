@@ -132,21 +132,21 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
       {!carregando && visiveis.length > 0 && (
         <>
           {/* Computador largo: tabela */}
-          <div className="hidden overflow-hidden rounded-xl border border-ink-soft/10 2xl:block">
+          <div className="hidden overflow-x-auto rounded-xl border border-ink-soft/10 2xl:block">
             <table className="w-full font-body text-sm">
               <thead className="bg-paper-2 text-left text-xs uppercase tracking-wide text-ink-soft">
                 <tr>
-                  <th className="px-4 py-3">Órgão</th>
-                  <th className="whitespace-nowrap px-3 py-3">Plataforma</th>
-                  <th className="whitespace-nowrap px-3 py-3">Número</th>
-                  <th className="whitespace-nowrap px-3 py-3">Cidade / UF</th>
-                  <th className="whitespace-nowrap px-3 py-3 text-right">Valor total</th>
-                  <th className="whitespace-nowrap px-3 py-3 text-right">Valor da participação</th>
-                  <th className="whitespace-nowrap px-3 py-3">Data da licitação</th>
-                  <th className="whitespace-nowrap px-3 py-3">Limite de retorno</th>
-                  <th className="whitespace-nowrap px-3 py-3">Prazo para alteração</th>
-                  <th className="whitespace-nowrap px-3 py-3">Decisão</th>
-                  <th className="w-10 px-3 py-3" />
+                  <th className="px-3 py-3 align-bottom">Órgão</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight">Plataforma</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight">Número</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight">Cidade / UF</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight text-right">Valor total</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight text-right">Valor da participação</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight">Data da licitação</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight">Limite de retorno</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight">Prazo para alteração</th>
+                  <th className="px-2.5 py-3 align-bottom leading-tight">Decisão</th>
+                  <th className="w-12 px-2 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-soft/10">
@@ -156,7 +156,7 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                   const prazo = calcularPrazoInterno(dataReferencia)
                   return (
                     <tr key={licitacao.id} className="hover:bg-paper-2/50">
-                      <td className="max-w-[260px] px-4 py-3">
+                      <td className="max-w-[220px] px-3 py-3">
                         <button
                           type="button"
                           onClick={() => navigate(`/cliente/licitacoes/${licitacao.id}`)}
@@ -166,30 +166,30 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                           {licitacao.orgao}
                         </button>
                       </td>
-                      <td className="max-w-[160px] truncate px-3 py-3 text-ink-soft" title={licitacao.portal}>
+                      <td className="max-w-[130px] truncate px-2.5 py-3 text-ink-soft" title={licitacao.portal}>
                         {licitacao.portal || '—'}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-ink-soft">
+                      <td className="whitespace-nowrap px-2.5 py-3 font-medium text-ink">{licitacao.numeroPregao}</td>
+                      <td className="whitespace-nowrap px-2.5 py-3 text-ink-soft">
                         {[licitacao.municipio, licitacao.estado].filter(Boolean).join(' / ')}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right text-ink-soft">
+                      <td className="whitespace-nowrap px-2.5 py-3 text-right text-ink-soft">
                         {licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right font-medium text-ink">
+                      <td className="whitespace-nowrap px-2.5 py-3 text-right font-medium text-ink">
                         <ValorParticipacao licitacao={licitacao} />
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-ink-soft">{formatarDataHora(dataReferencia)}</td>
-                      <td className={`whitespace-nowrap px-3 py-3 ${URGENCIA_CLASSE[urgencia]}`}>
+                      <td className="whitespace-nowrap px-2.5 py-3 text-ink-soft">{formatarDataHora(dataReferencia)}</td>
+                      <td className={`whitespace-nowrap px-2.5 py-3 ${URGENCIA_CLASSE[urgencia]}`}>
                         {formatarDataHora(prazo.toISOString())}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3">
+                      <td className="whitespace-nowrap px-2.5 py-3">
                         <PrazoProposta licitacao={licitacao} />
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-2.5 py-3">
                         <Etiqueta rotulo={DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]} tom={TOM_DECISAO[licitacao.decisaoCliente]} />
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-2.5 py-3">
                         <button
                           type="button"
                           onClick={() => navigate(`/cliente/licitacoes/${licitacao.id}`)}
