@@ -239,7 +239,7 @@ export function FiltrosIndicadoresBar({
       className="rounded-xl border border-ink-soft/15 bg-white p-3 shadow-soft"
     >
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Período">
-        <span className="mr-1 font-mono text-xs uppercase tracking-wide text-ink-soft">Período</span>
+        <span className="mr-1 font-body text-xs font-semibold text-ink-soft">Período</span>
         {ATALHOS.map((a) => (
           <button
             key={a.id}
@@ -285,7 +285,7 @@ export function FiltrosIndicadoresBar({
       {atalho === 'personalizado' && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="ind-data-de" className="font-mono text-xs uppercase tracking-wide text-ink-soft">
+          <label htmlFor="ind-data-de" className="font-body text-xs font-semibold text-ink-soft">
             Sessão de
           </label>
           <input
@@ -300,7 +300,7 @@ export function FiltrosIndicadoresBar({
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="ind-data-ate" className="font-mono text-xs uppercase tracking-wide text-ink-soft">
+          <label htmlFor="ind-data-ate" className="font-body text-xs font-semibold text-ink-soft">
             Sessão até
           </label>
           <input

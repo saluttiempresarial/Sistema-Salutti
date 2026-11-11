@@ -33,6 +33,7 @@ import type { DadosBaseIndicadores, FiltrosIndicadores } from '../../../types/in
 import { formatarNumero } from '../../../utils/prazoUtils'
 import { exportarIndicadoresExcel } from '../../../utils/exportarIndicadoresExcel'
 import { descreverFiltros } from '../../../utils/descricaoFiltrosIndicadores'
+import type { PontoSerieResumo } from '../../../components/indicadores/FaixaIndicadoresResumo'
 
 export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {}) {
   const { user } = useAuth()
@@ -119,6 +120,37 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
     const anteriorDe = anteriorAte - (dias - 1) * dia
     const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10)
     return calcularIndicadoresAdmin(dados, { ...filtros, dataDe: iso(anteriorDe), dataAte: iso(anteriorAte) })
+  }, [dados, filtros])
+
+  // Série mensal (até 12 meses) para os gráficos pequenos da faixa de resumo:
+  // enviadas e taxa de participação de cada mês, dentro dos demais filtros.
+  const serieMensal = useMemo<PontoSerieResumo[]>(() => {
+    if (!dados) return []
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const fim = filtros.dataAte ? new Date(`${filtros.dataAte}T00:00:00`) : new Date()
+    const inicio = filtros.dataDe
+      ? new Date(`${filtros.dataDe}T00:00:00`)
+      : new Date(fim.getFullYear(), fim.getMonth() - 5, 1)
+    if (Number.isNaN(fim.getTime()) || Number.isNaN(inicio.getTime()) || fim < inicio) return []
+    const meses: Date[] = []
+    const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1)
+    while (cursor <= fim) {
+      meses.push(new Date(cursor))
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+    return meses.slice(-12).map((primeiro) => {
+      const ultimo = new Date(primeiro.getFullYear(), primeiro.getMonth() + 1, 0)
+      const de = filtros.dataDe && iso(primeiro) < filtros.dataDe ? filtros.dataDe : iso(primeiro)
+      const ate = filtros.dataAte && iso(ultimo) > filtros.dataAte ? filtros.dataAte : iso(ultimo)
+      const r = calcularIndicadoresAdmin(dados, { ...filtros, dataDe: de, dataAte: ate }).relatorioPrincipal
+      return {
+        mes: iso(primeiro).slice(0, 7),
+        rotulo: primeiro.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+        enviadas: r.enviadas,
+        participacao: r.enviadas > 0 ? (r.participou / r.enviadas) * 100 : null,
+      }
+    })
   }, [dados, filtros])
 
   // Opções dos filtros de órgão e marca: só o que existe nos dados que este
@@ -241,7 +273,7 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
             </button>
           </div>
 
-          <div className="no-print sticky top-0 z-20 -mx-1 bg-paper px-1 py-1">
+          <div className="no-print">
             <FiltrosIndicadoresBar
               filtros={filtros}
               onChange={setFiltros}
@@ -269,6 +301,7 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
             ocultarVazios={filtrando}
             ocultarClientesSemAtividade={filtrandoAlemDeClienteEAnalista}
             anterior={indicadoresAnterior}
+            serieMensal={serieMensal}
             resultadoFiltro={filtros.resultado === 'ganho' || filtros.resultado === 'perdido' ? filtros.resultado : undefined}
           />
         </>

@@ -58,7 +58,7 @@ export function TextField({ label, error, id, className = '', type, ...rest }: T
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={fieldId} className="font-mono text-xs uppercase tracking-wide text-ink-soft">
+      <label htmlFor={fieldId} className="font-body text-xs font-semibold text-ink-soft">
         {label}
       </label>
 

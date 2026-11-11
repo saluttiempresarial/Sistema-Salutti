@@ -53,6 +53,8 @@ import type {
 import { FILTRO_SEM_ESFERA, SITUACAO_INATIVIDADE_LABEL } from '../../types/indicadores'
 import type { ResultadoLicitacaoFiltro } from '../../types/indicadores'
 import { FaixaIndicadoresResumo } from './FaixaIndicadoresResumo'
+import type { PontoSerieResumo } from './FaixaIndicadoresResumo'
+import { BarrasResultado, CartaoVisao, FunilPeriodo, RankingOrgaos, RoscaResultados } from './VisaoGeralBlocos'
 import { MOTIVO_PERDA_EVITAVEL_LABEL } from '../../types/disputa'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '../../utils/prazoUtils'
 
@@ -65,7 +67,7 @@ const COR_TEXTO = '#4A5A50'
 const ESTILO_DICA = {
   borderRadius: 8,
   border: '1px solid #D5DBD7',
-  fontFamily: '"Source Sans 3", sans-serif',
+  fontFamily: 'Manrope, sans-serif',
   fontSize: 13,
 }
 
@@ -91,12 +93,12 @@ function Cartao({
   const ocultarVazios = useContext(OcultarVaziosContexto)
   return (
     <section
-      className={`h-full rounded-xl border border-ink-soft/15 bg-white p-5 shadow-soft ${
+      className={`h-full rounded-2xl border border-ink-soft/10 bg-white p-5 shadow-soft ${
         ocultarVazios ? 'has-[>div>[data-vazio]]:hidden' : ''
       } ${className}`}
     >
-      <h3 className="font-display text-lg text-ink">{titulo}</h3>
-      {subtitulo && <p className="mt-0.5 font-body text-sm text-ink-soft">{subtitulo}</p>}
+      <h3 className="font-display text-base font-semibold text-ink">{titulo}</h3>
+      {subtitulo && <p className="mt-0.5 font-body text-xs text-ink-soft">{subtitulo}</p>}
       <div className="mt-4">{children}</div>
     </section>
   )
@@ -104,7 +106,7 @@ function Cartao({
 
 function SemDados({ texto = 'Sem dados para os filtros escolhidos.' }: { texto?: string }) {
   return (
-    <p data-vazio className="py-8 text-center font-body text-sm text-ink-soft">
+    <p data-vazio className="py-3 text-center font-body text-sm text-ink-soft">
       {texto}
     </p>
   )
@@ -123,9 +125,9 @@ function RelatorioPrincipalBloco({
   if (dados.cadastradas === 0) return <SemDados />
   const pct = (parte: number, todo: number) => (todo > 0 ? formatarPercentual((parte / todo) * 100) : '—')
   const Numero = ({ valor, rotulo, nota, destaque }: { valor: number; rotulo: string; nota?: string; destaque?: boolean }) => (
-    <div className="rounded bg-forest-mist p-3">
-      <p className={`font-display ${destaque ? 'text-3xl text-forest-deep' : 'text-2xl text-ink'}`}>{formatarNumero(valor)}</p>
-      <p className="font-body text-xs text-ink">{rotulo}</p>
+    <div className={`rounded-xl border p-3 ${destaque ? 'border-forest/25 bg-forest-mist/60' : 'border-ink-soft/10 bg-paper'}`}>
+      <p className={`font-display font-semibold ${destaque ? 'text-3xl text-forest-deep' : 'text-2xl text-ink'}`}>{formatarNumero(valor)}</p>
+      <p className="font-body text-xs font-medium text-ink">{rotulo}</p>
       {nota && <p className="font-body text-[11px] text-ink-soft">{nota}</p>}
     </div>
   )
@@ -143,7 +145,7 @@ function RelatorioPrincipalBloco({
   const maximo = Math.max(...etapas.map((e) => e.quantidade), 1)
   return (
     <div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Numero valor={dados.enviadas} rotulo="Enviadas ao cliente" nota={dados.emPreparacao > 0 ? `+ ${formatarNumero(dados.emPreparacao)} em preparação` : undefined} destaque />
         <Numero valor={dados.retornadas} rotulo="Retornadas" nota="o cliente respondeu" />
         <Numero valor={dados.semRetorno} rotulo="Sem retorno" nota="paradas com o cliente" />
@@ -156,15 +158,15 @@ function RelatorioPrincipalBloco({
         <Numero valor={dados.aguardandoResultado} rotulo="Aguardando resultado" nota="sem resultado lançado" />
       </div>
 
-      <p className="mt-4 font-mono text-[11px] uppercase tracking-wide text-ink-soft">Resultado das licitações disputadas</p>
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <p className="mt-4 font-body text-xs font-semibold text-ink-soft">Resultado das licitações disputadas</p>
+      <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Numero valor={dados.arrematadasEmAnalise} rotulo="Arrematadas em análise" nota="1º no lance; falta aceitação e homologação" />
         <Numero valor={dados.perdidasEmAnalise} rotulo="Perdidas em análise" nota="outro em 1º; sem homologação" />
         <Numero valor={dados.ganhas} rotulo="Ganhas" nota="ao menos 1 item ou grupo, homologado" destaque />
         <Numero valor={dados.perdidas} rotulo="Perdidas" nota="nenhum item ganho, homologado" />
       </div>
 
-      <p className="mt-4 font-mono text-[11px] uppercase tracking-wide text-ink-soft">Funil</p>
+      <p className="mt-4 font-body text-xs font-semibold text-ink-soft">Funil</p>
       <ol className="mt-2 space-y-2">
         {etapas.map((etapa, i) => {
           const anterior = i > 0 ? etapas[i - 1].quantidade : 0
@@ -179,7 +181,7 @@ function RelatorioPrincipalBloco({
                   )}
                 </span>
               </div>
-              <div className="mt-1 h-5 rounded bg-forest-mist">
+              <div className="mt-1 h-5 rounded-full bg-forest-mist">
                 <div
                   className="h-5 rounded"
                   style={{ width: `${Math.max((etapa.quantidade / maximo) * 100, 2)}%`, backgroundColor: i === etapas.length - 1 && resultadoFiltro !== 'perdido' ? COR_GANHO : COR_REFERENCIA }}
@@ -213,8 +215,8 @@ function CartaoTaxa({
 }) {
   return (
     <div className="rounded-lg bg-forest-mist/60 p-4">
-      <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">{titulo}</p>
-      <p className="mt-1 font-display text-4xl text-forest-deep">{formatarPercentual(principal)}</p>
+      <p className="font-body text-xs font-semibold text-ink-soft">{titulo}</p>
+      <p className="mt-1 font-display text-4xl font-semibold text-forest-deep">{formatarPercentual(principal)}</p>
       <p className="mt-1 font-body text-sm text-ink-soft">{detalhe}</p>
       {extra && <p className="mt-1 font-body text-sm text-ink">{extra}</p>}
     </div>
@@ -250,7 +252,7 @@ function EvolucaoTaxaMensal({ meses }: { meses: TaxaVitoriaMes[] }) {
   return (
     <div className="mt-5">
       <div className="flex items-center justify-between">
-        <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">Evolução mês a mês (mês da sessão)</p>
+        <p className="font-body text-xs font-semibold text-ink-soft">Evolução mês a mês (mês da sessão)</p>
         <div className="flex gap-1 font-body text-xs">
           {(['linhas', 'barras'] as const).map((t) => (
             <button
@@ -313,6 +315,8 @@ function TaxaVitoriaBloco({ atual, meses }: { atual: TaxaVitoria; meses: TaxaVit
 // ---------------------------------------------------------------------------
 // 3. Volume e valor adjudicado por mês
 // ---------------------------------------------------------------------------
+const JANELAS_MESES = { '1m': 1, '3m': 3, '6m': 6, '1a': 12 } as const
+
 // Volume (barras, eixo esquerdo) e valor adjudicado (linha, eixo direito) por
 // mês da sessão, no mesmo gráfico: mostra se o crescimento de licitações vira
 // valor ganho. A linha só aparece se o perfil pode ver o valor adjudicado.
@@ -323,6 +327,7 @@ function VolumeEValorMensal({
   volume: IndicadoresAdmin['volumePorMes']
   valor?: ValorAdjudicado
 }) {
+  const [janela, setJanela] = useState<'1m' | '3m' | '6m' | '1a' | 'tudo'>('6m')
   const meses = new Map<
     string,
     { mes: string; rotulo: string; licitacoes: number; valorReferencia: number; valorAdjudicado?: number }
@@ -339,11 +344,25 @@ function VolumeEValorMensal({
     .sort((a, b) => a.mes.localeCompare(b.mes))
     .map((m) => ({ ...m, valorAdjudicado: valor ? (m.valorAdjudicado ?? 0) : undefined }))
   if (dados.length === 0) return <SemDados />
+  const recorte = janela === 'tudo' ? dados : dados.slice(-JANELAS_MESES[janela])
   return (
     <div>
+      <div className="-mt-9 mb-3 flex justify-end gap-1 font-body text-xs" role="group" aria-label="Janela do gráfico">
+        {(['1m', '3m', '6m', '1a', 'tudo'] as const).map((j) => (
+          <button
+            key={j}
+            type="button"
+            onClick={() => setJanela(j)}
+            aria-pressed={janela === j}
+            className={`rounded-md px-2 py-1 ${janela === j ? 'bg-forest-mist font-semibold text-forest-deep' : 'text-ink-soft hover:bg-paper-2'}`}
+          >
+            {j === 'tudo' ? 'Tudo' : j}
+          </button>
+        ))}
+      </div>
       <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={dados} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <ComposedChart data={recorte} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke={COR_GRADE} />
             <XAxis dataKey="rotulo" tick={{ fill: COR_TEXTO, fontSize: 12 }} tickLine={false} axisLine={false} />
             <YAxis
@@ -374,7 +393,7 @@ function VolumeEValorMensal({
                 return `${rotulo} — valor de referência ${formatarMoeda(ref)}`
               }}
             />
-            <Legend wrapperStyle={{ fontSize: 13, fontFamily: '"Source Sans 3", sans-serif' }} />
+            <Legend wrapperStyle={{ fontSize: 13, fontFamily: 'Manrope, sans-serif' }} />
             <Bar yAxisId="qtd" dataKey="licitacoes" name="Licitações" fill={COR_REFERENCIA} radius={[4, 4, 0, 0]} maxBarSize={40} />
             {valor && (
               <Line
@@ -416,30 +435,19 @@ function BarrasDuplas({
   rotuloGanho: string
 }) {
   if (dados.length === 0) return <SemDados />
-  const altura = Math.max(dados.length * 46 + 48, 160)
-  return (
-    <div style={{ height: altura }} className="w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={dados} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid horizontal={false} stroke={COR_GRADE} />
-          <XAxis type="number" allowDecimals={false} tick={{ fill: COR_TEXTO, fontSize: 12 }} tickLine={false} axisLine={false} />
-          <YAxis
-            type="category"
-            dataKey={chaveRotulo}
-            width={190}
-            tick={{ fill: COR_TEXTO, fontSize: 12 }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v: string) => (v.length > 30 ? `${v.slice(0, 29)}…` : v)}
-          />
-          <Tooltip contentStyle={ESTILO_DICA} cursor={{ fill: '#E7F0EA' }} />
-          <Legend wrapperStyle={{ fontSize: 13, fontFamily: '"Source Sans 3", sans-serif' }} />
-          <Bar dataKey={chaveTotal} name={rotuloTotal} fill={COR_REFERENCIA} radius={[0, 4, 4, 0]} maxBarSize={16} />
-          <Bar dataKey={chaveGanho} name={rotuloGanho} fill={COR_GANHO} radius={[0, 4, 4, 0]} maxBarSize={16} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  )
+  const linhas = dados.map((d) => {
+    const total = Number(d[chaveTotal])
+    const ganho = Number(d[chaveGanho])
+    return {
+      chave: String(d[chaveRotulo]),
+      nome: String(d[chaveRotulo]),
+      licitacoes: total,
+      participou: total,
+      ganhou: ganho,
+      taxa: total > 0 ? (ganho / total) * 100 : null,
+    }
+  })
+  return <BarrasResultado linhas={linhas} rotuloTotal={rotuloTotal} rotuloGanho={rotuloGanho} />
 }
 
 function Familias({ barras }: { barras: BarraFamilia[] }) {
@@ -471,17 +479,17 @@ function Orgaos({ barras }: { barras: BarraOrgao[] }) {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[560px] text-left font-body text-sm">
             <thead>
-              <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
-                <th className="py-2 pr-3 font-normal">Órgão</th>
-                <th className="py-2 pr-3 text-right font-normal">Licitações</th>
-                <th className="py-2 pr-3 text-right font-normal">Taxa de vitória</th>
-                <th className="py-2 text-right font-normal">Valor adjudicado</th>
+              <tr className="border-b border-ink-soft/15 bg-paper text-xs font-semibold text-ink-soft">
+                <th className="py-2.5 px-3 font-semibold">Órgão</th>
+                <th className="py-2.5 px-3 text-right font-semibold">Licitações</th>
+                <th className="py-2.5 px-3 text-right font-semibold">Taxa de vitória</th>
+                <th className="py-2.5 text-right font-semibold px-3">Valor adjudicado</th>
               </tr>
             </thead>
             <tbody>
               {barras.map((b) => (
                 <tr key={b.orgao} className="border-b border-ink-soft/10 align-top">
-                  <td className="py-2 pr-3 text-ink">
+                  <td className="py-2.5 px-3 text-ink">
                     {b.orgao}
                     {(b.cnpj || b.uasg) && (
                       <div className="text-xs text-ink-soft">
@@ -491,17 +499,17 @@ function Orgaos({ barras }: { barras: BarraOrgao[] }) {
                       </div>
                     )}
                   </td>
-                  <td className="py-2 pr-3 text-right text-ink">
+                  <td className="py-2.5 px-3 text-right text-ink">
                     {formatarNumero(b.licitacoes)}
                     {b.licitacoes >= 3 && <div className="text-xs" style={{ color: COR_ALERTA }}>comprador recorrente</div>}
                   </td>
-                  <td className="py-2 pr-3 text-right text-ink">
+                  <td className="py-2.5 px-3 text-right text-ink">
                     {b.taxaVitoria !== null ? formatarPercentual(b.taxaVitoria) : '—'}
                     <div className="text-xs text-ink-soft">
                       {formatarNumero(b.vitorias)} de {formatarNumero(b.participacoes)}
                     </div>
                   </td>
-                  <td className="py-2 text-right text-ink">{formatarMoeda(b.valorAdjudicado)}</td>
+                  <td className="py-2.5 text-right text-ink px-3">{formatarMoeda(b.valorAdjudicado)}</td>
                 </tr>
               ))}
             </tbody>
@@ -526,7 +534,7 @@ function GanhoSobreMinimoBloco({ dados }: { dados: IndicadoresAdmin['ganhoSobreM
   const maximo = Math.max(...linhas.map((l) => Math.abs(l.percentual ?? 0)), 1)
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarPercentual(dados.geral)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarPercentual(dados.geral)}</p>
       <p className="font-body text-sm text-ink-soft">
         acima do mínimo com frete (média ponderada pelo valor), nos itens ganhos
       </p>
@@ -535,15 +543,15 @@ function GanhoSobreMinimoBloco({ dados }: { dados: IndicadoresAdmin['ganhoSobreM
         <strong>{formatarMoeda(dados.valorFechado)}</strong> fechados
       </p>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center font-body text-xs">
-        <div className="rounded bg-forest-mist p-2">
+        <div className="rounded-xl bg-forest-mist/70 p-3">
           <p className="font-display text-xl text-ink">{formatarNumero(dados.faixas.noLimite)}</p>
           <p className="text-ink-soft">No limite (até 3%): rever o mínimo</p>
         </div>
-        <div className="rounded bg-forest-mist p-2">
+        <div className="rounded-xl bg-forest-mist/70 p-3">
           <p className="font-display text-xl text-ink">{formatarNumero(dados.faixas.saudavel)}</p>
           <p className="text-ink-soft">Saudável (3% a 10%)</p>
         </div>
-        <div className="rounded bg-forest-mist p-2">
+        <div className="rounded-xl bg-forest-mist/70 p-3">
           <p className="font-display text-xl text-ink">{formatarNumero(dados.faixas.forte)}</p>
           <p className="text-ink-soft">Forte (acima de 10%)</p>
         </div>
@@ -556,7 +564,7 @@ function GanhoSobreMinimoBloco({ dados }: { dados: IndicadoresAdmin['ganhoSobreM
       )}
       {dados.porMarca.length > 0 && (
         <div className="mt-4">
-          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">Por marca (itens com preço próprio)</p>
+          <p className="font-body text-xs font-semibold text-ink-soft">Por marca (itens com preço próprio)</p>
           <ul className="mt-2 space-y-1">
             {dados.porMarca.map((m) => (
               <li key={m.chave} className="flex justify-between font-body text-sm">
@@ -572,7 +580,7 @@ function GanhoSobreMinimoBloco({ dados }: { dados: IndicadoresAdmin['ganhoSobreM
           </ul>
         </div>
       )}
-      <p className="mt-4 font-mono text-[11px] uppercase tracking-wide text-ink-soft">Por família</p>
+      <p className="mt-4 font-body text-xs font-semibold text-ink-soft">Por família</p>
       <ul className="mt-2 space-y-2">
         {linhas.map((l) => (
           <li key={l.chave} className="font-body text-sm">
@@ -582,9 +590,9 @@ function GanhoSobreMinimoBloco({ dados }: { dados: IndicadoresAdmin['ganhoSobreM
               </span>
               <strong className="text-ink">{formatarPercentual(l.percentual)}</strong>
             </div>
-            <div className="mt-1 h-2 rounded bg-forest-mist">
+            <div className="mt-1 h-3 rounded-full bg-forest-mist">
               <div
-                className="h-2 rounded"
+                className="h-3 rounded-full"
                 style={{ width: `${Math.max((Math.abs(l.percentual ?? 0) / maximo) * 100, 2)}%`, backgroundColor: COR_GANHO }}
               />
             </div>
@@ -607,13 +615,13 @@ function PerformanceAnalistasBloco({ dados }: { dados: IndicadoresAdmin['perform
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-left font-body text-sm">
           <thead>
-            <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
-              <th className="py-2 pr-3 font-normal">Analista</th>
-              <th className="py-2 pr-3 text-right font-normal">Enviadas</th>
-              <th className="py-2 pr-3 text-right font-normal">Participações</th>
-              <th className="py-2 pr-3 text-right font-normal">Taxa de vitória</th>
-              <th className="py-2 pr-3 text-right font-normal">Adjudicado</th>
-              <th className="py-2 text-right font-normal">Perdas evitáveis</th>
+            <tr className="border-b border-ink-soft/15 bg-paper text-xs font-semibold text-ink-soft">
+              <th className="py-2.5 px-3 font-semibold">Analista</th>
+              <th className="py-2.5 px-3 text-right font-semibold">Enviadas</th>
+              <th className="py-2.5 px-3 text-right font-semibold">Participações</th>
+              <th className="py-2.5 px-3 text-right font-semibold">Taxa de vitória</th>
+              <th className="py-2.5 px-3 text-right font-semibold">Adjudicado</th>
+              <th className="py-2.5 text-right font-semibold px-3">Perdas evitáveis</th>
             </tr>
           </thead>
           <tbody>
@@ -621,15 +629,15 @@ function PerformanceAnalistasBloco({ dados }: { dados: IndicadoresAdmin['perform
               const disputados = a.ganhos + a.perdidos
               return (
                 <tr key={a.id} className="border-b border-ink-soft/10 align-top">
-                  <td className="py-2 pr-3 text-ink">
+                  <td className="py-2.5 px-3 text-ink">
                     {a.nome}
                     <div className="text-xs text-ink-soft">
                       {formatarNumero(a.clientes)} {a.clientes === 1 ? 'cliente' : 'clientes'}
                     </div>
                   </td>
-                  <td className="py-2 pr-3 text-right text-ink">{formatarNumero(a.enviadas)}</td>
-                  <td className="py-2 pr-3 text-right text-ink">{formatarNumero(a.participacoes)}</td>
-                  <td className="py-2 pr-3 text-right text-ink">
+                  <td className="py-2.5 px-3 text-right text-ink">{formatarNumero(a.enviadas)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink">{formatarNumero(a.participacoes)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink">
                     {formatarPercentual(a.taxaVitoria)}
                     <div className="text-xs text-ink-soft">
                       {formatarNumero(a.ganhos)} de {formatarNumero(disputados)}
@@ -640,8 +648,8 @@ function PerformanceAnalistasBloco({ dados }: { dados: IndicadoresAdmin['perform
                       </div>
                     )}
                   </td>
-                  <td className="py-2 pr-3 text-right text-ink">{formatarMoeda(a.valorAdjudicado)}</td>
-                  <td className="py-2 text-right text-ink">
+                  <td className="py-2.5 px-3 text-right text-ink">{formatarMoeda(a.valorAdjudicado)}</td>
+                  <td className="py-2.5 text-right text-ink px-3">
                     {formatarNumero(a.perdasEvitaveis)}
                     {a.perdasEvitaveis > 0 && (
                       <div className="text-xs text-ink-soft">{formatarMoeda(a.valorPerdasEvitaveis)}</div>
@@ -674,30 +682,30 @@ function PerdasEvitaveisBloco({ dados }: { dados: IndicadoresAdmin['perdasEvitav
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] text-left font-body text-sm">
           <thead>
-            <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
-              <th className="py-2 pr-3 font-normal">Licitação</th>
-              <th className="py-2 pr-3 font-normal">Item / grupo</th>
-              <th className="py-2 pr-3 text-right font-normal">Nosso valor</th>
-              <th className="py-2 pr-3 text-right font-normal">Vencedor</th>
-              <th className="py-2 pr-3 text-right font-normal">Mínimo c/ frete</th>
-              <th className="py-2 font-normal">Por que foi evitável</th>
+            <tr className="border-b border-ink-soft/15 bg-paper text-xs font-semibold text-ink-soft">
+              <th className="py-2.5 px-3 font-semibold">Licitação</th>
+              <th className="py-2.5 px-3 font-semibold">Item / grupo</th>
+              <th className="py-2.5 px-3 text-right font-semibold">Nosso valor</th>
+              <th className="py-2.5 px-3 text-right font-semibold">Vencedor</th>
+              <th className="py-2.5 px-3 text-right font-semibold">Mínimo c/ frete</th>
+              <th className="py-2.5 font-semibold px-3">Por que foi evitável</th>
             </tr>
           </thead>
           <tbody>
             {dados.linhas.map((l, i) => (
               <tr key={`${l.licitacaoId}-${l.rotulo}-${i}`} className="border-b border-ink-soft/10 align-top">
-                <td className="py-2 pr-3 text-ink">
+                <td className="py-2.5 px-3 text-ink">
                   {l.numeroPregao}
                   <div className="text-xs text-ink-soft">{l.cliente}</div>
                 </td>
-                <td className="py-2 pr-3 text-ink">{l.rotulo}</td>
-                <td className="py-2 pr-3 text-right text-ink">{l.valorNosso != null ? formatarMoeda(l.valorNosso) : '—'}</td>
-                <td className="py-2 pr-3 text-right text-ink">
+                <td className="py-2.5 px-3 text-ink">{l.rotulo}</td>
+                <td className="py-2.5 px-3 text-right text-ink">{l.valorNosso != null ? formatarMoeda(l.valorNosso) : '—'}</td>
+                <td className="py-2.5 px-3 text-right text-ink">
                   {formatarMoeda(l.valorVencedor)}
                   <div className="text-xs text-ink-soft">{l.nomeVencedor || 'não informado'}</div>
                 </td>
-                <td className="py-2 pr-3 text-right text-ink">{formatarMoeda(l.valorMinimo)}</td>
-                <td className="py-2 text-ink">
+                <td className="py-2.5 px-3 text-right text-ink">{formatarMoeda(l.valorMinimo)}</td>
+                <td className="py-2.5 text-ink px-3">
                   {l.motivo ? MOTIVO_PERDA_EVITAVEL_LABEL[l.motivo] : <span className="text-ink-soft">não informado</span>}
                 </td>
               </tr>
@@ -707,7 +715,7 @@ function PerdasEvitaveisBloco({ dados }: { dados: IndicadoresAdmin['perdasEvitav
       </div>
       {dados.porMotivo.length > 0 && (
         <div className="mt-4">
-          <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Principais motivos</h4>
+          <h4 className="font-body text-xs font-semibold text-ink-soft">Principais motivos</h4>
           <ul className="mt-2 space-y-1">
             {dados.porMotivo.map((m) => (
               <li key={m.chave} className="flex justify-between font-body text-sm text-ink">
@@ -722,7 +730,7 @@ function PerdasEvitaveisBloco({ dados }: { dados: IndicadoresAdmin['perdasEvitav
       )}
       {dados.porAnalista && dados.porAnalista.length > 0 && (
         <div className="mt-4">
-          <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Ranking por analista (carteira)</h4>
+          <h4 className="font-body text-xs font-semibold text-ink-soft">Ranking por analista (carteira)</h4>
           <ul className="mt-2 space-y-1">
             {dados.porAnalista.map((a) => (
               <li key={a.nome} className="flex justify-between font-body text-sm text-ink">
@@ -750,7 +758,7 @@ function DistanciaDerrotaBloco({ dados }: { dados: DistanciaDerrota }) {
   if (dados.quantidade === 0) return <SemDados texto="Nenhuma perda por preço com valor do vencedor informado." />
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarPercentual(dados.geral)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarPercentual(dados.geral)}</p>
       <p className="font-body text-sm text-ink-soft">
         acima do valor do vencedor, em média, nas perdas por preço ({formatarNumero(dados.quantidade)}{' '}
         {dados.quantidade === 1 ? 'item ou grupo' : 'itens e grupos'})
@@ -759,15 +767,15 @@ function DistanciaDerrotaBloco({ dados }: { dados: DistanciaDerrota }) {
         <strong style={{ color: COR_ALERTA }}>{formatarMoeda(dados.valorAcima)}</strong> acima do vencedor, somados no período
       </p>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center font-body text-xs">
-        <div className="rounded bg-forest-mist p-2">
+        <div className="rounded-xl bg-forest-mist/70 p-3">
           <p className="font-display text-xl text-ink">{formatarNumero(dados.faixas.ate3)}</p>
           <p className="text-ink-soft">Até 3% (perdemos por pouco)</p>
         </div>
-        <div className="rounded bg-forest-mist p-2">
+        <div className="rounded-xl bg-forest-mist/70 p-3">
           <p className="font-display text-xl text-ink">{formatarNumero(dados.faixas.de3a10)}</p>
           <p className="text-ink-soft">De 3% a 10%</p>
         </div>
-        <div className="rounded bg-forest-mist p-2">
+        <div className="rounded-xl bg-forest-mist/70 p-3">
           <p className="font-display text-xl text-ink">{formatarNumero(dados.faixas.acima10)}</p>
           <p className="text-ink-soft">Acima de 10%</p>
         </div>
@@ -775,7 +783,7 @@ function DistanciaDerrotaBloco({ dados }: { dados: DistanciaDerrota }) {
 
       {dados.porMarca.length > 0 && (
         <div className="mt-4">
-          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">Por marca perdida (itens com marca)</p>
+          <p className="font-body text-xs font-semibold text-ink-soft">Por marca perdida (itens com marca)</p>
           <ul className="mt-2 space-y-1">
             {dados.porMarca.map((m) => (
               <li key={m.chave} className="flex justify-between font-body text-sm">
@@ -794,7 +802,7 @@ function DistanciaDerrotaBloco({ dados }: { dados: DistanciaDerrota }) {
 
       {dados.porFamilia.some((f) => f.percentual !== null) && (
         <div className="mt-4">
-          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">Por família</p>
+          <p className="font-body text-xs font-semibold text-ink-soft">Por família</p>
           <ul className="mt-2 space-y-1">
             {dados.porFamilia
               .filter((f) => f.percentual !== null)
@@ -812,32 +820,32 @@ function DistanciaDerrotaBloco({ dados }: { dados: DistanciaDerrota }) {
 
       {dados.perdasPorPouco.length > 0 && (
         <div className="mt-4">
-          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">Perdas por até 3%: quase ganhamos</p>
+          <p className="font-body text-xs font-semibold text-ink-soft">Perdas por até 3%: quase ganhamos</p>
           <div className="mt-2 max-h-72 overflow-auto">
             <table className="w-full min-w-[520px] text-left font-body text-sm">
               <thead className="sticky top-0 bg-white">
-                <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
-                  <th className="py-2 pr-3 font-normal">Licitação</th>
-                  <th className="py-2 pr-3 font-normal">Item / grupo</th>
-                  <th className="py-2 pr-3 text-right font-normal">Nosso preço</th>
-                  <th className="py-2 text-right font-normal">Vencedor</th>
+                <tr className="border-b border-ink-soft/15 bg-paper text-xs font-semibold text-ink-soft">
+                  <th className="py-2.5 px-3 font-semibold">Licitação</th>
+                  <th className="py-2.5 px-3 font-semibold">Item / grupo</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Nosso preço</th>
+                  <th className="py-2.5 text-right font-semibold px-3">Vencedor</th>
                 </tr>
               </thead>
               <tbody>
                 {dados.perdasPorPouco.map((l, i) => (
                   <tr key={`${l.licitacaoId}-${l.rotulo}-${i}`} className="border-b border-ink-soft/10 align-top">
-                    <td className="py-2 pr-3 text-ink">
+                    <td className="py-2.5 px-3 text-ink">
                       {l.numeroPregao}
                       <div className="text-xs text-ink-soft">
                         {l.orgao} · {l.cliente}
                       </div>
                     </td>
-                    <td className="py-2 pr-3 text-ink">{l.rotulo}</td>
-                    <td className="py-2 pr-3 text-right text-ink">
+                    <td className="py-2.5 px-3 text-ink">{l.rotulo}</td>
+                    <td className="py-2.5 px-3 text-right text-ink">
                       {formatarMoeda(l.valorNosso)}
                       <div className="text-xs text-ink-soft">+{formatarPercentual(l.percentual)}</div>
                     </td>
-                    <td className="py-2 text-right text-ink">
+                    <td className="py-2.5 text-right text-ink px-3">
                       {formatarMoeda(l.valorVencedor)}
                       <div className="text-xs text-ink-soft">{l.nomeVencedor}</div>
                     </td>
@@ -877,30 +885,30 @@ function PerdasHabilitacaoBloco({ dados }: { dados: IndicadoresAdmin['perdasHabi
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[640px] text-left font-body text-sm">
           <thead>
-            <tr className="border-b border-ink-soft/20 font-mono text-xs uppercase tracking-wide text-ink-soft">
-              <th className="py-2 pr-3 font-normal">Licitação</th>
-              <th className="py-2 pr-3 font-normal">Item / grupo</th>
-              <th className="py-2 pr-3 font-normal">Etapa e motivo</th>
-              <th className="py-2 pr-3 font-normal">Origem</th>
-              <th className="py-2 text-right font-normal">Valor</th>
+            <tr className="border-b border-ink-soft/15 bg-paper text-xs font-semibold text-ink-soft">
+              <th className="py-2.5 px-3 font-semibold">Licitação</th>
+              <th className="py-2.5 px-3 font-semibold">Item / grupo</th>
+              <th className="py-2.5 px-3 font-semibold">Etapa e motivo</th>
+              <th className="py-2.5 px-3 font-semibold">Origem</th>
+              <th className="py-2.5 text-right font-semibold px-3">Valor</th>
             </tr>
           </thead>
           <tbody>
             {dados.linhas.map((l, i) => (
               <tr key={`${l.licitacaoId}-${l.rotulo}-${i}`} className="border-b border-ink-soft/10 align-top">
-                <td className="py-2 pr-3 text-ink">
+                <td className="py-2.5 px-3 text-ink">
                   {l.numeroPregao}
                   <div className="text-xs text-ink-soft">
                     {l.orgao} · {l.cliente}
                   </div>
                 </td>
-                <td className="py-2 pr-3 text-ink">{l.rotulo}</td>
-                <td className="py-2 pr-3 text-ink">
+                <td className="py-2.5 px-3 text-ink">{l.rotulo}</td>
+                <td className="py-2.5 px-3 text-ink">
                   {l.etapa}
                   <div className="text-xs text-ink-soft">{l.motivo}</div>
                 </td>
-                <td className="py-2 pr-3 text-ink">{l.origem}</td>
-                <td className="py-2 text-right text-ink">{l.valor != null ? formatarMoeda(l.valor) : '—'}</td>
+                <td className="py-2.5 px-3 text-ink">{l.origem}</td>
+                <td className="py-2.5 text-right text-ink px-3">{l.valor != null ? formatarMoeda(l.valor) : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -920,7 +928,7 @@ function VitoriasConvocacaoBloco({ dados }: { dados: IndicadoresAdmin['vitoriasC
   }
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarMoeda(dados.valor)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarMoeda(dados.valor)}</p>
       <p className="font-body text-sm text-ink-soft">
         em {formatarNumero(dados.quantidade)} {dados.quantidade === 1 ? 'vitória' : 'vitórias'} vindas da desclassificação de concorrentes
       </p>
@@ -980,7 +988,7 @@ function ValorAdjudicadoBloco({ dados }: { dados: ValorAdjudicado }) {
   }
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarMoeda(dados.total)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarMoeda(dados.total)}</p>
       <p className="font-body text-sm text-ink-soft">
         em {formatarNumero(dados.licitacoesGanhas)} {dados.licitacoesGanhas === 1 ? 'licitação ganha' : 'licitações ganhas'}
       </p>
@@ -1005,7 +1013,7 @@ function ValorAdjudicadoBloco({ dados }: { dados: ValorAdjudicado }) {
                 return `${rotulo} — ${formatarNumero(ganhas)} ${ganhas === 1 ? 'licitação ganha' : 'licitações ganhas'}`
               }}
             />
-            <Legend wrapperStyle={{ fontSize: 13, fontFamily: '"Source Sans 3", sans-serif' }} />
+            <Legend wrapperStyle={{ fontSize: 13, fontFamily: 'Manrope, sans-serif' }} />
             <Bar dataKey="valorConvencional" name="Contratação convencional" stackId="adj" fill={COR_GANHO} maxBarSize={40} />
             <Bar dataKey="valorSrp" name="Registro de Preços (SRP)" stackId="adj" fill={COR_REFERENCIA} radius={[4, 4, 0, 0]} maxBarSize={40} />
           </BarChart>
@@ -1024,7 +1032,7 @@ function TicketMedioBloco({ dados }: { dados: ValorAdjudicado }) {
   if (dados.ticketMedio === null) return <SemDados texto="Nenhuma licitação ganha nos filtros escolhidos." />
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarMoeda(dados.ticketMedio)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarMoeda(dados.ticketMedio)}</p>
       <p className="font-body text-sm text-ink-soft">
         por licitação ganha: {formatarMoeda(dados.total)} em {formatarNumero(dados.licitacoesGanhas)}{' '}
         {dados.licitacoesGanhas === 1 ? 'licitação' : 'licitações'}
@@ -1053,7 +1061,7 @@ function PercentualPorFamiliaBloco({
   const maximo = Math.max(...linhas.map((l) => Math.abs(l.percentual ?? 0)), 1)
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarPercentual(dados.geral)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarPercentual(dados.geral)}</p>
       {dados.geral !== null && (
         <p className="font-body text-sm text-ink-soft">
           {textoGeral(dados.geral)} ({formatarNumero(dados.quantidade)}{' '}
@@ -1069,9 +1077,9 @@ function PercentualPorFamiliaBloco({
               </span>
               <strong className="text-ink">{formatarPercentual(l.percentual)}</strong>
             </div>
-            <div className="mt-1 h-2 rounded bg-forest-mist">
+            <div className="mt-1 h-3 rounded-full bg-forest-mist">
               <div
-                className="h-2 rounded"
+                className="h-3 rounded-full"
                 style={{
                   width: `${Math.max((Math.abs(l.percentual ?? 0) / maximo) * 100, 2)}%`,
                   backgroundColor: (l.percentual ?? 0) < 0 ? COR_ALERTA : COR_GANHO,
@@ -1106,7 +1114,7 @@ function ForaDeMercadoBloco({ dados }: { dados: ForaDeMercado }) {
   const visiveis = dados.linhas.slice(0, LIMITE_FORA_DE_MERCADO)
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarPercentual(dados.percentual)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarPercentual(dados.percentual)}</p>
       <p className="font-body text-sm text-ink-soft">
         {formatarNumero(dados.quantidade)} de {formatarNumero(dados.baseComVencedor)} itens perdidos tiveram vencedor
         abaixo do mínimo do cliente
@@ -1117,7 +1125,7 @@ function ForaDeMercadoBloco({ dados }: { dados: ForaDeMercado }) {
         </p>
       )}
       {dados.possivelmenteInexequiveis > 0 && (
-        <p className="mt-2 rounded bg-brass-pale/60 p-2 font-body text-xs text-ink">
+        <p className="mt-2 rounded-xl bg-brass-pale/60 p-3 font-body text-xs text-ink">
           <strong>{formatarNumero(dados.possivelmenteInexequiveis)}</strong>{' '}
           {dados.possivelmenteInexequiveis === 1 ? 'vencedor fechou' : 'vencedores fecharam'} 30% ou mais abaixo do mínimo: preço
           possivelmente inexequível (referência interna, não é critério legal).
@@ -1125,7 +1133,7 @@ function ForaDeMercadoBloco({ dados }: { dados: ForaDeMercado }) {
       )}
       {dados.composicao.total > 0 && (
         <div className="mt-4">
-          <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">
+          <p className="font-body text-xs font-semibold text-ink-soft">
             Composição das perdas definitivas ({formatarNumero(dados.composicao.total)})
           </p>
           <ul className="mt-2 grid grid-cols-2 gap-2 font-body text-xs sm:grid-cols-4">
@@ -1135,7 +1143,7 @@ function ForaDeMercadoBloco({ dados }: { dados: ForaDeMercado }) {
               ['Perdida na habilitação', dados.composicao.perdidaHabilitacao],
               ['Sem preço do vencedor', dados.composicao.semPrecoVencedor],
             ].map(([nome, q]) => (
-              <li key={nome as string} className="rounded bg-forest-mist p-2 text-center">
+              <li key={nome as string} className="rounded-xl bg-forest-mist/70 p-3 text-center">
                 <p className="font-display text-xl text-ink">{formatarNumero(q as number)}</p>
                 <p className="text-ink-soft">{nome}</p>
               </li>
@@ -1149,7 +1157,7 @@ function ForaDeMercadoBloco({ dados }: { dados: ForaDeMercado }) {
       ].map(([titulo, lista]) =>
         (lista as ForaDeMercadoGrupo[]).length > 0 ? (
           <div key={titulo as string} className="mt-4">
-            <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">{titulo as string}</p>
+            <p className="font-body text-xs font-semibold text-ink-soft">{titulo as string}</p>
             <ul className="mt-2 space-y-1">
               {(lista as ForaDeMercadoGrupo[]).map((g) => (
                 <li key={g.chave} className="flex justify-between font-body text-sm">
@@ -1203,7 +1211,7 @@ function TaxaVitoriaFamiliaBloco({ dados }: { dados: TaxaVitoriaFamilia }) {
   if (dados.disputados === 0) return <SemDados texto="Nenhum item ou grupo ganho ou perdido nos filtros escolhidos." />
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarPercentual(dados.geral)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarPercentual(dados.geral)}</p>
       <p className="font-body text-sm text-ink-soft">
         {formatarNumero(dados.ganhos)} {dados.ganhos === 1 ? 'ganho' : 'ganhos'} de {formatarNumero(dados.disputados)}{' '}
         {dados.disputados === 1 ? 'disputado' : 'disputados'}
@@ -1222,9 +1230,9 @@ function TaxaVitoriaFamiliaBloco({ dados }: { dados: TaxaVitoriaFamilia }) {
               )}
             </div>
             {!f.amostraPequena && (
-              <div className="mt-1 h-2 rounded bg-forest-mist">
+              <div className="mt-1 h-3 rounded-full bg-forest-mist">
                 <div
-                  className="h-2 rounded"
+                  className="h-3 rounded-full"
                   style={{ width: `${Math.max(f.percentual ?? 0, f.ganhos > 0 ? 2 : 0)}%`, backgroundColor: COR_GANHO }}
                 />
               </div>
@@ -1301,7 +1309,7 @@ function ProdutosNuncaGanhosBloco({ dados }: { dados: ProdutosNuncaGanhos }) {
   }
   return (
     <div>
-      <p className="font-display text-4xl text-forest-deep">{formatarNumero(dados.quantidade)}</p>
+      <p className="font-display text-4xl font-semibold text-forest-deep">{formatarNumero(dados.quantidade)}</p>
       <p className="font-body text-sm text-ink-soft">
         de {formatarNumero(dados.totalProdutos)} {dados.totalProdutos === 1 ? 'produto disputado' : 'produtos disputados'}{' '}
         nunca ganharam
@@ -1352,7 +1360,7 @@ function PipelineBloco({ dados }: { dados: Pipeline }) {
                   )}
                 </span>
               </div>
-              <div className="mt-1 h-4 rounded bg-forest-mist">
+              <div className="mt-1 h-4 rounded-full bg-forest-mist">
                 <div
                   className="h-4 rounded"
                   style={{ width: `${largura}%`, backgroundColor: finalizada ? COR_GANHO : COR_REFERENCIA }}
@@ -1489,8 +1497,8 @@ function Concorrentes({ lista }: { lista: Concorrente[] }) {
                   {formatarNumero(c.licitacoes)} {c.licitacoes === 1 ? 'licitação' : 'licitações'} · {formatarMoeda(c.valorTotal)}
                 </span>
               </div>
-              <div className="mt-1 h-2 rounded bg-brass-pale/60">
-                <div className="h-2 rounded" style={{ width: `${(c.vitorias / maximo) * 100}%`, backgroundColor: COR_ALERTA }} />
+              <div className="mt-1.5 h-3 rounded-full bg-brass-pale/60">
+                <div className="h-3 rounded-full" style={{ width: `${(c.vitorias / maximo) * 100}%`, backgroundColor: COR_ALERTA }} />
               </div>
               <p className="mt-1 text-xs text-ink-soft">
                 {c.distanciaMedia !== null
@@ -1530,9 +1538,9 @@ function formatarDias(valor: number | null): string {
 
 function Medida({ titulo, medida, nota }: { titulo: string; medida: { medianaDias: number | null; mediaDias: number | null; quantidade: number }; nota?: string }) {
   return (
-    <div className="rounded bg-forest-mist p-3">
-      <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">{titulo}</p>
-      <p className="mt-1 font-display text-3xl text-forest-deep">{formatarDias(medida.medianaDias)}</p>
+    <div className="rounded-xl border border-ink-soft/10 bg-paper p-3">
+      <p className="font-body text-xs font-semibold text-ink">{titulo}</p>
+      <p className="mt-1 font-display text-3xl font-semibold text-forest-deep">{formatarDias(medida.medianaDias)}</p>
       <p className="font-body text-xs text-ink-soft">
         mediana · média {formatarDias(medida.mediaDias)} · {formatarNumero(medida.quantidade)}{' '}
         {medida.quantidade === 1 ? 'licitação' : 'licitações'}
@@ -1544,17 +1552,21 @@ function Medida({ titulo, medida, nota }: { titulo: string; medida: { medianaDia
 
 function ListaTempos({ titulo, linhas }: { titulo: string; linhas: TempoResposta['porCliente'] }) {
   if (linhas.length === 0) return null
+  const maximo = Math.max(...linhas.map((l) => l.medianaDias), 1)
   return (
     <div>
-      <p className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">{titulo}</p>
-      <ul className="mt-2 max-h-64 space-y-1 overflow-auto">
+      <p className="font-body text-sm font-semibold text-ink">{titulo}</p>
+      <ul className="mt-3 max-h-72 space-y-3 overflow-auto pr-1">
         {linhas.map((l) => (
-          <li key={l.chave} className="flex justify-between gap-3 font-body text-sm">
-            <span className="text-ink">
+          <li key={l.chave} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 font-body text-sm">
+            <span className="truncate text-ink" title={`${l.nome} (${formatarNumero(l.quantidade)})`}>
               {l.nome} <span className="text-ink-soft">({formatarNumero(l.quantidade)})</span>
             </span>
-            <span className="shrink-0 text-ink">
-              <strong>{formatarDias(l.medianaDias)}</strong> <span className="text-ink-soft">· média {formatarDias(l.mediaDias)}</span>
+            <div className="h-3 rounded-full bg-forest-mist" aria-hidden="true">
+              <div className="h-3 rounded-full" style={{ width: `${Math.max((l.medianaDias / maximo) * 100, 3)}%`, backgroundColor: COR_GANHO }} />
+            </div>
+            <span className="whitespace-nowrap text-xs text-ink-soft">
+              <strong className="text-ink">{formatarDias(l.medianaDias)}</strong> · média {formatarDias(l.mediaDias)}
             </span>
           </li>
         ))}
@@ -1580,7 +1592,7 @@ function TempoRespostaBloco({ dados, mostrarAnalistas }: { dados: TempoResposta;
         />
       </div>
       {dados.envio.janelaCurta > 0 && (
-        <p className="rounded bg-brass-pale/60 p-2 font-body text-xs text-ink">
+        <p className="rounded-xl bg-brass-pale/60 p-3 font-body text-xs text-ink">
           <strong>{formatarNumero(dados.envio.janelaCurta)}</strong>{' '}
           {dados.envio.janelaCurta === 1 ? 'licitação foi liberada' : 'licitações foram liberadas'} com menos de 2 dias úteis para o
           cliente decidir.
@@ -1702,22 +1714,22 @@ function ValorPorClienteBloco({ dados, segmentos }: { dados: ValorCliente[]; seg
     <div className="max-h-[28rem] overflow-auto">
       <table className="w-full min-w-[800px] font-body text-sm">
         <thead className="sticky top-0 bg-white">
-          <tr className="border-b border-ink-soft/15 text-left font-mono text-[11px] uppercase tracking-wide text-ink-soft">
-            <th className="py-2 pr-3 font-semibold">Cliente</th>
-            <th className="py-2 pr-3 text-right font-semibold">Peso na carteira</th>
-            <th className="py-2 pr-3 text-right font-semibold">Enviadas</th>
-            <th className="py-2 pr-3 text-right font-semibold">Participações</th>
-            <th className="py-2 pr-3 text-right font-semibold">Taxa de vitória</th>
-            <th className="py-2 pr-3 text-right font-semibold">Em disputa</th>
-            <th className="py-2 pr-3 text-right font-semibold">Adjudicado</th>
-            <th className="py-2 text-right font-semibold">Ganho s/ mínimo</th>
+          <tr className="border-b border-ink-soft/15 bg-paper text-left text-xs font-semibold text-ink-soft">
+            <th className="py-2.5 px-3 font-semibold">Cliente</th>
+            <th className="py-2.5 px-3 text-right font-semibold">Peso na carteira</th>
+            <th className="py-2.5 px-3 text-right font-semibold">Enviadas</th>
+            <th className="py-2.5 px-3 text-right font-semibold">Participações</th>
+            <th className="py-2.5 px-3 text-right font-semibold">Taxa de vitória</th>
+            <th className="py-2.5 px-3 text-right font-semibold">Em disputa</th>
+            <th className="py-2.5 px-3 text-right font-semibold">Adjudicado</th>
+            <th className="py-2.5 text-right font-semibold px-3">Ganho s/ mínimo</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-ink-soft/10">
           {dados.map((c) => (
             <tr key={c.chave}>
-              <td className="max-w-[220px] truncate py-2 pr-3 text-ink">{c.nome}</td>
-              <td className="py-2 pr-3 text-right text-ink-soft">
+              <td className="max-w-[220px] truncate py-2.5 px-3 text-ink">{c.nome}</td>
+              <td className="py-2.5 px-3 text-right text-ink-soft">
                 {formatarPercentual(c.pesoCarteira)}
                 {c.pesoCarteira > LIMITE_CONCENTRACAO && (
                   <div className="text-xs font-semibold" style={{ color: COR_ALERTA }}>
@@ -1725,15 +1737,15 @@ function ValorPorClienteBloco({ dados, segmentos }: { dados: ValorCliente[]; seg
                   </div>
                 )}
               </td>
-              <td className="py-2 pr-3 text-right text-ink-soft">{formatarNumero(c.enviadas)}</td>
-              <td className="py-2 pr-3 text-right text-ink-soft">{formatarNumero(c.participacoes)}</td>
-              <td className="py-2 pr-3 text-right text-ink-soft">{c.taxaVitoria !== null ? formatarPercentual(c.taxaVitoria) : '—'}</td>
-              <td className="py-2 pr-3 text-right text-ink-soft">{formatarMoeda(c.valorEmDisputa)}</td>
-              <td className="py-2 pr-3 text-right font-semibold text-forest">
+              <td className="py-2.5 px-3 text-right text-ink-soft">{formatarNumero(c.enviadas)}</td>
+              <td className="py-2.5 px-3 text-right text-ink-soft">{formatarNumero(c.participacoes)}</td>
+              <td className="py-2.5 px-3 text-right text-ink-soft">{c.taxaVitoria !== null ? formatarPercentual(c.taxaVitoria) : '—'}</td>
+              <td className="py-2.5 px-3 text-right text-ink-soft">{formatarMoeda(c.valorEmDisputa)}</td>
+              <td className="py-2.5 px-3 text-right font-semibold text-forest">
                 {formatarMoeda(c.valorAdjudicado)}
                 <div className="text-xs font-normal text-ink-soft">{formatarNumero(c.licitacoesGanhas)} ganhas</div>
               </td>
-              <td className="py-2 text-right text-ink-soft">{c.ganhoSobreMinimo !== null ? formatarPercentual(c.ganhoSobreMinimo) : '—'}</td>
+              <td className="py-2.5 text-right text-ink-soft px-3">{c.ganhoSobreMinimo !== null ? formatarPercentual(c.ganhoSobreMinimo) : '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -1755,26 +1767,7 @@ function ValorPorClienteBloco({ dados, segmentos }: { dados: ValorCliente[]; seg
 
 function ModalidadeBloco({ dados }: { dados: DesempenhoModalidade[] }) {
   if (dados.length === 0) return <SemDados />
-  return (
-    <div className="space-y-4">
-      <BarrasDuplas
-        dados={dados.map((m) => ({ modalidade: m.nome, participou: m.participou, ganhou: m.ganhou }))}
-        chaveRotulo="modalidade"
-        chaveTotal="participou"
-        chaveGanho="ganhou"
-        rotuloTotal="Participou"
-        rotuloGanho="Com vitória"
-      />
-      <ul className="font-body text-sm text-ink-soft">
-        {dados.map((m) => (
-          <li key={m.chave}>
-            <strong className="text-ink">{m.nome}:</strong> {formatarNumero(m.licitacoes)}{' '}
-            {m.licitacoes === 1 ? 'licitação' : 'licitações'} · taxa de vitória {formatarPercentual(m.taxa)}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
+  return <BarrasResultado linhas={dados} />
 }
 
 function UfEsferaBloco({ dados }: { dados: MercadoUfEsfera }) {
@@ -1782,25 +1775,10 @@ function UfEsferaBloco({ dados }: { dados: MercadoUfEsfera }) {
   const semEsfera = dados.porEsfera.find((e) => e.chave === FILTRO_SEM_ESFERA)
   const totalEsferas = dados.porEsfera.reduce((soma, e) => soma + e.licitacoes, 0)
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid gap-8 lg:grid-cols-2">
       <div className="space-y-3">
-        <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Por esfera</h4>
-        <BarrasDuplas
-          dados={dados.porEsfera.map((e) => ({ esfera: e.nome, participou: e.participou, ganhou: e.ganhou }))}
-          chaveRotulo="esfera"
-          chaveTotal="participou"
-          chaveGanho="ganhou"
-          rotuloTotal="Participou"
-          rotuloGanho="Com vitória"
-        />
-        <ul className="font-body text-sm text-ink-soft">
-          {dados.porEsfera.map((e) => (
-            <li key={e.chave}>
-              <strong className="text-ink">{e.nome}:</strong> {formatarNumero(e.licitacoes)}{' '}
-              {e.licitacoes === 1 ? 'licitação' : 'licitações'} · taxa de vitória {formatarPercentual(e.taxa)}
-            </li>
-          ))}
-        </ul>
+        <h4 className="font-body text-sm font-semibold text-ink">Por esfera</h4>
+        <BarrasResultado linhas={dados.porEsfera} />
         {semEsfera && (
           <p className="rounded-lg bg-paper-2/60 px-3 py-2 font-body text-xs text-ink-soft">
             {formatarNumero(semEsfera.licitacoes)} de {formatarNumero(totalEsferas)}{' '}
@@ -1810,23 +1788,8 @@ function UfEsferaBloco({ dados }: { dados: MercadoUfEsfera }) {
         )}
       </div>
       <div className="space-y-3">
-        <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Por UF (10 com mais licitações)</h4>
-        <BarrasDuplas
-          dados={dados.porUf.map((u) => ({ uf: u.nome, participou: u.participou, ganhou: u.ganhou }))}
-          chaveRotulo="uf"
-          chaveTotal="participou"
-          chaveGanho="ganhou"
-          rotuloTotal="Participou"
-          rotuloGanho="Com vitória"
-        />
-        <ul className="font-body text-sm text-ink-soft">
-          {dados.porUf.map((u) => (
-            <li key={u.chave}>
-              <strong className="text-ink">{u.nome}:</strong> {formatarNumero(u.licitacoes)}{' '}
-              {u.licitacoes === 1 ? 'licitação' : 'licitações'} · taxa de vitória {formatarPercentual(u.taxa)}
-            </li>
-          ))}
-        </ul>
+        <h4 className="font-body text-sm font-semibold text-ink">Por UF (10 com mais licitações)</h4>
+        <BarrasResultado linhas={dados.porUf} />
       </div>
     </div>
   )
@@ -1844,7 +1807,7 @@ function MotivosNaoParticipacaoBloco({ dados }: { dados: MotivosNaoParticipacao 
           <strong>{formatarMoeda(dados.valorReferenciaDescartado)}</strong> em valor de referência descartado
         </p>
         {dados.semResposta.quantidade > 0 && (
-          <p className="rounded bg-brass-pale/60 p-2 font-body text-xs text-ink">
+          <p className="rounded-xl bg-brass-pale/60 p-3 font-body text-xs text-ink">
             <strong>Falha de processo:</strong> {formatarNumero(dados.semResposta.quantidade)} sem resposta do cliente (
             {formatarPercentual(dados.semResposta.percentual)}), somando {formatarMoeda(dados.semResposta.valorReferencia)} em valor de
             referência. Não é decisão do cliente: é oportunidade parada.
@@ -1873,19 +1836,19 @@ function MotivosNaoParticipacaoBloco({ dados }: { dados: MotivosNaoParticipacao 
           ))}
         </ul>
         {dados.percentualOutro !== null && dados.percentualOutro > 15 && (
-          <p className="rounded bg-brass-pale/60 p-2 font-body text-xs text-ink">
+          <p className="rounded-xl bg-brass-pale/60 p-3 font-body text-xs text-ink">
             "Outro" é {formatarPercentual(dados.percentualOutro)} das recusas (acima de 15%): sinal de que falta um motivo na lista.
           </p>
         )}
         {dados.percentualTriagem !== null && dados.percentualTriagem >= 30 && (
-          <p className="rounded bg-brass-pale/60 p-2 font-body text-xs text-ink">
+          <p className="rounded-xl bg-brass-pale/60 p-3 font-body text-xs text-ink">
             "Produto não trabalhado" e "especificação não atendida" somam {formatarPercentual(dados.percentualTriagem)} das recusas:
             indício de falha na triagem da Salutti (referência interna: a partir de 30%).
           </p>
         )}
         {dados.textosOutro.length > 0 && (
           <div>
-            <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Textos de "Outro"</h4>
+            <h4 className="font-body text-xs font-semibold text-ink-soft">Textos de "Outro"</h4>
             <ul className="mt-1 space-y-1 font-body text-xs text-ink">
               {dados.textosOutro.map((t) => (
                 <li key={t.licitacaoId}>
@@ -1910,7 +1873,7 @@ function MotivosNaoParticipacaoBloco({ dados }: { dados: MotivosNaoParticipacao 
         </p>
       </div>
       <div className="space-y-3">
-        <h4 className="font-mono text-xs uppercase tracking-wide text-ink-soft">Por grupo de motivo</h4>
+        <h4 className="font-body text-xs font-semibold text-ink-soft">Por grupo de motivo</h4>
         <ul className="space-y-1.5 font-body text-sm text-ink-soft">
           {dados.porGrupo.map((g) => (
             <li key={g.grupo} className="flex items-baseline justify-between gap-3">
@@ -1975,6 +1938,8 @@ interface IndicadoresGraficosProps {
   resultadoFiltro?: ResultadoLicitacaoFiltro
   /** Mesmos indicadores no período anterior (de mesma duração), para a faixa de resumo. */
   anterior?: IndicadoresAdmin | null
+  /** Série mensal para os gráficos pequenos da faixa de resumo. */
+  serieMensal?: PontoSerieResumo[]
 }
 
 /** Cards que não fazem sentido num recorte só de ganhos ou só de perdas. */
@@ -2006,7 +1971,7 @@ const ABAS: { id: AbaIndicadores; rotulo: string }[] = [
 ]
 
 const ABA_DO_INDICADOR: Record<ChaveIndicador, AbaIndicadores> = {
-  funil: 'geral',
+  funil: 'funil',
   taxa_vitoria: 'geral',
   volume_periodo: 'geral',
   valor_adjudicado: 'preco',
@@ -2043,6 +2008,7 @@ export function IndicadoresGraficos({
   ocultarClientesSemAtividade = false,
   resultadoFiltro,
   anterior,
+  serieMensal,
 }: IndicadoresGraficosProps) {
   // Com filtro ativo, analista sem nenhuma licitação no recorte é só ruído.
   const linhasAnalistas = ocultarVazios
@@ -2056,7 +2022,7 @@ export function IndicadoresGraficos({
       ABAS.filter((a) =>
         (Object.keys(ABA_DO_INDICADOR) as ChaveIndicador[]).some(
           (chave) => ABA_DO_INDICADOR[chave] === a.id && ver(chave),
-        ),
+        ) || (a.id === 'geral' && (ver('funil') || ver('volume_periodo') || ver('orgaos'))),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visiveis, resultadoFiltro],
@@ -2098,22 +2064,59 @@ export function IndicadoresGraficos({
       ))}
     </div>
     {abaAtiva === 'geral' && (
-      <FaixaIndicadoresResumo atual={indicadores} anterior={anterior} pode={(chave) => ver(chave)} />
+      <>
+        <FaixaIndicadoresResumo atual={indicadores} anterior={anterior} serie={serieMensal} pode={(chave) => ver(chave)} />
+        <div className="mb-6 grid gap-5 lg:grid-cols-5">
+          {ver('volume_periodo') && (
+            <CartaoVisao
+              titulo="Licitações e valor adjudicado por mês"
+              ajuda="Barras: licitações por mês da sessão. Linha: valor dos itens e grupos ganhos. Passe o mouse para ver o valor de referência."
+              className="lg:col-span-3"
+            >
+              <VolumeEValorMensal volume={indicadores.volumePorMes} valor={ver('valor_adjudicado') ? indicadores.valorAdjudicado : undefined} />
+            </CartaoVisao>
+          )}
+          {ver('funil') && (
+            <CartaoVisao
+              titulo="Funil do período"
+              ajuda="Licitações enviadas ao cliente, quantas ele respondeu, em quantas decidiu participar e quantas foram ganhas (homologadas)."
+              className={ver('volume_periodo') ? 'lg:col-span-2' : 'lg:col-span-5'}
+            >
+              <FunilPeriodo dados={indicadores.relatorioPrincipal} resultadoFiltro={resultadoFiltro} />
+            </CartaoVisao>
+          )}
+          {ver('funil') && (
+            <CartaoVisao
+              titulo="Resultado das disputas"
+              ajuda="Ganhas e perdidas são resultados homologados. Em análise: falta a homologação. Aguardando: participou, mas ainda não há resultado lançado."
+              className="lg:col-span-2"
+            >
+              <RoscaResultados dados={indicadores.relatorioPrincipal} />
+            </CartaoVisao>
+          )}
+          {ver('orgaos') && (
+            <CartaoVisao
+              titulo="Órgãos com mais participações"
+              ajuda="Os seis órgãos com mais participações e, em cada um, em quantas houve vitória."
+              className={ver('funil') ? 'lg:col-span-3' : 'lg:col-span-5'}
+            >
+              <RankingOrgaos barras={indicadores.orgaos} />
+            </CartaoVisao>
+          )}
+        </div>
+        {(mostrar('taxa_vitoria') || mostrar('pipeline') || mostrar('prazos_proximos')) && (
+          <h2 className="mb-3 font-display text-lg font-semibold text-ink">Detalhes</h2>
+        )}
+      </>
     )}
     <div className="grid grid-flow-dense gap-5 lg:grid-cols-2">
       {/* Os três indicadores principais vêm primeiro, para todos os perfis. */}
-      {mostrar('volume_periodo') && (
+      {mostrar('funil') && (
         <Cartao
-          titulo="Volume e valor adjudicado por mês"
-          subtitulo="Barras: licitações por mês da sessão. Linha: valor dos itens e grupos ganhos (passe o mouse para ver o valor de referência)"
+          titulo="Relatório principal"
+          subtitulo="Total de licitações do período: enviadas, retornadas, disputadas e resultado (por licitação)"
           className="lg:col-span-2"
         >
-          <VolumeEValorMensal volume={indicadores.volumePorMes} valor={ver('valor_adjudicado') ? indicadores.valorAdjudicado : undefined} />
-        </Cartao>
-      )}
-
-      {mostrar('funil') && (
-        <Cartao titulo="Relatório principal" subtitulo="Total de licitações do período: enviadas, retornadas, disputadas e resultado (por licitação)">
           <RelatorioPrincipalBloco dados={indicadores.relatorioPrincipal} resultadoFiltro={resultadoFiltro} />
         </Cartao>
       )}
@@ -2221,7 +2224,7 @@ export function IndicadoresGraficos({
           <MarcasBloco barras={indicadores.marcas} />
           {indicadores.categoriasServico.length > 0 && (
             <div className="mt-6 border-t border-ink-soft/10 pt-4">
-              <p className="mb-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft">
+              <p className="mb-2 font-body text-xs font-semibold text-ink-soft">
                 Categorias de serviço (itens de licitações de Serviços)
               </p>
               <CategoriasServicoBloco barras={indicadores.categoriasServico} />
