@@ -23,6 +23,7 @@ import { LicitacaoDetalhePage } from '@/pages/cliente/LicitacaoDetalhePage'
 import { PropostaComercialPage as ClientePropostaComercialPage } from '@/pages/cliente/PropostaComercialPage'
 import { CalendarioPage as ClienteCalendarioPage } from '@/pages/cliente/CalendarioPage'
 import { RelatoriosPage as ClienteRelatoriosPage } from '@/pages/cliente/RelatoriosPage'
+import { ConfiguracoesPage as ClienteConfiguracoesPage } from '@/pages/cliente/ConfiguracoesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export default function App() {
@@ -242,6 +243,17 @@ export default function App() {
               <ProtectedRoute allowedRoles={['cliente']}>
                 <ClienteLayout>
                   <ClienteRelatoriosPage />
+                </ClienteLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cliente/configuracoes"
+            element={
+              <ProtectedRoute allowedRoles={['cliente']}>
+                <ClienteLayout>
+                  <ClienteConfiguracoesPage />
                 </ClienteLayout>
               </ProtectedRoute>
             }

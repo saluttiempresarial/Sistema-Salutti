@@ -18,7 +18,8 @@ import { ROLE_LABEL } from '@/types/auth'
 import { Logo } from '@/components/Logo'
 import { FotoPerfilCropModal } from './FotoPerfilCropModal'
 import { avisarFotoPerfilAtualizada } from '@/utils/fotoPerfilEvento'
-import { IconeDocumento, IconeInicio, IconeFechar, IconeGrafico } from '@/components/icones'
+import { IconeDocumento, IconeInicio, IconeFechar, IconeGrafico, IconeEngrenagem } from '@/components/icones'
+import { liberacaoOperadorService } from '@/services/liberacaoOperadorService'
 
 interface ItemMenu {
   label: string
@@ -33,6 +34,13 @@ const ITENS: ItemMenu[] = [
   { label: 'Licitações', to: '/cliente/licitacoes', icon: <IconeDocumento /> },
   { label: 'Relatórios', to: '/cliente/relatorios', icon: <IconeGrafico /> },
 ]
+
+// Só o Responsável (gestor) da empresa vê "Configurações".
+const ITEM_CONFIGURACOES: ItemMenu = {
+  label: 'Configurações',
+  to: '/cliente/configuracoes',
+  icon: <IconeEngrenagem />,
+}
 
 interface ClienteSidebarProps {
   /** Gaveta aberta (só vale no tablet; no computador o menu é fixo). */
@@ -50,6 +58,23 @@ export function ClienteSidebar({ aberta = false, onFechar }: ClienteSidebarProps
     .slice(0, 2)
     .map((parte) => parte[0]?.toUpperCase())
     .join('')
+
+  const [ehResponsavel, setEhResponsavel] = useState(false)
+  useEffect(() => {
+    let ativo = true
+    liberacaoOperadorService
+      .carregar()
+      .then((dados) => {
+        if (ativo) setEhResponsavel(dados !== null)
+      })
+      .catch(() => {
+        if (ativo) setEhResponsavel(false)
+      })
+    return () => {
+      ativo = false
+    }
+  }, [])
+  const itensMenu = ehResponsavel ? [...ITENS, ITEM_CONFIGURACOES] : ITENS
 
   const [fotoUrl, setFotoUrl] = useState<string | undefined>(undefined)
   const [enviandoFoto, setEnviandoFoto] = useState(false)
@@ -105,7 +130,7 @@ export function ClienteSidebar({ aberta = false, onFechar }: ClienteSidebarProps
       {/* `lg:transform-none` evita que a gaveta vire referência de posição
           para janelas (modais) abertas de dentro dela. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto bg-forest-deep transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-64 lg:max-w-none lg:shrink-0 lg:self-start lg:transform-none ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto bg-forest-deep transition-transform duration-200 lg:sticky lg:top-[var(--faixa-visualizacao,0px)] lg:z-auto lg:h-[calc(100vh-var(--faixa-visualizacao,0px))] lg:w-64 lg:max-w-none lg:shrink-0 lg:self-start lg:transform-none ${
           aberta ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -162,7 +187,7 @@ export function ClienteSidebar({ aberta = false, onFechar }: ClienteSidebarProps
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-3" aria-label="Menu principal">
-          {ITENS.map((item) => {
+          {itensMenu.map((item) => {
             const ativo = estaAtivo(item)
             return (
               <Link

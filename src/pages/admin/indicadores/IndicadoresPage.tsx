@@ -18,7 +18,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiltrosIndicadoresBar } from '../../../components/indicadores/FiltrosIndicadoresBar'
 import { IndicadoresGraficos } from '../../../components/indicadores/IndicadoresGraficos'
-import { LiberacaoOperadoresSecao } from '../../../components/indicadores/LiberacaoOperadoresSecao'
 import { useAuth } from '../../../context/AuthContext'
 import { usePermissoes } from '../../../hooks/usePermissoes'
 import { liberacaoAnalistaService } from '../../../services/liberacaoAnalistaService'
@@ -305,12 +304,6 @@ export function IndicadoresPage({ embutido = false }: { embutido?: boolean } = {
             resultadoFiltro={filtros.resultado === 'ganho' || filtros.resultado === 'perdido' ? filtros.resultado : undefined}
           />
         </>
-      )}
-
-      {ehCliente && !carregando && (
-        <div className="no-print">
-          <LiberacaoOperadoresSecao />
-        </div>
       )}
     </div>
   )
