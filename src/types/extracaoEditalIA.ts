@@ -52,6 +52,10 @@ export interface ExtracaoEditalIA {
   participacao: ParticipacaoLicitacao;
   capag?: string;
   valorTotalLicitacao?: number;
+  // 12/11: vêm do JSON de importação (Prompt SALUTTI – Importação); a Edge Function
+  // de leitura de PDF ainda não os devolve.
+  orgaoCnpj?: string; // só números
+  orgaoUasg?: string;
 
   habilitacao: {
     juridica: ItemChecklistExtraidoIA[];

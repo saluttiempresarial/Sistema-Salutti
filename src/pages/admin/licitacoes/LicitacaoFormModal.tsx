@@ -107,6 +107,9 @@ import { numeroParaCampoDecimal, campoParaNumeroDecimal, aplicarMascaraAoDigitar
 // formulário a partir do PDF do edital; nunca grava sozinha, sempre fica
 // como rascunho para o Admin/Analista revisar e confirmar antes de salvar.
 import { editalIaService } from '../../../services/editalIaService';
+// Importação por JSON (12/11): o analista cola o resultado do "Prompt SALUTTI –
+// Importação para o Sistema"; o formulário é pré-preenchido como rascunho.
+import { lerImportacaoEditalJson } from '../../../utils/importacaoEditalJson';
 import { familiaProdutoService, FamiliaProduto } from '../../../services/familiaProdutoService';
 import { ESTADOS_BRASIL, ibgeService, normalizarNomeLocal } from '../../../services/ibgeService';
 import type { ExtracaoEditalIA, ItemChecklistExtraidoIA } from '../../../types/extracaoEditalIA';
@@ -405,6 +408,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [importandoEdital, setImportandoEdital] = useState(false);
   const [erroImportacaoEdital, setErroImportacaoEdital] = useState<string | null>(null);
   const [camposComBaixaConfianca, setCamposComBaixaConfianca] = useState<string[]>([]);
+  // Importação por JSON colado (12/11): painel aberto, texto colado, erro de
+  // leitura e avisos do que foi ignorado ou corrigido na importação.
+  const [painelImportacaoAberto, setPainelImportacaoAberto] = useState(false);
+  const [textoImportacao, setTextoImportacao] = useState('');
+  const [erroImportacaoJson, setErroImportacaoJson] = useState<string | null>(null);
+  const [avisosImportacao, setAvisosImportacao] = useState<string[]>([]);
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   // Municípios do estado selecionado (API do IBGE, ver ibgeService.ts). Se a
@@ -794,6 +803,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       objeto: extracao.objeto,
       numeroPregao: extracao.numeroPregao,
       orgao: extracao.orgao,
+      orgaoCnpj: extracao.orgaoCnpj ?? atual.orgaoCnpj,
+      orgaoUasg: extracao.orgaoUasg ?? atual.orgaoUasg,
       estado: extracao.estado,
       municipio: extracao.municipio,
       esfera: extracao.esfera ?? atual.esfera,
@@ -850,6 +861,30 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     );
 
     setCamposComBaixaConfianca(extracao.camposComBaixaConfianca ?? []);
+  }
+
+  // Aplica o JSON colado pelo analista. Só lê, valida e preenche o formulário
+  // (rascunho); nada é salvo até o analista clicar em "Salvar licitação".
+  function handleAplicarImportacaoJson() {
+    setErroImportacaoJson(null);
+    setAvisosImportacao([]);
+    try {
+      const { extracao, avisos } = lerImportacaoEditalJson(textoImportacao);
+      const formTemDados = !!(form.portal || form.numeroPregao || form.orgao || form.itens.length > 0);
+      if (
+        formTemDados &&
+        !window.confirm('O formulário já tem dados preenchidos. Importar substitui os campos e os itens atuais. Continuar?')
+      ) {
+        return;
+      }
+      aplicarExtracaoIA(extracao);
+      setAvisosImportacao(avisos);
+      setTextoImportacao('');
+      setPainelImportacaoAberto(false);
+      setAbaAtiva('gerais');
+    } catch (erro) {
+      setErroImportacaoJson(erro instanceof Error ? erro.message : 'Não foi possível ler o texto colado.');
+    }
   }
 
   async function handleImportarEdital(arquivo: File) {
@@ -1099,6 +1134,57 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
           {/* Importação de edital por IA — só faz sentido numa licitação
               nova; numa edição já existe dado real, importar por cima
               poderia sobrescrever algo que o Analista já confirmou. */}
+          {/* Importação por JSON colado — só em licitação nova (em edição já
+              existe dado confirmado, e importar por cima poderia sobrescrevê-lo). */}
+          {!licitacaoEmEdicao && (
+            <div className="mb-4 rounded-lg border border-forest/20 bg-forest/5 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPainelImportacaoAberto((aberto) => !aberto)}
+                  className="rounded-md border border-forest/30 bg-white px-3 py-1.5 font-body text-xs font-semibold text-forest"
+                >
+                  {painelImportacaoAberto ? 'Fechar importação' : '📋 Importar dados da análise (JSON)'}
+                </button>
+                <p className="font-body text-xs text-ink-soft">
+                  Cole o resultado do Prompt de Importação. O formulário é preenchido como rascunho: revise tudo antes de salvar.
+                </p>
+              </div>
+              {painelImportacaoAberto && (
+                <div className="mt-3 space-y-2">
+                  <textarea
+                    value={textoImportacao}
+                    onChange={(e) => setTextoImportacao(e.target.value)}
+                    rows={8}
+                    placeholder="Cole aqui o bloco JSON devolvido pelo prompt..."
+                    className="w-full rounded-lg border border-ink-soft/20 bg-white px-3 py-2 font-mono text-xs text-ink focus:border-forest focus:outline-none"
+                  />
+                  {erroImportacaoJson && (
+                    <p role="alert" className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
+                      {erroImportacaoJson}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button type="button" onClick={handleAplicarImportacaoJson} disabled={!textoImportacao.trim()}>
+                      Preencher formulário
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setPainelImportacaoAberto(false);
+                        setTextoImportacao('');
+                        setErroImportacaoJson(null);
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {IMPORTACAO_EDITAL_IA_ATIVA && !licitacaoEmEdicao && (
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-forest/20 bg-forest/5 px-3 py-2">
               <label className="flex cursor-pointer items-center gap-2 font-body text-xs font-semibold text-forest">
@@ -1126,6 +1212,28 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
           {erroImportacaoEdital && (
             <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 font-body text-xs text-red-700">
               Falha ao importar o edital: {erroImportacaoEdital}
+            </div>
+          )}
+
+          {avisosImportacao.length > 0 && (
+            <div className="mb-4 rounded-lg border border-brass/40 bg-brass-pale px-3 py-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="font-body text-xs text-brass">
+                  <p className="font-semibold">Importação concluída. Confira estes pontos:</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {avisosImportacao.map((aviso) => (
+                      <li key={aviso}>{aviso}</li>
+                    ))}
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAvisosImportacao([])}
+                  className="whitespace-nowrap font-body text-xs font-semibold text-brass underline hover:no-underline"
+                >
+                  Entendi
+                </button>
+              </div>
             </div>
           )}
 
