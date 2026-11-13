@@ -351,6 +351,23 @@ export function PropostaComercialPage() {
         { Campo: rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).prazo, Valor: licitacao.condicoesComerciais.prazoEntregaDias ?? '—' },
         { Campo: rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).local, Valor: licitacao.condicoesComerciais.localEntrega || '—' },
         { Campo: 'Validade da proposta (dias)', Valor: licitacao.condicoesComerciais.validadePropostaDias ?? '—' },
+        ...(tipoDoObjeto(licitacao.objeto) !== 'servicos'
+          ? [
+              { Campo: 'Vigência da ata / contrato', Valor: licitacao.condicoesComerciais.prazoVigencia || '—' },
+              { Campo: 'Reajuste (índice e data-base)', Valor: licitacao.condicoesComerciais.reajusteRepactuacao || '—' },
+              {
+                Campo: 'Entrega parcelada?',
+                Valor:
+                  licitacao.condicoesComerciais.entregaParcelada === 'sim'
+                    ? licitacao.condicoesComerciais.entregaParceladaDetalhe
+                      ? `Sim — ${licitacao.condicoesComerciais.entregaParceladaDetalhe}`
+                      : 'Sim'
+                    : licitacao.condicoesComerciais.entregaParcelada === 'nao'
+                      ? 'Não'
+                      : '—',
+              },
+            ]
+          : []),
         ...(tipoDoObjeto(licitacao.objeto) === 'servicos'
           ? [
               { Campo: 'Prazo de execução / vigência do contrato', Valor: licitacao.condicoesComerciais.prazoVigencia || '—' },

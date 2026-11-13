@@ -73,6 +73,7 @@ import {
   rotulosCondicoes,
   SubcontratacaoServico,
   SUBCONTRATACAO_SERVICO_LABEL,
+  CRITERIOS_JULGAMENTO,
   SUBCONTRATACAO_SERVICO_DESCRICAO,
 } from '../../../types/licitacao';
 import { clienteService } from '../../../services/clienteService';
@@ -1590,14 +1591,11 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 )}
               </div>
               <SelectField
-                label="Forma de disputa"
+                label="Critério de julgamento"
                 value={form.formaDisputa}
                 onChange={(e) => atualizarCampo('formaDisputa', e.target.value)}
                 placeholder="Selecione"
-                options={[
-                  { value: 'Menor Preço', label: 'Menor Preço' },
-                  { value: 'Maior Desconto', label: 'Maior Desconto' },
-                ]}
+                options={CRITERIOS_JULGAMENTO.map((criterio) => ({ value: criterio, label: criterio }))}
               />
               <SelectField
                 label="Modo de disputa"
@@ -2009,6 +2007,46 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 onChange={(e) => atualizarCondicoes('garantiasDetalhe', e.target.value)}
                 rows={2}
               />
+            )}
+
+            {tipoObjeto !== 'servicos' && (
+              <div className="space-y-4 rounded-xl border border-ink-soft/15 p-4">
+                <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Vigência, reajuste e entrega</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <TextField
+                    label="Vigência da ata / contrato"
+                    value={form.condicoesComerciais.prazoVigencia ?? ''}
+                    onChange={(e) => atualizarCondicoes('prazoVigencia', e.target.value)}
+                    placeholder="Ex.: 12 meses, prorrogável por igual período"
+                  />
+                  <TextField
+                    label="Reajuste (índice e data-base)"
+                    value={form.condicoesComerciais.reajusteRepactuacao ?? ''}
+                    onChange={(e) => atualizarCondicoes('reajusteRepactuacao', e.target.value)}
+                    placeholder="Ex.: IPCA, após 12 meses"
+                  />
+                  <SelectField
+                    label="Entrega parcelada?"
+                    value={form.condicoesComerciais.entregaParcelada ?? ''}
+                    onChange={(e) =>
+                      atualizarCondicoes('entregaParcelada', (e.target.value || undefined) as 'sim' | 'nao' | undefined)
+                    }
+                    placeholder="Selecione"
+                    options={[
+                      { value: 'sim', label: 'Sim' },
+                      { value: 'nao', label: 'Não' },
+                    ]}
+                  />
+                  {form.condicoesComerciais.entregaParcelada === 'sim' && (
+                    <TextField
+                      label="Condições da entrega parcelada"
+                      value={form.condicoesComerciais.entregaParceladaDetalhe ?? ''}
+                      onChange={(e) => atualizarCondicoes('entregaParceladaDetalhe', e.target.value)}
+                      placeholder="Ex.: conforme pedidos, em até 5 dias"
+                    />
+                  )}
+                </div>
+              </div>
             )}
 
             {tipoObjeto === 'servicos' && (

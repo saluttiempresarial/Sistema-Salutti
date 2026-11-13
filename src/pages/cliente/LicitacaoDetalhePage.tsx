@@ -446,6 +446,28 @@ export function LicitacaoDetalhePage() {
                   <Campo label="Garantias" value={licitacao.condicoesComerciais.garantiasDetalhe || 'Sim'} />
                 )}
 
+                {tipoDoObjeto(licitacao.objeto) !== 'servicos' &&
+                  (licitacao.condicoesComerciais.prazoVigencia ||
+                    licitacao.condicoesComerciais.reajusteRepactuacao ||
+                    licitacao.condicoesComerciais.entregaParcelada) && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <Campo label="Vigência da ata / contrato" value={licitacao.condicoesComerciais.prazoVigencia} />
+                      <Campo label="Reajuste (índice e data-base)" value={licitacao.condicoesComerciais.reajusteRepactuacao} />
+                      <Campo
+                        label="Entrega parcelada?"
+                        value={
+                          licitacao.condicoesComerciais.entregaParcelada
+                            ? licitacao.condicoesComerciais.entregaParcelada === 'sim'
+                              ? licitacao.condicoesComerciais.entregaParceladaDetalhe
+                                ? `Sim — ${licitacao.condicoesComerciais.entregaParceladaDetalhe}`
+                                : 'Sim'
+                              : 'Não'
+                            : undefined
+                        }
+                      />
+                    </div>
+                  )}
+
                 {tipoDoObjeto(licitacao.objeto) === 'servicos' && (
                   <div className="grid grid-cols-2 gap-4">
                     <Campo label="Prazo de execução / vigência do contrato" value={licitacao.condicoesComerciais.prazoVigencia} />

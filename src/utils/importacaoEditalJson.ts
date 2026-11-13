@@ -22,6 +22,7 @@ import {
   type ParticipacaoLicitacao,
   type ProcedimentoLicitacao,
   type TipoContratacaoLicitacao,
+  CRITERIOS_JULGAMENTO,
 } from '@/types/licitacao'
 
 export interface ResultadoImportacaoJson {
@@ -36,7 +37,7 @@ const ESTRUTURAS: EstruturaLicitacao[] = ['item', 'lote_grupo', 'item_lote_grupo
 const PARTICIPACOES: ParticipacaoLicitacao[] = ['exclusiva_me_epp', 'ampla_concorrencia']
 const FORMAS_PAGAMENTO: FormaPagamento[] = ['credito_conta', 'boleto', 'pix', 'outros']
 const ESFERAS: EsferaLicitacao[] = ['municipal', 'estadual', 'federal', 'distrital']
-const FORMAS_DISPUTA = ['Menor Preço', 'Maior Desconto']
+const FORMAS_DISPUTA = CRITERIOS_JULGAMENTO
 const MODOS_DISPUTA = ['Aberto', 'Fechado', 'Aberto/Fechado', 'Fechado/Aberto']
 const OBJETOS = ['Produto', 'Serviços', 'Obra', 'Serviços Técnicos']
 
@@ -207,6 +208,9 @@ export function lerImportacaoEditalJson(bruto: string): ResultadoImportacaoJson 
   if (texto(cc.reajusteRepactuacao)) condicoes.reajusteRepactuacao = texto(cc.reajusteRepactuacao)
   const sub = opcao(cc.subcontratacao, ['permitida', 'permitida_com_limite', 'vedada', 'omisso'] as const)
   if (sub) condicoes.subcontratacao = sub
+  const parcelada = opcao(cc.entregaParcelada, ['sim', 'nao'] as const)
+  if (parcelada) condicoes.entregaParcelada = parcelada
+  if (texto(cc.entregaParceladaDetalhe)) condicoes.entregaParceladaDetalhe = texto(cc.entregaParceladaDetalhe)
   const plan = opcao(cc.exigePlanilhaCustos, ['sim', 'nao'] as const)
   if (plan) condicoes.exigePlanilhaCustos = plan
 

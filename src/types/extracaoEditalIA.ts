@@ -78,6 +78,8 @@ export interface ExtracaoEditalIA {
     prazoEntregaDias?: number;
     localEntrega: string;
     validadePropostaDias?: number;
+    entregaParcelada?: 'sim' | 'nao';
+    entregaParceladaDetalhe?: string;
     // Só para objeto "Serviços" (29/10):
     prazoVigencia?: string;
     reajusteRepactuacao?: string;

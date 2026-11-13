@@ -492,9 +492,15 @@ export interface CondicoesComerciais {
   localEntrega: string; // detalhamento aberto
   validadePropostaDias?: number; // até 3 dígitos
 
-  // Só para objeto "Serviços" (29/10, planilha de análise de serviços):
-  prazoVigencia?: string; // "Prazo de execução / vigência do contrato", texto livre (ex.: "12 meses")
+  // Vigência e reajuste valem para Serviços (29/10) e, desde 13/11, também para
+  // Produtos (vigência da ata / do contrato, planilha de Produtos L62 e L64).
+  prazoVigencia?: string; // Serviços: "Prazo de execução / vigência do contrato"; Produtos: "Vigência da ata / contrato". Texto livre (ex.: "12 meses")
   reajusteRepactuacao?: string; // índice e data-base
+  // Só para Produtos (13/11, planilha de Produtos L65): o edital prevê entrega parcelada?
+  entregaParcelada?: 'sim' | 'nao';
+  entregaParceladaDetalhe?: string; // condições (ex.: "mediante pedidos, em até 5 dias")
+
+  // Só para objeto "Serviços" (29/10, planilha de análise de serviços):
   subcontratacao?: SubcontratacaoServico; // art. 122 da Lei 14.133/2021
   exigePlanilhaCustos?: 'sim' | 'nao'; // exige planilha de custos e formação de preços?
 }
@@ -514,6 +520,17 @@ export const SUBCONTRATACAO_SERVICO_DESCRICAO: Record<SubcontratacaoServico, str
   vedada: 'O edital proíbe subcontratar: todo o serviço deve ser executado pela própria empresa.',
   omisso: 'O edital não trata do tema: pedir esclarecimento antes de contar com terceiros.',
 };
+
+/** Critérios de julgamento aceitos no campo "Forma de disputa" (lista da planilha de
+ *  análise, linha L17; art. 33 da Lei 14.133/2021). O campo é texto livre no banco. */
+export const CRITERIOS_JULGAMENTO = [
+  'Menor Preço',
+  'Maior Desconto',
+  'Melhor Técnica ou Conteúdo Artístico',
+  'Técnica e Preço',
+  'Maior Lance',
+  'Maior Retorno Econômico',
+] as const;
 
 /** Rótulos das condições comerciais conforme o tipo de objeto. */
 export function rotulosCondicoes(tipo: TipoObjeto) {
