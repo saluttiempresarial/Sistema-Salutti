@@ -72,6 +72,8 @@ export interface ExtracaoEditalIA {
     percentualIntervaloLances?: number;
     intervaloLancesDetalhe?: string;
     formaPagamento: FormaPagamento;
+    // Banco exigido para o recebimento (nome da lista do sistema ou texto livre, tratado como "Outros").
+    recebimentoBanco?: string;
     prazoPagamentoDias?: number;
     possuiGarantias: boolean;
     garantiasDetalhe?: string;

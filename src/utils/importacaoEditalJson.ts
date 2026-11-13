@@ -11,6 +11,7 @@
 // com id desconhecido são descartados (com aviso).
 
 import { unidadeDaLista } from '@/utils/unidadesMedida'
+import { BANCOS_RECEBIMENTO } from '@/utils/licitacaoCampos'
 import type { ExtracaoEditalIA, ItemChecklistExtraidoIA } from '@/types/extracaoEditalIA'
 import {
   listasDeExigencias,
@@ -86,10 +87,94 @@ const SINONIMOS_UNIDADE: Record<string, string> = {
 function normalizarUnidade(bruta: string): string {
   const limpa = bruta.trim().replace(/\.$/, '')
   if (!limpa) return ''
-  const chave = limpa.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
-  const sigla = SINONIMOS_UNIDADE[chave]
-  if (sigla) return sigla
-  return unidadeDaLista(limpa)?.sigla ?? limpa
+  const chaveDe = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase()
+  // Tenta o texto inteiro e, depois, sem o complemento entre parênteses
+  // (ex.: "Serviço (vídeo)" -> "Serviço" -> "SV").
+  const semComplemento = limpa.replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+  for (const candidato of [limpa, semComplemento]) {
+    if (!candidato) continue
+    const sigla = SINONIMOS_UNIDADE[chaveDe(candidato)]
+    if (sigla) return sigla
+    const daLista = unidadeDaLista(candidato)?.sigla
+    if (daLista) return daLista
+  }
+  return limpa
+}
+
+// Município: só o nome da cidade, sem complemento entre parênteses ou depois de
+// travessão (ex.: "São Paulo (sede do órgão: Rua Boa Vista, 170)" -> "São Paulo").
+function limparMunicipio(bruto: string): string {
+  return bruto.split(/\s*[(–—]\s*|\s+-\s+/)[0].trim()
+}
+
+// Leva o banco citado no edital para o nome da lista do sistema (ex.: "Banco do
+// Brasil S/A" -> "Banco do Brasil"). Fora da lista, mantém o texto: o formulário
+// o trata como "Outros".
+function normalizarBanco(bruto: string): string {
+  const chaveDe = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+  const chave = chaveDe(bruto)
+  if (!chave) return ''
+  const achado = BANCOS_RECEBIMENTO.find((b) => {
+    const nome = chaveDe(b.replace(/\s*\(.*\)\s*/, ''))
+    return chave === nome || chave.includes(nome)
+  })
+  return achado ?? bruto.trim()
+}
+
+// Rótulos legíveis dos campos citados em "camposComBaixaConfianca", para o aviso
+// "Confira com atenção" falar a língua do analista.
+const ROTULOS_CAMPOS: Record<string, string> = {
+  dataLicitacao: 'Data e horário da licitação',
+  portal: 'Portal',
+  objeto: 'Objeto da licitação',
+  numeroPregao: 'Número da licitação',
+  orgao: 'Órgão',
+  orgaoCnpj: 'CNPJ do órgão',
+  orgaoUasg: 'UASG',
+  estado: 'Estado (UF)',
+  municipio: 'Município',
+  esfera: 'Esfera',
+  modalidade: 'Modalidade',
+  estrutura: 'Estrutura',
+  tipoContratacao: 'Tipo de contratação',
+  procedimento: 'Registro de preços',
+  formaDisputa: 'Critério de julgamento',
+  modoDisputa: 'Modo de disputa',
+  participacao: 'Participação',
+  capag: 'CAPAG',
+  valorTotalLicitacao: 'Valor total da licitação',
+  itens: 'Itens',
+  grupos: 'Grupos / lotes',
+  pontosAtencao: 'Pontos de atenção',
+  'condicoesComerciais.tipoIntervaloLances': 'Intervalo de lances',
+  'condicoesComerciais.valorIntervaloLances': 'Intervalo de lances (R$)',
+  'condicoesComerciais.percentualIntervaloLances': 'Intervalo de lances (%)',
+  'condicoesComerciais.formaPagamento': 'Forma de pagamento',
+  'condicoesComerciais.recebimentoBanco': 'Recebimento em qual banco',
+  'condicoesComerciais.prazoPagamentoDias': 'Prazo de pagamento',
+  'condicoesComerciais.prazoEntregaDias': 'Prazo de entrega / início da execução',
+  'condicoesComerciais.validadePropostaDias': 'Validade da proposta',
+  'condicoesComerciais.localEntrega': 'Local de entrega / execução',
+  'condicoesComerciais.possuiGarantias': 'Garantias',
+  'condicoesComerciais.prazoVigencia': 'Vigência / prazo de execução',
+  'condicoesComerciais.reajusteRepactuacao': 'Reajuste / repactuação',
+  'condicoesComerciais.entregaParcelada': 'Entrega parcelada',
+  'condicoesComerciais.subcontratacao': 'Subcontratação',
+  'condicoesComerciais.exigePlanilhaCustos': 'Planilha de custos',
+}
+
+function rotuloDoCampo(chave: string, listas: ReturnType<typeof listasDeExigencias>): string {
+  if (ROTULOS_CAMPOS[chave]) return ROTULOS_CAMPOS[chave]
+  if (chave.startsWith('itens')) return 'Itens'
+  const partes = chave.split('.')
+  const id = partes[partes.length - 1]
+  const todos = [
+    ...listas.juridica, ...listas.fiscalSocialTrabalhista, ...listas.economicoFinanceira,
+    ...listas.tecnica, ...listas.declaracoes, ...listas.outras,
+  ]
+  const item = todos.find((i) => i.id === id)
+  if (item) return item.label.replace(/\s*\(.*$/, '').trim()
+  return chave
 }
 
 function extrairJson(bruto: string): unknown {
@@ -204,6 +289,8 @@ export function lerImportacaoEditalJson(bruto: string): ResultadoImportacaoJson 
   if (prazoEnt !== undefined) condicoes.prazoEntregaDias = Math.round(prazoEnt)
   const validade = numero(cc.validadePropostaDias)
   if (validade !== undefined) condicoes.validadePropostaDias = Math.round(validade)
+  const banco = normalizarBanco(texto(cc.recebimentoBanco))
+  if (banco) condicoes.recebimentoBanco = banco
   if (texto(cc.prazoVigencia)) condicoes.prazoVigencia = texto(cc.prazoVigencia)
   if (texto(cc.reajusteRepactuacao)) condicoes.reajusteRepactuacao = texto(cc.reajusteRepactuacao)
   const sub = opcao(cc.subcontratacao, ['permitida', 'permitida_com_limite', 'vedada', 'omisso'] as const)
@@ -266,7 +353,7 @@ export function lerImportacaoEditalJson(bruto: string): ResultadoImportacaoJson 
     numeroPregao: texto(dado.numeroPregao),
     orgao: texto(dado.orgao),
     estado: texto(dado.estado).toUpperCase().slice(0, 2),
-    municipio: texto(dado.municipio),
+    municipio: limparMunicipio(texto(dado.municipio)),
     esfera: esfera ?? null,
     modalidade: (modalidade ?? '') as ModalidadeLicitacao,
     estrutura: (estrutura ?? '') as EstruturaLicitacao,
@@ -307,7 +394,7 @@ export function lerImportacaoEditalJson(bruto: string): ResultadoImportacaoJson 
     itens,
     pontosAtencao: texto(dado.pontosAtencao),
     camposComBaixaConfianca: Array.isArray(dado.camposComBaixaConfianca)
-      ? dado.camposComBaixaConfianca.map(texto).filter(Boolean)
+      ? Array.from(new Set(dado.camposComBaixaConfianca.map(texto).filter(Boolean).map((c) => rotuloDoCampo(c, listas))))
       : [],
   }
 
