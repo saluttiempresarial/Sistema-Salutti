@@ -26,6 +26,8 @@ import type {
   ProcedimentoLicitacao,
   FormaPagamento,
   EsferaLicitacao,
+  OrigemVerbaLicitacao,
+  BaseLegalLicitacao,
 } from './licitacao';
 
 export interface ItemChecklistExtraidoIA {
@@ -42,6 +44,11 @@ export interface ExtracaoEditalIA {
   orgao: string;
   estado: string; // UF
   municipio: string;
+  dataHabilitacao?: string; // ISO datetime, opcional (17/11/2026)
+  origemVerba?: OrigemVerbaLicitacao | null;
+  origemVerbaDetalhe?: string | null;
+  baseLegal?: BaseLegalLicitacao | null;
+  baseLegalDetalhe?: string | null;
   esfera?: EsferaLicitacao | null; // opcional: a Edge Function ainda não devolve (preenche à mão)
   modalidade: ModalidadeLicitacao;
   estrutura: EstruturaLicitacao;

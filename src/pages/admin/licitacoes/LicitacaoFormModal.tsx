@@ -44,6 +44,10 @@ import {
   MODALIDADE_LICITACAO_DESCRICAO,
   ESFERA_LICITACAO_LABEL,
   EsferaLicitacao,
+  ORIGEM_VERBA_LICITACAO_LABEL,
+  OrigemVerbaLicitacao,
+  BASE_LEGAL_LICITACAO_LABEL,
+  BaseLegalLicitacao,
   ParticipacaoLicitacao,
   PARTICIPACAO_LICITACAO_LABEL,
   PARTICIPACAO_LICITACAO_DESCRICAO,
@@ -340,6 +344,9 @@ export interface OpcoesSalvarLicitacao {
   liberarPrazoAte?: string;
   /** Retira a liberação feita antes (volta ao prazo automático). */
   removerLiberacaoPrazo?: boolean;
+  /** Cadastro para várias empresas (17/11/2026): ids das empresas extras marcadas
+   *  na Vinculação. A página cria uma licitação separada para cada uma delas. */
+  clientesAdicionaisIds?: string[];
 }
 
 interface LicitacaoFormModalProps {
@@ -415,6 +422,11 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const [textoImportacao, setTextoImportacao] = useState('');
   const [erroImportacaoJson, setErroImportacaoJson] = useState<string | null>(null);
   const [avisosImportacao, setAvisosImportacao] = useState<string[]>([]);
+  // Cadastro para várias empresas (17/11/2026): só em licitação nova. Cada empresa
+  // extra marcada recebe uma licitação própria (cópia), com proposta, disputa e
+  // resultado independentes.
+  const [clientesAdicionaisIds, setClientesAdicionaisIds] = useState<string[]>([]);
+  const [buscaClienteAdicional, setBuscaClienteAdicional] = useState('');
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   // Municípios do estado selecionado (API do IBGE, ver ibgeService.ts). Se a
@@ -596,6 +608,18 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       ativo = false;
     };
   }, [isOpen]);
+
+  // Ao fechar o formulário, as empresas extras marcadas são esquecidas.
+  useEffect(() => {
+    if (!isOpen) {
+      setClientesAdicionaisIds([]);
+      setBuscaClienteAdicional('');
+    }
+  }, [isOpen]);
+
+  function alternarClienteAdicional(id: string) {
+    setClientesAdicionaisIds((atuais) => (atuais.includes(id) ? atuais.filter((x) => x !== id) : [...atuais, id]));
+  }
 
   function atualizarCampo<K extends keyof LicitacaoFormData>(campo: K, valor: LicitacaoFormData[K]) {
     setForm((atual) => ({ ...atual, [campo]: valor }));
@@ -809,6 +833,11 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       estado: extracao.estado,
       municipio: extracao.municipio,
       esfera: extracao.esfera ?? atual.esfera,
+      dataHabilitacao: extracao.dataHabilitacao ?? atual.dataHabilitacao,
+      origemVerba: extracao.origemVerba ?? atual.origemVerba,
+      origemVerbaDetalhe: extracao.origemVerba ? extracao.origemVerbaDetalhe ?? undefined : atual.origemVerbaDetalhe,
+      baseLegal: extracao.baseLegal ?? atual.baseLegal,
+      baseLegalDetalhe: extracao.baseLegal ? extracao.baseLegalDetalhe ?? undefined : atual.baseLegalDetalhe,
       modalidade: extracao.modalidade,
       estrutura: extracao.estrutura,
       tipoContratacao:
@@ -983,6 +1012,22 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       return;
     }
 
+    // Empresas extras marcadas (só em licitação nova); a principal nunca se repete.
+    const extrasValidos = licitacaoEmEdicao ? [] : clientesAdicionaisIds.filter((id) => id !== form.clienteId);
+    if (form.participacao === 'exclusiva_me_epp') {
+      const extrasDemais = extrasValidos
+        .map((id) => clientes.find((c) => c.value === id))
+        .filter((c) => c?.porte === 'demais')
+        .map((c) => c?.label);
+      if (extrasDemais.length > 0) {
+        setAbaAtiva('gerais');
+        setErroChecklist(
+          `Esta licitação está marcada como "Exclusiva ME/EPP", mas estas empresas são classificadas como "Demais" e não podem participar: ${extrasDemais.join(', ')}. Desmarque-as na Vinculação ou ajuste o campo "Participação".`
+        );
+        return;
+      }
+    }
+
     // Bloqueia o salvamento se a licitação for "Exclusiva ME/EPP" e o
     // cliente vinculado NÃO for ME/EPP (porte "Demais") — por definição
     // legal (Lei 14.133/2021), uma empresa "Demais" não pode participar de
@@ -1065,6 +1110,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       await onSave(licitacaoEmEdicao ? form : { ...form, status: 'pendente' }, {
         liberarPrazoAte,
         removerLiberacaoPrazo: removerLiberacaoPrazo && !!licitacaoEmEdicao?.prazoPropostaLiberado,
+        clientesAdicionaisIds: extrasValidos.length > 0 ? extrasValidos : undefined,
         motivoAlteracao: jaLiberada
           ? motivoAlteracao.trim()
             ? `${motivoOpcao}: ${motivoAlteracao.trim()}`
@@ -1360,6 +1406,14 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   )
                 }
               />
+              <TextField
+                label="Data e horário da habilitação"
+                type="datetime-local"
+                value={paraInputDatetimeLocal(form.dataHabilitacao)}
+                onChange={(e) =>
+                  atualizarCampo('dataHabilitacao', e.target.value ? new Date(e.target.value).toISOString() : undefined)
+                }
+              />
               {prazoInterno && (
                 <div
                   className={`col-span-2 rounded-lg border px-4 py-3 font-body text-sm ${
@@ -1632,6 +1686,43 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               />
             </SecaoFormulario>
 
+            <SecaoFormulario titulo="Origem da verba e base legal">
+              <SelectField
+                label="Origem da verba"
+                value={form.origemVerba ?? ''}
+                onChange={(e) => {
+                  const nova = e.target.value ? (e.target.value as OrigemVerbaLicitacao) : undefined;
+                  setForm((atual) => ({ ...atual, origemVerba: nova, origemVerbaDetalhe: nova ? atual.origemVerbaDetalhe : undefined }));
+                }}
+                placeholder="Não informada"
+                options={Object.entries(ORIGEM_VERBA_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+              />
+              <TextField
+                label="Detalhe da origem da verba"
+                value={form.origemVerbaDetalhe ?? ''}
+                onChange={(e) => atualizarCampo('origemVerbaDetalhe', e.target.value)}
+                disabled={!form.origemVerba}
+                placeholder="Ex.: Convênio nº 123/2026 ou dotação orçamentária"
+              />
+              <SelectField
+                label="Com base em qual lei"
+                value={form.baseLegal ?? ''}
+                onChange={(e) => {
+                  const nova = e.target.value ? (e.target.value as BaseLegalLicitacao) : undefined;
+                  setForm((atual) => ({ ...atual, baseLegal: nova, baseLegalDetalhe: nova ? atual.baseLegalDetalhe : undefined }));
+                }}
+                placeholder="Não informada"
+                options={Object.entries(BASE_LEGAL_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
+              />
+              <TextField
+                label="Artigo ou hipótese legal"
+                value={form.baseLegalDetalhe ?? ''}
+                onChange={(e) => atualizarCampo('baseLegalDetalhe', e.target.value)}
+                disabled={!form.baseLegal}
+                placeholder="Ex.: art. 75, II (dispensa por valor)"
+              />
+            </SecaoFormulario>
+
             <SecaoFormulario titulo="Valor e edital">
               <TextField
                 label="Valor total da licitação (R$)"
@@ -1726,6 +1817,45 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               ) : (
                 // Licitação nova sempre nasce Pendente (a pedido do Márcio, 04/11).
                 <TextField label="Status" value={STATUS_LICITACAO_LABEL.pendente} readOnly disabled />
+              )}
+              {!licitacaoEmEdicao && (
+                <div className="col-span-2 rounded-lg border border-ink-soft/15 bg-forest-mist/20 p-3.5">
+                  <p className="font-body text-sm font-medium text-ink">Cadastrar também para outras empresas (opcional)</p>
+                  <p className="mt-0.5 font-body text-xs text-ink-soft">
+                    Ao salvar, o sistema cria uma licitação separada para cada empresa marcada, com os mesmos dados e itens.
+                    Cada empresa terá a sua própria proposta, disputa e resultado. A família do item não é copiada: escolha-a
+                    depois, em cada licitação.
+                  </p>
+                  <input
+                    type="search"
+                    value={buscaClienteAdicional}
+                    onChange={(e) => setBuscaClienteAdicional(e.target.value)}
+                    placeholder="Buscar empresa"
+                    className="mt-2.5 w-full rounded-lg border border-ink-soft/25 bg-white px-3 py-2 font-body text-sm text-ink focus:border-forest focus:outline-none"
+                  />
+                  <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                    {clientes
+                      .filter((c) => c.value !== form.clienteId)
+                      .filter((c) => c.label.toLowerCase().includes(buscaClienteAdicional.trim().toLowerCase()))
+                      .map((c) => (
+                        <label key={c.value} className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 font-body text-sm text-ink hover:bg-white/70">
+                          <input
+                            type="checkbox"
+                            checked={clientesAdicionaisIds.includes(c.value)}
+                            onChange={() => alternarClienteAdicional(c.value)}
+                            className="h-4 w-4 rounded border-ink-soft/40 text-forest focus:ring-forest-mist"
+                          />
+                          {c.label}
+                        </label>
+                      ))}
+                  </div>
+                  {clientesAdicionaisIds.filter((id) => id !== form.clienteId).length > 0 && (
+                    <p className="mt-2 font-body text-xs font-medium text-forest">
+                      {clientesAdicionaisIds.filter((id) => id !== form.clienteId).length} empresa(s) extra(s) marcada(s):
+                      serão criadas {clientesAdicionaisIds.filter((id) => id !== form.clienteId).length + 1} licitações no total.
+                    </p>
+                  )}
+                </div>
               )}
             </SecaoFormulario>
 

@@ -17,9 +17,11 @@ import {
   listasDeExigencias,
   tipoDoObjeto,
   type EsferaLicitacao,
+  type BaseLegalLicitacao,
   type EstruturaLicitacao,
   type FormaPagamento,
   type ModalidadeLicitacao,
+  type OrigemVerbaLicitacao,
   type ParticipacaoLicitacao,
   type ProcedimentoLicitacao,
   type TipoContratacaoLicitacao,
@@ -37,6 +39,8 @@ const PROCEDIMENTOS: ProcedimentoLicitacao[] = ['convencional', 'srp']
 const ESTRUTURAS: EstruturaLicitacao[] = ['item', 'lote_grupo', 'item_lote_grupo']
 const PARTICIPACOES: ParticipacaoLicitacao[] = ['exclusiva_me_epp', 'ampla_concorrencia']
 const FORMAS_PAGAMENTO: FormaPagamento[] = ['credito_conta', 'boleto', 'pix', 'outros']
+const ORIGENS_VERBA: OrigemVerbaLicitacao[] = ['recursos_proprios', 'repasse_federal', 'repasse_estadual', 'fundo_especifico', 'outra']
+const BASES_LEGAIS: BaseLegalLicitacao[] = ['lei_14133_2021', 'lei_13303_2016', 'regulamento_proprio', 'lei_8666_1993', 'lei_10520_2002', 'outra']
 const ESFERAS: EsferaLicitacao[] = ['municipal', 'estadual', 'federal', 'distrital']
 const FORMAS_DISPUTA = CRITERIOS_JULGAMENTO
 const MODOS_DISPUTA = ['Aberto', 'Fechado', 'Aberto/Fechado', 'Fechado/Aberto']
@@ -134,6 +138,9 @@ const ROTULOS_CAMPOS: Record<string, string> = {
   estado: 'Estado (UF)',
   municipio: 'Município',
   esfera: 'Esfera',
+  dataHabilitacao: 'Data da habilitação',
+  origemVerba: 'Origem da verba',
+  baseLegal: 'Base legal',
   modalidade: 'Modalidade',
   estrutura: 'Estrutura',
   tipoContratacao: 'Tipo de contratação',
@@ -245,6 +252,13 @@ export function lerImportacaoEditalJson(bruto: string): ResultadoImportacaoJson 
     else dataLicitacao = d.toISOString()
   }
 
+  let dataHabilitacao: string | undefined
+  if (dado.dataHabilitacao) {
+    const d = new Date(texto(dado.dataHabilitacao))
+    if (Number.isNaN(d.getTime())) avisos.push('Data da habilitação não reconhecida: preencha à mão.')
+    else dataHabilitacao = d.toISOString()
+  }
+
   const cnpj = texto(dado.orgaoCnpj).replace(/\D/g, '')
   if (cnpj && cnpj.length !== 14) avisos.push('CNPJ do órgão com tamanho inválido: ignorado.')
   const uasg = texto(dado.orgaoUasg).replace(/\D/g, '')
@@ -261,6 +275,10 @@ export function lerImportacaoEditalJson(bruto: string): ResultadoImportacaoJson 
   const procedimento = lista(dado.procedimento, PROCEDIMENTOS, 'Registro de preços')
   const participacao = lista(dado.participacao, PARTICIPACOES, 'Participação')
   const esfera = opcao(dado.esfera, ESFERAS)
+  const origemVerba = opcao(dado.origemVerba, ORIGENS_VERBA)
+  if (texto(dado.origemVerba) && !origemVerba) avisos.push('Origem da verba não reconhecida: escolha à mão.')
+  const baseLegal = opcao(dado.baseLegal, BASES_LEGAIS)
+  if (texto(dado.baseLegal) && !baseLegal) avisos.push('Base legal não reconhecida: escolha à mão.')
   const formaDisputa = lista(dado.formaDisputa, FORMAS_DISPUTA, 'Forma de disputa')
   const modoDisputa = lista(dado.modoDisputa, MODOS_DISPUTA, 'Modo de disputa')
 
@@ -355,6 +373,11 @@ export function lerImportacaoEditalJson(bruto: string): ResultadoImportacaoJson 
     estado: texto(dado.estado).toUpperCase().slice(0, 2),
     municipio: limparMunicipio(texto(dado.municipio)),
     esfera: esfera ?? null,
+    dataHabilitacao,
+    origemVerba: origemVerba ?? null,
+    origemVerbaDetalhe: origemVerba ? texto(dado.origemVerbaDetalhe) || null : null,
+    baseLegal: baseLegal ?? null,
+    baseLegalDetalhe: baseLegal ? texto(dado.baseLegalDetalhe) || null : null,
     modalidade: (modalidade ?? '') as ModalidadeLicitacao,
     estrutura: (estrutura ?? '') as EstruturaLicitacao,
     tipoContratacao: (tipoContratacao ?? '') as TipoContratacaoLicitacao,

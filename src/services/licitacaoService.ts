@@ -18,6 +18,7 @@
 import { supabase } from '@/lib/supabaseClient'
 import { limparNumeroPregao } from '@/utils/numeroPregao'
 import type { MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
+import { bloquearEscritaNoModoVisualizacao, modoVisualizacaoAtivo } from '@/utils/modoVisualizacao'
 import type {
   Licitacao,
   LicitacaoFormData,
@@ -61,6 +62,11 @@ interface LicitacaoRow {
   estado: string
   municipio: string
   esfera: Licitacao['esfera'] | null
+  data_habilitacao: string | null
+  origem_verba: Licitacao['origemVerba'] | null
+  origem_verba_detalhe: string | null
+  base_legal: Licitacao['baseLegal'] | null
+  base_legal_detalhe: string | null
   distancia_matriz: string | null
   modalidade: Licitacao['modalidade']
   estrutura: string
@@ -195,6 +201,11 @@ function paraLicitacao(
     orgaoUasg: row.orgao_uasg ?? undefined,
     estado: row.estado,
     esfera: row.esfera ?? undefined,
+    dataHabilitacao: row.data_habilitacao ?? undefined,
+    origemVerba: row.origem_verba ?? undefined,
+    origemVerbaDetalhe: row.origem_verba_detalhe ?? undefined,
+    baseLegal: row.base_legal ?? undefined,
+    baseLegalDetalhe: row.base_legal_detalhe ?? undefined,
     municipio: row.municipio,
     distanciaMatriz: row.distancia_matriz ?? '',
     modalidade: row.modalidade,
@@ -259,6 +270,11 @@ function paraColunasLicitacao(dados: LicitacaoFormData) {
     orgao_uasg: dados.orgaoUasg?.trim() || null,
     estado: dados.estado,
     esfera: dados.esfera ?? null,
+    data_habilitacao: dados.dataHabilitacao || null,
+    origem_verba: dados.origemVerba ?? null,
+    origem_verba_detalhe: dados.origemVerba ? dados.origemVerbaDetalhe?.trim() || null : null,
+    base_legal: dados.baseLegal ?? null,
+    base_legal_detalhe: dados.baseLegal ? dados.baseLegalDetalhe?.trim() || null : null,
     municipio: dados.municipio,
     distancia_matriz: dados.distanciaMatriz || null,
     modalidade: dados.modalidade,
@@ -500,7 +516,12 @@ export const licitacaoService = {
       .eq('cliente_id', clienteId)
       .order('criado_em', { ascending: false })
     if (error) throw new Error(error.message)
-    return ((data as LicitacaoRow[]) ?? []).map((row) => paraLicitacao(row))
+    // "Ver como cliente": o Administrador enxerga tudo; aqui mostra só o que o
+    // cliente de fato vê (licitações já liberadas a ele).
+    const linhas = ((data as LicitacaoRow[]) ?? []).filter(
+      (row) => !modoVisualizacaoAtivo() || row.liberada_ao_cliente_em
+    )
+    return linhas.map((row) => paraLicitacao(row))
   },
 
   // Igual a listarPorCliente, mas já com os itens (e a proposta do cliente em
@@ -513,7 +534,9 @@ export const licitacaoService = {
       .eq('cliente_id', clienteId)
       .order('criado_em', { ascending: false })
     if (error) throw new Error(error.message)
-    const rows = (data as LicitacaoRow[]) ?? []
+    const rows = ((data as LicitacaoRow[]) ?? []).filter(
+      (row) => !modoVisualizacaoAtivo() || row.liberada_ao_cliente_em
+    )
     if (rows.length === 0) return []
 
     const ids = rows.map((row) => row.id)
@@ -648,6 +671,7 @@ export const licitacaoService = {
       percentualFrete?: number
     } = {}
   ): Promise<Licitacao> {
+    bloquearEscritaNoModoVisualizacao()
     const { error } = await supabase.rpc('registrar_decisao_cliente', {
       p_licitacao_id: id,
       p_decisao: decisao,
@@ -733,6 +757,7 @@ export const licitacaoService = {
     _licitacaoId: string,
     itens: Array<{ id: string; propostaCliente: PropostaClienteItem }>
   ): Promise<void> {
+    bloquearEscritaNoModoVisualizacao()
     await Promise.all(
       itens.map(({ id, propostaCliente }) =>
         supabase.rpc('atualizar_proposta_item_cliente', {
@@ -781,6 +806,7 @@ export const licitacaoService = {
   // clicado em "Quero Participar". Ação irreversível — a confirmação
   // ("Tem certeza?") acontece na tela, antes de chamar isto aqui.
   async desistirLicitacao(id: string, nomeCliente: string): Promise<void> {
+    bloquearEscritaNoModoVisualizacao()
     const { error } = await supabase.rpc('desistir_licitacao_cliente', {
       p_licitacao_id: id,
       p_usuario: nomeCliente,

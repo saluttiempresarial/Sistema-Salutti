@@ -213,18 +213,49 @@ export function LicitacoesPage() {
       criada = await licitacaoService.criar(dados, usuarioAtual);
     }
 
+    // Cadastro para várias empresas (17/11/2026): uma licitação própria para cada
+    // empresa extra marcada. A família do item pertence ao cliente, então não é
+    // copiada. Se alguma falhar, as anteriores já estão salvas: o aviso diz quais
+    // faltaram para o analista cadastrar de novo só essas (sem duplicar).
+    const copiasCriadas: string[] = [];
+    if (!licitacaoEmEdicao && opcoes.clientesAdicionaisIds?.length) {
+      const falhas: string[] = [];
+      for (const clienteExtraId of opcoes.clientesAdicionaisIds) {
+        try {
+          const copia = await licitacaoService.criar(
+            {
+              ...dados,
+              clienteId: clienteExtraId,
+              itens: dados.itens.map((item) => ({ ...item, familiaId: undefined })),
+            },
+            usuarioAtual
+          );
+          copiasCriadas.push(copia.id);
+        } catch (erro) {
+          falhas.push(erro instanceof Error ? erro.message : 'erro desconhecido');
+        }
+      }
+      if (falhas.length > 0) {
+        window.alert(
+          `A licitação principal foi salva e ${copiasCriadas.length} cópia(s) também, mas ${falhas.length} empresa(s) extra(s) não puderam ser cadastradas (${falhas[0]}). Cadastre só essas de novo, sem repetir as que já foram salvas.`
+        );
+      }
+    }
+
     // Liberação do prazo do Cliente (09/11/2026): feita depois de salvar, porque
     // a licitação nova só tem id agora. Se falhar, a licitação já está salva —
     // avisa em vez de impedir o fechamento (evita cadastrar em duplicidade).
     const idLicitacao = licitacaoEmEdicao?.id ?? criada?.id;
     if (idLicitacao && (opcoes.liberarPrazoAte || opcoes.removerLiberacaoPrazo)) {
       try {
-        await licitacaoService.liberarPrazoPropostaCliente(
-          idLicitacao,
-          !!opcoes.liberarPrazoAte,
-          usuarioAtual,
-          opcoes.liberarPrazoAte
-        );
+        for (const idParaLiberar of [idLicitacao, ...copiasCriadas]) {
+          await licitacaoService.liberarPrazoPropostaCliente(
+            idParaLiberar,
+            !!opcoes.liberarPrazoAte,
+            usuarioAtual,
+            opcoes.liberarPrazoAte
+          );
+        }
       } catch (erro) {
         window.alert(
           `A licitação foi salva, mas não foi possível ${opcoes.liberarPrazoAte ? 'liberar' : 'retirar a liberação d'}o prazo do cliente: ${

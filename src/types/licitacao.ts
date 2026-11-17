@@ -65,6 +65,45 @@ export const ESFERA_LICITACAO_LABEL: Record<EsferaLicitacao, string> = {
   distrital: 'Distrital',
 };
 
+// Origem da verba (17/11/2026): de onde vem o dinheiro da contratação, conforme o
+// edital. Lista fechada + texto de detalhe (nº do convênio, dotação orçamentária).
+export type OrigemVerbaLicitacao =
+  | 'recursos_proprios'
+  | 'repasse_federal'
+  | 'repasse_estadual'
+  | 'fundo_especifico'
+  | 'outra';
+
+export const ORIGEM_VERBA_LICITACAO_LABEL: Record<OrigemVerbaLicitacao, string> = {
+  recursos_proprios: 'Recursos próprios do órgão',
+  repasse_federal: 'Convênio / repasse federal',
+  repasse_estadual: 'Convênio / repasse estadual',
+  fundo_especifico: 'Fundo específico (ex.: FUNDEB, FNDE, FMS)',
+  outra: 'Outra',
+};
+
+// Base legal (17/11/2026): lei ou norma em que a licitação se apoia, conforme o
+// edital. A lei muda conforme a natureza do órgão: administração direta,
+// autarquias e fundações seguem a Lei 14.133/2021; empresas públicas e sociedades
+// de economia mista, a Lei 13.303/2016; e entidades como o Sistema S usam
+// regulamento próprio. O artigo ou a hipótese (ex.: "art. 75, II") vai no detalhe.
+export type BaseLegalLicitacao =
+  | 'lei_14133_2021'
+  | 'lei_13303_2016'
+  | 'regulamento_proprio'
+  | 'lei_8666_1993'
+  | 'lei_10520_2002'
+  | 'outra';
+
+export const BASE_LEGAL_LICITACAO_LABEL: Record<BaseLegalLicitacao, string> = {
+  lei_14133_2021: 'Lei nº 14.133/2021 (Nova Lei de Licitações)',
+  lei_13303_2016: 'Lei nº 13.303/2016 (Estatais)',
+  regulamento_proprio: 'Regulamento próprio (ex.: Sistema S)',
+  lei_8666_1993: 'Lei nº 8.666/1993 (revogada, processos antigos)',
+  lei_10520_2002: 'Lei nº 10.520/2002 (revogada, processos antigos)',
+  outra: 'Outra',
+};
+
 // Texto de apoio exibido junto ao dropdown de Modalidade, explicando a
 // diferença entre as duas opções (definição combinada com o Márcio).
 export const MODALIDADE_LICITACAO_DESCRICAO: Record<ModalidadeLicitacao, string> = {
@@ -625,6 +664,11 @@ export interface Licitacao {
   // Aba 1 — Informações Gerais
   dataLicitacao: string; // ISO datetime — data e horário originais da sessão
   dataEfetivaLicitacao?: string; // ISO datetime — só preenchido se a licitação for suspensa e remarcada
+  dataHabilitacao?: string; // ISO datetime — data da fase de habilitação, quando o edital a informa (17/11/2026)
+  origemVerba?: OrigemVerbaLicitacao; // opcional (17/11/2026)
+  origemVerbaDetalhe?: string; // ex.: "Convênio nº 123/2026" ou a dotação orçamentária
+  baseLegal?: BaseLegalLicitacao; // opcional (17/11/2026)
+  baseLegalDetalhe?: string; // ex.: "art. 75, II" (hipótese de dispensa)
   portal: string;
   objeto: string;
   numeroPregao: string;
