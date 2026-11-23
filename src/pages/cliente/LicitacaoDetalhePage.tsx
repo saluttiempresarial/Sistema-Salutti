@@ -30,6 +30,7 @@ import { licitacaoService } from '@/services/licitacaoService'
 import { clienteService } from '@/services/clienteService'
 // Balão "ⓘ" com a explicação de cada exigência (Guia de Exigências do Edital).
 import { InfoTooltip } from '@/components/InfoTooltip'
+import { DocumentosEditalLeitura } from '@/components/DocumentosEdital'
 import { explicacaoDaExigencia } from '@/data/explicacaoExigencias'
 import {
   Licitacao,
@@ -50,16 +51,12 @@ import {
   ItemChecklistExigencia,
   StatusExigencia,
   STATUS_EXIGENCIA_LABEL,
-  SUBCONTRATACAO_SERVICO_LABEL,
-  tipoDoObjeto,
-  rotulosCondicoes,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
 import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
-import { MOTIVOS_ESCOLHIDOS_CLIENTE, rotuloDoMotivo, textoDosMotivos } from '@/types/motivoNaoParticipacao'
+import { MOTIVOS_ESCOLHIDOS_CLIENTE, rotuloDoMotivo } from '@/types/motivoNaoParticipacao'
 import type { MotivoEscolhidoCliente, MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
-import { formatarDistanciaKm, normalizarCapag } from '@/utils/licitacaoCampos'
 
 const TABS = [
   { id: 'gerais', label: 'Informações Gerais' },
@@ -70,12 +67,12 @@ const TABS = [
   { id: 'itens', label: 'Itens' },
 ]
 
-function Campo({ label, value, alerta = false }: { label: string; value?: string | null; alerta?: boolean }) {
+function Campo({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null
   return (
     <div>
       <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">{label}</p>
-      <p className={`mt-0.5 font-body text-sm ${alerta ? 'font-semibold text-red-600' : 'text-ink'}`}>{value}</p>
+      <p className="mt-0.5 font-body text-sm text-ink">{value}</p>
     </div>
   )
 }
@@ -177,7 +174,7 @@ export function LicitacaoDetalhePage() {
 
   const [recusando, setRecusando] = useState(false)
   const [motivoRecusa, setMotivoRecusa] = useState('')
-  const [motivosEscolhidos, setMotivosEscolhidos] = useState<MotivoEscolhidoCliente[]>([])
+  const [motivoEscolhido, setMotivoEscolhido] = useState<MotivoEscolhidoCliente | ''>('')
   const [decidindo, setDecidindo] = useState(false)
   const [porteCliente, setPorteCliente] = useState<PorteEmpresa | null>(null)
 
@@ -228,13 +225,8 @@ export function LicitacaoDetalhePage() {
       : porteCliente === 'demais' && licitacao && licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens)
         ? 'exclusiva_me_epp'
         : null
-  // Vários motivos podem ser marcados (09/11/2026). O PRINCIPAL é o primeiro na
-  // ordem da lista e alimenta os indicadores; todos ficam gravados.
-  const motivosOrdenados = MOTIVOS_ESCOLHIDOS_CLIENTE.map((m) => m.chave as MotivoEscolhidoCliente).filter((c) =>
-    motivosEscolhidos.includes(c)
-  )
-  const motivoParaGravar: MotivoNaoParticipacao | '' = motivoAutomatico ?? (motivosOrdenados.length > 0 ? motivosOrdenados[0] : '')
-  const explicacaoObrigatoria = !motivoAutomatico && motivosOrdenados.includes('outro')
+  const motivoParaGravar: MotivoNaoParticipacao | '' = motivoAutomatico ?? motivoEscolhido
+  const explicacaoObrigatoria = motivoParaGravar === 'outro'
   const recusaValida = motivoParaGravar !== '' && (!explicacaoObrigatoria || motivoRecusa.trim() !== '')
 
   async function confirmarRecusa() {
@@ -243,7 +235,6 @@ export function LicitacaoDetalhePage() {
     try {
       await licitacaoService.registrarDecisaoCliente(id, 'recusar', user.name, {
         motivoNaoParticipacao: motivoParaGravar,
-        motivosNaoParticipacao: motivoAutomatico ? undefined : motivosOrdenados,
         motivoRecusa: explicacaoObrigatoria ? motivoRecusa.trim() || undefined : undefined,
       })
       navigate('/cliente')
@@ -272,14 +263,7 @@ export function LicitacaoDetalhePage() {
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
-          <Tabs
-            tabs={TABS.filter(
-              // Em Serviços não há "Outras Exigências" (a menos que a licitação já traga itens nela).
-              (aba) => aba.id !== 'outras' || tipoDoObjeto(licitacao.objeto) !== 'servicos' || licitacao.outrasExigencias.length > 0
-            )}
-            activeTab={abaAtiva}
-            onChange={setAbaAtiva}
-          />
+          <Tabs tabs={TABS} activeTab={abaAtiva} onChange={setAbaAtiva} />
 
           <div className="mt-5 min-h-[280px] space-y-5">
             {abaAtiva === 'gerais' && (
@@ -295,7 +279,7 @@ export function LicitacaoDetalhePage() {
                     órgão já costuma trazer a cidade/UF (ex.: "Prefeitura
                     Municipal de Nova Campina/SP"), então repetir num campo
                     à parte só duplicava a mesma informação. */}
-                <Campo label="Distância da matriz" value={formatarDistanciaKm(licitacao.distanciaMatriz)} />
+                <Campo label="Distância da matriz" value={licitacao.distanciaMatriz} />
                 <div className="col-span-2">
                   <Campo label="Objeto" value={licitacao.objeto} />
                 </div>
@@ -315,7 +299,7 @@ export function LicitacaoDetalhePage() {
                   }
                 />
                 <Campo
-                  label="Registro de Preços"
+                  label="Procedimento"
                   value={PROCEDIMENTO_LICITACAO_LABEL[licitacao.procedimento as ProcedimentoLicitacao] ?? licitacao.procedimento}
                 />
                 <Campo label="Critério de julgamento" value={licitacao.formaDisputa} />
@@ -324,17 +308,12 @@ export function LicitacaoDetalhePage() {
                   label="Participação"
                   value={PARTICIPACAO_LICITACAO_LABEL[licitacao.participacao as ParticipacaoLicitacao] ?? licitacao.participacao}
                 />
-                <Campo label="CAPAG" value={normalizarCapag(licitacao.capag) || licitacao.capag} alerta={['C', 'N/D'].includes(normalizarCapag(licitacao.capag))} />
+                <Campo label="CAPAG" value={licitacao.capag} />
                 <Campo
                   label="Valor total"
                   value={licitacao.valorTotalLicitacao != null ? formatarMoeda(licitacao.valorTotalLicitacao) : 'Sigiloso'}
                 />
-                {licitacao.nomesArquivosEdital && licitacao.nomesArquivosEdital.length > 0 && (
-                  <div className="col-span-2">
-                    <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Documentos do edital</p>
-                    <p className="mt-0.5 font-body text-sm text-ink">{licitacao.nomesArquivosEdital.join(', ')}</p>
-                  </div>
-                )}
+                <DocumentosEditalLeitura licitacaoId={licitacao.id} />
                 {licitacao.linkEdital && (
                   <div className="col-span-2">
                     <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Link do edital</p>
@@ -401,12 +380,9 @@ export function LicitacaoDetalhePage() {
                 />
 
                 <div className="grid grid-cols-3 gap-4">
+                  <Campo label="Local de entrega" value={licitacao.condicoesComerciais.localEntrega} />
                   <Campo
-                    label={rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).local}
-                    value={licitacao.condicoesComerciais.localEntrega}
-                  />
-                  <Campo
-                    label={rotulosCondicoes(tipoDoObjeto(licitacao.objeto)).prazoCurto}
+                    label="Prazo de entrega"
                     value={
                       licitacao.condicoesComerciais.prazoEntregaDias
                         ? `${licitacao.condicoesComerciais.prazoEntregaDias} dias`
@@ -444,56 +420,6 @@ export function LicitacaoDetalhePage() {
 
                 {licitacao.condicoesComerciais.possuiGarantias && (
                   <Campo label="Garantias" value={licitacao.condicoesComerciais.garantiasDetalhe || 'Sim'} />
-                )}
-
-                {tipoDoObjeto(licitacao.objeto) !== 'servicos' &&
-                  (licitacao.condicoesComerciais.prazoVigencia ||
-                    licitacao.condicoesComerciais.reajusteRepactuacao ||
-                    licitacao.condicoesComerciais.entregaParcelada) && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <Campo label="Vigência da ata / contrato" value={licitacao.condicoesComerciais.prazoVigencia} />
-                      <Campo label="Reajuste (índice e data-base)" value={licitacao.condicoesComerciais.reajusteRepactuacao} />
-                      <Campo
-                        label="Entrega parcelada?"
-                        value={
-                          licitacao.condicoesComerciais.entregaParcelada
-                            ? licitacao.condicoesComerciais.entregaParcelada === 'sim'
-                              ? licitacao.condicoesComerciais.entregaParceladaDetalhe
-                                ? `Sim — ${licitacao.condicoesComerciais.entregaParceladaDetalhe}`
-                                : 'Sim'
-                              : 'Não'
-                            : undefined
-                        }
-                      />
-                    </div>
-                  )}
-
-                {tipoDoObjeto(licitacao.objeto) === 'servicos' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <Campo label="Prazo de execução / vigência do contrato" value={licitacao.condicoesComerciais.prazoVigencia} />
-                    <Campo
-                      label="Reajuste / repactuação (índice e data-base)"
-                      value={licitacao.condicoesComerciais.reajusteRepactuacao}
-                    />
-                    <Campo
-                      label="Subcontratação permitida?"
-                      value={
-                        licitacao.condicoesComerciais.subcontratacao
-                          ? SUBCONTRATACAO_SERVICO_LABEL[licitacao.condicoesComerciais.subcontratacao]
-                          : undefined
-                      }
-                    />
-                    <Campo
-                      label="Exige planilha de custos e formação de preços?"
-                      value={
-                        licitacao.condicoesComerciais.exigePlanilhaCustos
-                          ? licitacao.condicoesComerciais.exigePlanilhaCustos === 'sim'
-                            ? 'Sim'
-                            : 'Não'
-                          : undefined
-                      }
-                    />
-                  </div>
                 )}
               </div>
             )}
@@ -563,23 +489,17 @@ export function LicitacaoDetalhePage() {
                 ) : (
                   <fieldset className="space-y-1.5">
                     <legend className="mb-1.5 font-mono text-xs uppercase tracking-wide text-ink-soft">
-                      Motivo para não participar (obrigatório) — pode marcar mais de um
+                      Motivo para não participar (obrigatório)
                     </legend>
                     {MOTIVOS_ESCOLHIDOS_CLIENTE.map((m) => (
                       <div key={m.chave} className="flex items-center gap-2">
                         <label className="flex cursor-pointer items-center gap-2 font-body text-sm text-ink">
                           <input
-                            type="checkbox"
+                            type="radio"
                             name="motivo-nao-participacao"
                             value={m.chave}
-                            checked={motivosEscolhidos.includes(m.chave as MotivoEscolhidoCliente)}
-                            onChange={() =>
-                              setMotivosEscolhidos((atual) =>
-                                atual.includes(m.chave as MotivoEscolhidoCliente)
-                                  ? atual.filter((c) => c !== m.chave)
-                                  : [...atual, m.chave as MotivoEscolhidoCliente]
-                              )
-                            }
+                            checked={motivoEscolhido === m.chave}
+                            onChange={() => setMotivoEscolhido(m.chave as MotivoEscolhidoCliente)}
                             className="h-4 w-4 accent-forest"
                           />
                           {m.rotulo}
@@ -648,12 +568,9 @@ export function LicitacaoDetalhePage() {
                 <p className="font-body text-xs text-ink-soft">
                   {DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]}
                   {licitacao.decisaoClienteEm && ` em ${formatarDataHora(licitacao.decisaoClienteEm)}`}
-                  {licitacao.decisaoCliente === 'recusar' && licitacao.motivoNaoParticipacao && (
-                    <span className="font-medium text-red-700">
-                      {' — '}
-                      {textoDosMotivos(licitacao.motivoNaoParticipacao, licitacao.motivosNaoParticipacao)}
-                    </span>
-                  )}
+                  {licitacao.decisaoCliente === 'recusar' &&
+                    licitacao.motivoNaoParticipacao &&
+                    ` — ${rotuloDoMotivo(licitacao.motivoNaoParticipacao)}`}
                   {licitacao.motivoRecusaCliente && ` — "${licitacao.motivoRecusaCliente}"`}
                 </p>
                 {licitacao.decisaoCliente === 'participar' && (

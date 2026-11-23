@@ -83,6 +83,12 @@ import {
 import { clienteService } from '../../../services/clienteService';
 import { PorteEmpresa } from '../../../types/cliente';
 import { textoDosMotivos } from '../../../types/motivoNaoParticipacao';
+import {
+  licitacaoDocumentoService,
+  LIMITE_TAMANHO_DOCUMENTO_BYTES,
+  type DocumentoEdital,
+} from '../../../services/licitacaoDocumentoService';
+import { abrirDocumentoEdital, formatarTamanhoArquivo } from '../../../components/DocumentosEdital';
 import { calcularPrazoInterno, formatarDataHora, formatarMoeda, classificarUrgenciaPrazo } from '../../../utils/prazoUtils';
 import {
   condicoesComerciaisFaltando,
@@ -347,6 +353,10 @@ export interface OpcoesSalvarLicitacao {
   /** Cadastro para várias empresas (17/11/2026): ids das empresas extras marcadas
    *  na Vinculação. A página cria uma licitação separada para cada uma delas. */
   clientesAdicionaisIds?: string[];
+  /** Documentos do edital (23/11/2026): arquivos novos a enviar para o Storage. */
+  arquivosEdital?: File[];
+  /** Ids de documentos já gravados que o usuário removeu da lista (só na edição). */
+  documentosRemovidosIds?: string[];
 }
 
 interface LicitacaoFormModalProps {
@@ -427,6 +437,70 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // resultado independentes.
   const [clientesAdicionaisIds, setClientesAdicionaisIds] = useState<string[]>([]);
   const [buscaClienteAdicional, setBuscaClienteAdicional] = useState('');
+
+  // Documentos do edital (23/11/2026): obrigatório ter ao menos 1 arquivo. Os
+  // arquivos novos só sobem para o Storage depois que a licitação é salva
+  // (a página faz isso); os já gravados vêm do banco e podem ser removidos.
+  const [arquivosNovos, setArquivosNovos] = useState<File[]>([]);
+  const [documentosExistentes, setDocumentosExistentes] = useState<DocumentoEdital[]>([]);
+  const [documentosRemovidosIds, setDocumentosRemovidosIds] = useState<string[]>([]);
+  const [carregandoDocumentos, setCarregandoDocumentos] = useState(false);
+  const [erroCarregarDocumentos, setErroCarregarDocumentos] = useState<string | null>(null);
+  const [avisoArquivos, setAvisoArquivos] = useState<string | null>(null);
+  const idLicitacaoEmEdicao = licitacaoEmEdicao?.id;
+  const documentosMantidos = documentosExistentes.filter((d) => !documentosRemovidosIds.includes(d.id));
+  const totalDocumentos = documentosMantidos.length + arquivosNovos.length;
+
+  useEffect(() => {
+    setArquivosNovos([]);
+    setDocumentosRemovidosIds([]);
+    setAvisoArquivos(null);
+    setErroCarregarDocumentos(null);
+    if (!isOpen || !idLicitacaoEmEdicao) {
+      setDocumentosExistentes([]);
+      return;
+    }
+    let ativo = true;
+    setCarregandoDocumentos(true);
+    licitacaoDocumentoService
+      .listar(idLicitacaoEmEdicao)
+      .then((lista) => {
+        if (ativo) setDocumentosExistentes(lista);
+      })
+      .catch((e) => {
+        if (ativo) setErroCarregarDocumentos(e instanceof Error ? e.message : 'Não foi possível carregar os documentos do edital.');
+      })
+      .finally(() => {
+        if (ativo) setCarregandoDocumentos(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [isOpen, idLicitacaoEmEdicao]);
+
+  function adicionarArquivosEdital(lista: FileList | null) {
+    if (!lista) return;
+    const escolhidos = Array.from(lista);
+    const grandes = escolhidos.filter((a) => a.size > LIMITE_TAMANHO_DOCUMENTO_BYTES);
+    const vazios = escolhidos.filter((a) => a.size === 0);
+    const avisos: string[] = [];
+    if (grandes.length > 0) avisos.push(`Passam do limite de 50 MB e não foram adicionados: ${grandes.map((a) => a.name).join(', ')}.`);
+    if (vazios.length > 0) avisos.push(`Estão vazios e não foram adicionados: ${vazios.map((a) => a.name).join(', ')}.`);
+    setAvisoArquivos(avisos.length > 0 ? avisos.join(' ') : null);
+    const validos = escolhidos.filter((a) => a.size > 0 && a.size <= LIMITE_TAMANHO_DOCUMENTO_BYTES);
+    setArquivosNovos((atuais) => {
+      const chaves = new Set(atuais.map((a) => `${a.name}|${a.size}`));
+      return [...atuais, ...validos.filter((a) => !chaves.has(`${a.name}|${a.size}`))];
+    });
+  }
+
+  async function abrirDocumentoExistente(documento: DocumentoEdital) {
+    try {
+      await abrirDocumentoEdital(documento);
+    } catch (e) {
+      setAvisoArquivos(e instanceof Error ? e.message : 'Não foi possível abrir o arquivo.');
+    }
+  }
   const clienteEhDemais = clientes.find((c) => c.value === form.clienteId)?.porte === 'demais';
 
   // Municípios do estado selecionado (API do IBGE, ver ibgeService.ts). Se a
@@ -994,7 +1068,27 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (!form.municipio) camposObrigatoriosFaltando.push('Município');
     if (!form.dataLicitacao) camposObrigatoriosFaltando.push('Data e horário da licitação');
     if (!form.modalidade) camposObrigatoriosFaltando.push('Modalidade');
+    if (!form.objeto) camposObrigatoriosFaltando.push('Objeto da licitação');
+    if (!form.esfera) camposObrigatoriosFaltando.push('Esfera');
+    if (!valorCampoKm(form.distanciaMatriz).trim()) camposObrigatoriosFaltando.push('Distância da matriz');
+    if (!normalizarCapag(form.capag)) camposObrigatoriosFaltando.push('CAPAG');
+    if (!form.participacao) camposObrigatoriosFaltando.push('Participação');
+    if (!form.formaDisputa) camposObrigatoriosFaltando.push('Critério de julgamento');
+    if (!form.modoDisputa) camposObrigatoriosFaltando.push('Modo de disputa');
     if (!form.estrutura) camposObrigatoriosFaltando.push('Estrutura');
+    if (!form.tipoContratacao) camposObrigatoriosFaltando.push('Tipo de contratação');
+    if (!form.procedimento) camposObrigatoriosFaltando.push('Registro de Preços');
+    if (erroCarregarDocumentos) {
+      setAbaAtiva('gerais');
+      setErroChecklist(`${erroCarregarDocumentos} Feche e abra a licitação de novo antes de salvar.`);
+      return;
+    }
+    if (carregandoDocumentos) {
+      setAbaAtiva('gerais');
+      setErroChecklist('Aguarde o carregamento dos documentos do edital para salvar.');
+      return;
+    }
+    if (totalDocumentos === 0) camposObrigatoriosFaltando.push('Documentos do edital (anexe ao menos 1 arquivo)');
     if (!form.clienteId) camposObrigatoriosFaltando.push('Cliente vinculado');
     if (!form.status) camposObrigatoriosFaltando.push('Status');
 
@@ -1111,6 +1205,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
         liberarPrazoAte,
         removerLiberacaoPrazo: removerLiberacaoPrazo && !!licitacaoEmEdicao?.prazoPropostaLiberado,
         clientesAdicionaisIds: extrasValidos.length > 0 ? extrasValidos : undefined,
+        arquivosEdital: arquivosNovos.length > 0 ? arquivosNovos : undefined,
+        documentosRemovidosIds: documentosRemovidosIds.length > 0 ? documentosRemovidosIds : undefined,
         motivoAlteracao: jaLiberada
           ? motivoAlteracao.trim()
             ? `${motivoOpcao}: ${motivoAlteracao.trim()}`
@@ -1517,7 +1613,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               />
               <div className="col-span-2">
                 <SelectField
-                  label="Objeto da licitação"
+                  label="Objeto da licitação *"
+                  required
                   value={form.objeto}
                   onChange={(e) => trocarObjeto(e.target.value)}
                   placeholder="Selecione"
@@ -1591,21 +1688,24 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 />
               )}
               <SelectField
-                label="Esfera"
+                label="Esfera *"
+                required
                 value={form.esfera ?? ''}
                 onChange={(e) => atualizarCampo('esfera', e.target.value ? (e.target.value as EsferaLicitacao) : undefined)}
                 placeholder="Não informada"
                 options={Object.entries(ESFERA_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
               <TextField
-                label="Distância da matriz (km)"
+                label="Distância da matriz (km) *"
+                required
                 value={valorCampoKm(form.distanciaMatriz)}
                 onChange={(e) => atualizarCampo('distanciaMatriz', e.target.value.replace(/[^\d.,]/g, ''))}
                 inputMode="decimal"
                 placeholder="Ex.: 120"
               />
               <SelectField
-                label="CAPAG"
+                label="CAPAG *"
+                required
                 value={normalizarCapag(form.capag)}
                 onChange={(e) => atualizarCampo('capag', e.target.value)}
                 placeholder="Não informada"
@@ -1632,7 +1732,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               </div>
               <div>
                 <SelectField
-                  label="Participação"
+                  label="Participação *"
+                  required
                   value={form.participacao}
                   onChange={(e) => atualizarCampo('participacao', e.target.value as ParticipacaoLicitacao)}
                   placeholder="Selecione"
@@ -1645,14 +1746,16 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 )}
               </div>
               <SelectField
-                label="Critério de julgamento"
+                label="Critério de julgamento *"
+                required
                 value={form.formaDisputa}
                 onChange={(e) => atualizarCampo('formaDisputa', e.target.value)}
                 placeholder="Selecione"
                 options={CRITERIOS_JULGAMENTO.map((criterio) => ({ value: criterio, label: criterio }))}
               />
               <SelectField
-                label="Modo de disputa"
+                label="Modo de disputa *"
+                required
                 value={form.modoDisputa}
                 onChange={(e) => atualizarCampo('modoDisputa', e.target.value)}
                 placeholder="Selecione"
@@ -1664,21 +1767,24 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                 ]}
               />
               <SelectField
-                label="Estrutura"
+                label="Estrutura *"
+                required
                 value={form.estrutura}
                 onChange={(e) => atualizarCampo('estrutura', e.target.value as EstruturaLicitacao)}
                 placeholder="Selecione"
                 options={Object.entries(ESTRUTURA_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
               <SelectField
-                label="Tipo de contratação"
+                label="Tipo de contratação *"
+                required
                 value={form.tipoContratacao}
                 onChange={(e) => atualizarCampo('tipoContratacao', e.target.value as TipoContratacaoLicitacao)}
                 placeholder="Selecione"
                 options={Object.entries(TIPO_CONTRATACAO_LICITACAO_LABEL).map(([value, label]) => ({ value, label }))}
               />
               <SelectField
-                label="Registro de Preços"
+                label="Registro de Preços *"
+                required
                 value={form.procedimento}
                 onChange={(e) => atualizarCampo('procedimento', e.target.value as ProcedimentoLicitacao)}
                 placeholder="Selecione"
@@ -1743,35 +1849,62 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               />
               <div className="col-span-2">
                 <label className="mb-1.5 block font-mono text-xs uppercase tracking-wide text-ink-soft">
-                  Documentos do edital
+                  Documentos do edital *
                 </label>
                 <input
                   type="file"
                   multiple
-                  onChange={(e) =>
-                    atualizarCampo('nomesArquivosEdital', Array.from(e.target.files ?? []).map((arquivo) => arquivo.name))
-                  }
+                  onChange={(e) => {
+                    adicionarArquivosEdital(e.target.files);
+                    e.target.value = ''; // permite escolher mais arquivos em seguida
+                  }}
                   className="block w-full font-body text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-forest-mist file:px-3.5 file:py-2 file:font-body file:text-sm file:font-medium file:text-forest-deep"
                 />
+                <p className="mt-1 font-body text-xs text-ink-soft">
+                  Obrigatório anexar ao menos 1 arquivo (edital, termo de referência, anexos etc.), de até 50 MB cada. O cliente
+                  poderá abrir esses arquivos.
+                </p>
+                {carregandoDocumentos && <p className="mt-1.5 font-body text-xs text-ink-soft">Carregando documentos já enviados...</p>}
+                {(erroCarregarDocumentos || avisoArquivos) && (
+                  <p className="mt-1.5 font-body text-xs text-red-600">{erroCarregarDocumentos ?? avisoArquivos}</p>
+                )}
 
-                {(form.nomesArquivosEdital ?? []).length > 0 && (
+                {totalDocumentos > 0 && (
                   <div className="mt-1.5 font-body text-xs text-ink-soft">
                     <p>
-                      {(form.nomesArquivosEdital ?? []).length}{' '}
-                      {(form.nomesArquivosEdital ?? []).length === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}:
+                      {totalDocumentos} {totalDocumentos === 1 ? 'arquivo' : 'arquivos'}:
                     </p>
                     <ul className="ml-4 list-disc">
-                      {(form.nomesArquivosEdital ?? []).map((nome, indice) => (
-                        <li key={`${nome}-${indice}`} className="flex items-center gap-2">
-                          <span>{nome}</span>
+                      {documentosMantidos.map((documento) => (
+                        <li key={documento.id} className="flex items-center gap-2">
+                          <span>
+                            {documento.nomeArquivo}
+                            {documento.tamanhoBytes != null && ` (${formatarTamanhoArquivo(documento.tamanhoBytes)})`} — já enviado
+                          </span>
                           <button
                             type="button"
-                            onClick={() =>
-                              atualizarCampo(
-                                'nomesArquivosEdital',
-                                (form.nomesArquivosEdital ?? []).filter((_, i) => i !== indice)
-                              )
-                            }
+                            onClick={() => void abrirDocumentoExistente(documento)}
+                            className="font-body text-xs font-semibold text-forest hover:underline"
+                          >
+                            Abrir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDocumentosRemovidosIds((atuais) => [...atuais, documento.id])}
+                            className="font-body text-xs font-semibold text-red-600 hover:underline"
+                          >
+                            Remover
+                          </button>
+                        </li>
+                      ))}
+                      {arquivosNovos.map((arquivo, indice) => (
+                        <li key={`${arquivo.name}-${arquivo.size}-${indice}`} className="flex items-center gap-2">
+                          <span>
+                            {arquivo.name} ({formatarTamanhoArquivo(arquivo.size)}) — será enviado ao salvar
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setArquivosNovos((atuais) => atuais.filter((_, i) => i !== indice))}
                             className="font-body text-xs font-semibold text-red-600 hover:underline"
                           >
                             Remover
@@ -1779,7 +1912,6 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                         </li>
                       ))}
                     </ul>
-                    <p className="italic">(upload simulado — sem backend de arquivos ainda)</p>
                   </div>
                 )}
               </div>

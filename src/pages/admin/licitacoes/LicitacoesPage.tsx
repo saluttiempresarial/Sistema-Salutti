@@ -22,6 +22,7 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { Button } from '../../../components/Button';
 import { LicitacaoFormModal, type OpcoesSalvarLicitacao } from './LicitacaoFormModal';
 import { licitacaoService } from '../../../services/licitacaoService';
+import { licitacaoDocumentoService } from '../../../services/licitacaoDocumentoService';
 import { propostaPendenciasService } from '../../../services/propostaPendenciasService';
 import { pendenciaDeFaltas, type PendenciaIdentificacao } from '../../../utils/propostaPendencias';
 import {
@@ -238,6 +239,31 @@ export function LicitacoesPage() {
       if (falhas.length > 0) {
         window.alert(
           `A licitação principal foi salva e ${copiasCriadas.length} cópia(s) também, mas ${falhas.length} empresa(s) extra(s) não puderam ser cadastradas (${falhas[0]}). Cadastre só essas de novo, sem repetir as que já foram salvas.`
+        );
+      }
+    }
+
+    // Documentos do edital (23/11/2026): enviados depois de salvar, porque a
+    // licitação nova só tem id agora. As cópias (várias empresas) recebem os mesmos
+    // arquivos. Se algo falhar, a licitação já está salva: avisa em vez de impedir o
+    // fechamento (evita cadastrar em duplicidade); o analista abre a licitação e anexa.
+    const idDocumentos = licitacaoEmEdicao?.id ?? criada?.id;
+    if (idDocumentos && (opcoes.arquivosEdital?.length || opcoes.documentosRemovidosIds?.length)) {
+      try {
+        for (const documentoId of opcoes.documentosRemovidosIds ?? []) {
+          await licitacaoDocumentoService.remover(documentoId);
+        }
+        if (opcoes.arquivosEdital?.length) {
+          await licitacaoDocumentoService.enviar(idDocumentos, opcoes.arquivosEdital);
+          if (!licitacaoEmEdicao && copiasCriadas.length > 0) {
+            await licitacaoDocumentoService.copiarParaLicitacoes(idDocumentos, copiasCriadas);
+          }
+        }
+      } catch (erro) {
+        window.alert(
+          `A licitação foi salva, mas houve um problema com os documentos do edital: ${
+            erro instanceof Error ? erro.message : 'erro desconhecido'
+          }. Abra a licitação e anexe os arquivos de novo (nas cópias para outras empresas, confira também).`
         );
       }
     }
