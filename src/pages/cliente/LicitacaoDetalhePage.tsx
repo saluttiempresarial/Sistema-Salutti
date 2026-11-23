@@ -67,6 +67,11 @@ const TABS = [
   { id: 'itens', label: 'Itens' },
 ]
 
+// Aba de checklist sem nenhum item marcado não aparece para o Cliente (23/11/2026).
+function temItemMarcado(...listas: Array<ItemChecklistExigencia[] | undefined>): boolean {
+  return listas.some((lista) => (lista ?? []).some((item) => item.status != null))
+}
+
 function Campo({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null
   return (
@@ -84,37 +89,60 @@ function Campo({ label, value }: { label: string; value?: string | null }) {
 // de linhas "não definido" para o Cliente.
 function ChecklistLeitura({ titulo, itens }: { titulo?: string; itens: ItemChecklistExigencia[] }) {
   const itensMarcados = itens.filter((item) => item.status != null)
+  // Seção sem nenhuma exigência registrada não aparece para o Cliente (23/11/2026).
+  if (itensMarcados.length === 0) return null
   return (
     <div className="space-y-2">
       {titulo && <p className="font-body text-sm font-semibold text-ink">{titulo}</p>}
-      {itensMarcados.length === 0 ? (
-        <p className="font-body text-sm italic text-ink-soft">Nenhuma exigência registrada ainda.</p>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-ink-soft/15">
-          {itensMarcados.map((item) => (
-            <div
-              key={item.id}
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-ink-soft/10 px-3 py-2.5 last:border-b-0"
-            >
-              <div className="flex items-center gap-1.5">
-                <p className="font-body text-sm text-ink">{item.label}</p>
-                {explicacaoDaExigencia(item.id) && (
-                  <InfoTooltip titulo={item.label} texto={explicacaoDaExigencia(item.id) as string} />
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`whitespace-nowrap rounded-md px-2 py-0.5 font-body text-xs font-semibold ${
-                    item.status === 'exigido' ? 'bg-forest-mist text-forest-deep' : 'bg-paper-2 text-ink-soft'
-                  }`}
-                >
-                  {STATUS_EXIGENCIA_LABEL[item.status as StatusExigencia]}
-                </span>
-                {item.detalhamento && <span className="font-body text-xs text-ink-soft">{item.detalhamento}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="overflow-hidden rounded-xl border border-ink-soft/15">
+        {itensMarcados.map((item) => (
+          <ItemChecklistLeitura key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Uma linha do checklist para o Cliente (23/11/2026): o que ele olha primeiro é
+// "Exigido" ou "Não exigido", então a situação fica numa etiqueta de largura
+// fixa, alinhada à esquerda, e o texto do edital (detalhamento) fica recolhido
+// atrás de "Ver detalhes". Itens "Não exigido" ficam em tom mais apagado.
+function ItemChecklistLeitura({ item }: { item: ItemChecklistExigencia }) {
+  const [aberto, setAberto] = useState(false)
+  const exigido = item.status === 'exigido'
+  return (
+    <div className="border-b border-ink-soft/10 px-3 py-2.5 last:border-b-0">
+      <div className="flex items-center gap-3">
+        <span
+          className={`w-24 shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-center font-body text-xs font-semibold ${
+            exigido ? 'bg-forest text-white' : 'bg-paper-2 text-ink-soft'
+          }`}
+        >
+          {STATUS_EXIGENCIA_LABEL[item.status as StatusExigencia]}
+        </span>
+        <p className={`min-w-0 flex-1 font-body text-sm ${exigido ? 'font-medium text-ink' : 'text-ink-soft'}`}>
+          {item.label}
+          {explicacaoDaExigencia(item.id) && (
+            <span className="ml-1.5 inline-block align-middle">
+              <InfoTooltip titulo={item.label} texto={explicacaoDaExigencia(item.id) as string} />
+            </span>
+          )}
+        </p>
+        {item.detalhamento && (
+          <button
+            type="button"
+            onClick={() => setAberto((atual) => !atual)}
+            aria-expanded={aberto}
+            className="shrink-0 font-body text-xs font-semibold text-forest hover:underline"
+          >
+            {aberto ? 'Ocultar' : 'Ver detalhes'}
+          </button>
+        )}
+      </div>
+      {aberto && item.detalhamento && (
+        <p className="ml-[6.75rem] mt-1.5 rounded-md bg-paper-2/60 px-2.5 py-1.5 font-body text-xs text-ink-soft">
+          {item.detalhamento}
+        </p>
       )}
     </div>
   )
@@ -263,7 +291,23 @@ export function LicitacaoDetalhePage() {
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
-          <Tabs tabs={TABS} activeTab={abaAtiva} onChange={setAbaAtiva} />
+          <Tabs
+            tabs={TABS.filter((aba) => {
+              if (aba.id === 'habilitacao') {
+                return temItemMarcado(
+                  licitacao.habilitacao.juridica,
+                  licitacao.habilitacao.fiscalSocialTrabalhista,
+                  licitacao.habilitacao.economicoFinanceira,
+                  licitacao.habilitacao.tecnica
+                )
+              }
+              if (aba.id === 'declaracoes') return temItemMarcado(licitacao.declaracoes)
+              if (aba.id === 'outras') return temItemMarcado(licitacao.outrasExigencias)
+              return true
+            })}
+            activeTab={abaAtiva}
+            onChange={setAbaAtiva}
+          />
 
           <div className="mt-5 min-h-[280px] space-y-5">
             {abaAtiva === 'gerais' && (
