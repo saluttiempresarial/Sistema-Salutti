@@ -53,7 +53,7 @@ import {
   STATUS_EXIGENCIA_LABEL,
 } from '@/types/licitacao'
 import { formatarDataHora, formatarMoeda, formatarNumero } from '@/utils/prazoUtils'
-import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
+import { totalReferenciaItem, totalReferenciaGrupo, totalReferenciaOportunidade, licitacaoExclusivaMeEpp, podeEditarPropostaCliente, calcularAnaliseItem, classificarStatusProposta, DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE } from '@/utils/licitacaoCalculos'
 import { PorteEmpresa } from '@/types/cliente'
 import { MOTIVOS_ESCOLHIDOS_CLIENTE, rotuloDoMotivo } from '@/types/motivoNaoParticipacao'
 import type { MotivoEscolhidoCliente, MotivoNaoParticipacao } from '@/types/motivoNaoParticipacao'
@@ -148,7 +148,67 @@ function ItemChecklistLeitura({ item }: { item: ItemChecklistExigencia }) {
   )
 }
 
-function ItemLeitura({ item }: { item: ItemLicitacao }) {
+// Uma célula "rótulo + valor" do resumo da proposta do cliente.
+function CelulaResumo({ rotulo, valor, destaque }: { rotulo: string; valor: string; destaque?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <p className="font-mono text-[10px] uppercase tracking-wide text-ink-soft">{rotulo}</p>
+      <p className={`mt-0.5 break-words font-body ${destaque ? 'text-base font-bold text-forest-deep' : 'text-sm font-medium text-ink'}`}>
+        {valor}
+      </p>
+    </div>
+  )
+}
+
+// Modo normal: item completo, com a descrição inteira (antes de o cliente decidir
+// ou enquanto ainda dá para editar a proposta).
+// Modo resumo (24/11/2026): depois que o cliente confirmou participação e o prazo
+// passou, ele só precisa rever o que ofertou. A descrição do edital, que costuma
+// ser enorme, fica reduzida a 3 linhas (com "Ver descrição completa") e aparecem o
+// valor de referência e o que o cliente preencheu: valor unitário, frete, valor
+// com frete, total da proposta, marca e modelo.
+function ItemLeitura({
+  item,
+  resumo = false,
+  taxaFrete = 0,
+}: {
+  item: ItemLicitacao
+  resumo?: boolean
+  taxaFrete?: number
+}) {
+  const [descricaoCompleta, setDescricaoCompleta] = useState(false)
+
+  if (!resumo) {
+    return (
+      <div className="rounded-lg bg-paper-2/60 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="font-body text-sm font-semibold text-ink">Item {item.numero}</p>
+            <p className="mt-0.5 font-body text-xs text-ink-soft">
+              {formatarNumero(item.quantidade)} {item.unidadeMedida} × {formatarMoeda(item.precoReferencia)}
+              {item.exclusivoMeEpp && ' · Exclusivo ME/EPP'}
+            </p>
+          </div>
+          <p className="font-body text-sm font-medium text-forest-deep">{formatarMoeda(totalReferenciaItem(item))}</p>
+        </div>
+        {item.descricao && (
+          <div className="mt-3 border-t border-ink-soft/10 pt-3">
+            <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Descrição</p>
+            <p className="mt-1 whitespace-pre-line font-body text-sm leading-relaxed text-ink-soft">
+              {item.descricao}
+            </p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const proposta = item.propostaCliente
+  const analise = calcularAnaliseItem(item, taxaFrete, taxaFrete > 0)
+  const status = classificarStatusProposta(analise.percentualDiferenca)
+  const ofertou = proposta?.precoMinimo != null
+  const descricaoLonga = (item.descricao ?? '').length > 220
+
   return (
     <div className="rounded-lg bg-paper-2/60 p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -159,16 +219,66 @@ function ItemLeitura({ item }: { item: ItemLicitacao }) {
             {item.exclusivoMeEpp && ' · Exclusivo ME/EPP'}
           </p>
         </div>
-        <p className="font-body text-sm font-medium text-forest-deep">{formatarMoeda(totalReferenciaItem(item))}</p>
+        <div className="text-right">
+          <p className="font-mono text-[10px] uppercase tracking-wide text-ink-soft">Valor de referência</p>
+          <p className="font-body text-sm font-semibold text-forest-deep">{formatarMoeda(totalReferenciaItem(item))}</p>
+        </div>
       </div>
+
       {item.descricao && (
-        <div className="mt-3 border-t border-ink-soft/10 pt-3">
-          <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">Descrição</p>
-          <p className="mt-1 whitespace-pre-line font-body text-sm leading-relaxed text-ink-soft">
+        <div className="mt-2">
+          <p
+            className="whitespace-pre-line font-body text-xs leading-relaxed text-ink-soft"
+            style={
+              descricaoCompleta
+                ? undefined
+                : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
+            }
+          >
             {item.descricao}
           </p>
+          {descricaoLonga && (
+            <button
+              type="button"
+              onClick={() => setDescricaoCompleta((atual) => !atual)}
+              className="mt-1 font-body text-xs font-semibold text-forest hover:underline"
+            >
+              {descricaoCompleta ? 'Ocultar descrição' : 'Ver descrição completa'}
+            </button>
+          )}
         </div>
       )}
+
+      <div className="mt-3 rounded-lg border border-forest/20 bg-forest-mist/40 p-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="font-body text-xs font-semibold uppercase tracking-wide text-forest-deep">Sua proposta</p>
+          {ofertou && (
+            <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 font-body text-[11px] font-semibold ${status.classe}`}>
+              {status.label}
+            </span>
+          )}
+        </div>
+        {ofertou ? (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+            <CelulaResumo rotulo="Valor unitário" valor={formatarMoeda(proposta?.precoMinimo as number)} />
+            {taxaFrete > 0 && <CelulaResumo rotulo="Frete" valor={`${formatarNumero(taxaFrete)}%`} />}
+            {taxaFrete > 0 && (
+              <CelulaResumo rotulo="Valor unit. com frete" valor={formatarMoeda(analise.precoComFrete as number)} />
+            )}
+            <CelulaResumo rotulo="Total da proposta" valor={formatarMoeda(analise.valorTotal as number)} destaque />
+            {proposta?.marca && <CelulaResumo rotulo="Marca" valor={proposta.marca} />}
+            {proposta?.modelo && <CelulaResumo rotulo="Modelo" valor={proposta.modelo} />}
+            {proposta?.categoriaServico && <CelulaResumo rotulo="Categoria do serviço" valor={proposta.categoriaServico} />}
+            {(proposta?.marcasComposicao?.length ?? 0) > 0 && (
+              <div className="col-span-2 sm:col-span-4">
+                <CelulaResumo rotulo="Marcas da composição" valor={(proposta?.marcasComposicao ?? []).join(', ')} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="font-body text-xs italic text-ink-soft">Sem proposta preenchida para este item.</p>
+        )}
+      </div>
     </div>
   )
 }
@@ -271,6 +381,12 @@ export function LicitacaoDetalhePage() {
   }
 
   const itensIndividuais = licitacao?.itens.filter((i) => !i.grupoId) ?? []
+
+  // Depois que o cliente confirmou participação e o prazo passou, a aba Itens vira
+  // um resumo da proposta dele (24/11/2026). Frete: taxa única da licitação.
+  const modoResumoItens =
+    !!licitacao && licitacao.decisaoCliente === 'participar' && !podeEditarPropostaCliente(licitacao)
+  const taxaFreteResumo = licitacao?.cobrarFrete ? licitacao.percentualFrete ?? 0 : 0
 
   return (
     <DashboardShell
@@ -484,7 +600,7 @@ export function LicitacaoDetalhePage() {
                       </p>
                       <div className="space-y-2">
                         {itensDoGrupo.map((item) => (
-                          <ItemLeitura key={item.id} item={item} />
+                          <ItemLeitura key={item.id} item={item} resumo={modoResumoItens} taxaFrete={taxaFreteResumo} />
                         ))}
                         {itensDoGrupo.length === 0 && (
                           <p className="font-body text-xs italic text-ink-soft">Nenhum item neste grupo.</p>
@@ -502,7 +618,7 @@ export function LicitacaoDetalhePage() {
                     <p className="mb-3 font-body text-sm font-semibold text-ink">Itens individuais</p>
                     <div className="space-y-2">
                       {itensIndividuais.map((item) => (
-                        <ItemLeitura key={item.id} item={item} />
+                        <ItemLeitura key={item.id} item={item} resumo={modoResumoItens} taxaFrete={taxaFreteResumo} />
                       ))}
                       {itensIndividuais.length === 0 && (
                         <p className="font-body text-xs italic text-ink-soft">Nenhum item individual ainda.</p>
@@ -516,6 +632,18 @@ export function LicitacaoDetalhePage() {
                     <span className="font-body text-sm font-semibold text-forest-deep">
                       Total da oportunidade: {formatarMoeda(totalReferenciaOportunidade(licitacao.itens))}
                     </span>
+                    {modoResumoItens && (
+                      <p className="mt-1 font-body text-sm font-bold text-forest-deep">
+                        Total da sua proposta:{' '}
+                        {formatarMoeda(
+                          licitacao.itens.reduce(
+                            (soma, item) =>
+                              soma + (calcularAnaliseItem(item, taxaFreteResumo, taxaFreteResumo > 0).valorTotal ?? 0),
+                            0
+                          )
+                        )}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
