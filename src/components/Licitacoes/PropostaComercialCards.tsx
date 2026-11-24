@@ -829,13 +829,28 @@ export function PropostaComercialCards({
                           <div className="font-body text-sm font-semibold text-ink">
                             {itemVivo.numero}. {itemVivo.descricao}
                           </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="font-body text-xs text-ink-soft">
-                              {itemVivo.unidadeMedida} · Qtd. {formatarNumero(itemVivo.quantidade)} · Ref. unit. {formatarMoeda(itemVivo.precoReferencia)}
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                            <span className="font-body text-base text-ink">
+                              {itemVivo.unidadeMedida} · Qtd. <strong>{formatarNumero(itemVivo.quantidade)}</strong> · Ref. unit.{' '}
+                              <strong>{formatarMoeda(itemVivo.precoReferencia)}</strong>
                             </span>
                             {itemVivo.exclusivoMeEpp && (
-                              <span className="rounded-full bg-brass-pale px-2 py-0.5 font-body text-[10px] font-bold uppercase text-brass">
-                                Exclusividade ME/EPP
+                              // Destaque da exclusividade ME/EPP (24/11/2026): o cliente precisa
+                              // enxergar na hora se pode ou não ofertar neste item.
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-md border-2 px-3 py-1 font-body text-sm font-bold uppercase tracking-wide ${
+                                  bloqueadoMeEpp
+                                    ? 'border-red-300 bg-red-50 text-red-700'
+                                    : porteCliente === 'me_epp'
+                                      ? 'border-forest bg-forest-mist text-forest-deep'
+                                      : 'border-brass bg-brass-pale text-brass'
+                                }`}
+                              >
+                                {bloqueadoMeEpp
+                                  ? '🔒 Exclusivo ME/EPP — sua empresa não pode ofertar'
+                                  : porteCliente === 'me_epp'
+                                    ? '✔ Exclusivo ME/EPP — sua empresa pode ofertar'
+                                    : '⚠ Exclusivo para ME/EPP'}
                               </span>
                             )}
                           </div>
@@ -857,7 +872,7 @@ export function PropostaComercialCards({
                               ⚠ {ROTULO_FALTA_IDENTIFICACAO[faltaIdentificacao]}
                             </span>
                           )}
-                          <span className={`whitespace-nowrap rounded-full px-2.5 py-1 font-body text-[11px] font-semibold ${status.classe}`}>
+                          <span className={`whitespace-nowrap rounded-full px-3 py-1 font-body text-xs font-semibold ${status.classe}`}>
                             {status.label}
                           </span>
                           {visaoEquipe && itemIndividualAcimaDaReferencia(itemVivo) && (
