@@ -259,22 +259,24 @@ function ItemLeitura({
           )}
         </div>
         {ofertou ? (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-            <CelulaResumo rotulo="Valor unitário" valor={formatarMoeda(proposta?.precoMinimo as number)} />
-            {taxaFrete > 0 && <CelulaResumo rotulo="Frete" valor={`${formatarNumero(taxaFrete)}%`} />}
-            {taxaFrete > 0 && (
-              <CelulaResumo rotulo="Valor unit. com frete" valor={formatarMoeda(analise.precoComFrete as number)} />
-            )}
-            <CelulaResumo rotulo="Total da proposta" valor={formatarMoeda(analise.valorTotal as number)} destaque />
-            {proposta?.marca && <CelulaResumo rotulo="Marca" valor={proposta.marca} />}
-            {proposta?.modelo && <CelulaResumo rotulo="Modelo" valor={proposta.modelo} />}
-            {proposta?.categoriaServico && <CelulaResumo rotulo="Categoria do serviço" valor={proposta.categoriaServico} />}
+          <>
+            {/* Uma única linha: valor unitário, marca, modelo e valor unitário com frete.
+                A taxa de frete aparece uma vez só, no topo da aba (é única na licitação). */}
+            <div className="flex flex-wrap items-start gap-x-8 gap-y-3 sm:flex-nowrap sm:justify-between">
+              <CelulaResumo rotulo="Valor unitário" valor={formatarMoeda(proposta?.precoMinimo as number)} />
+              {proposta?.marca && <CelulaResumo rotulo="Marca" valor={proposta.marca} />}
+              {proposta?.modelo && <CelulaResumo rotulo="Modelo" valor={proposta.modelo} />}
+              {proposta?.categoriaServico && <CelulaResumo rotulo="Categoria do serviço" valor={proposta.categoriaServico} />}
+              {taxaFrete > 0 && (
+                <CelulaResumo rotulo="Valor unit. com frete" valor={formatarMoeda(analise.precoComFrete as number)} destaque />
+              )}
+            </div>
             {(proposta?.marcasComposicao?.length ?? 0) > 0 && (
-              <div className="col-span-2 sm:col-span-4">
-                <CelulaResumo rotulo="Marcas da composição" valor={(proposta?.marcasComposicao ?? []).join(', ')} />
-              </div>
+              <p className="mt-2 font-body text-xs text-ink-soft">
+                <span className="font-semibold">Marcas da composição:</span> {(proposta?.marcasComposicao ?? []).join(', ')}
+              </p>
             )}
-          </div>
+          </>
         ) : (
           <p className="font-body text-xs italic text-ink-soft">Sem proposta preenchida para este item.</p>
         )}
@@ -387,6 +389,11 @@ export function LicitacaoDetalhePage() {
   const modoResumoItens =
     !!licitacao && licitacao.decisaoCliente === 'participar' && !podeEditarPropostaCliente(licitacao)
   const taxaFreteResumo = licitacao?.cobrarFrete ? licitacao.percentualFrete ?? 0 : 0
+  // No resumo, itens em que o cliente não ofertou (sem valor unitário) nem aparecem.
+  const itensExibidos = (licitacao?.itens ?? []).filter(
+    (item) => !modoResumoItens || item.propostaCliente?.precoMinimo != null
+  )
+  const individuaisExibidos = itensExibidos.filter((i) => !i.grupoId)
 
   return (
     <DashboardShell
@@ -591,8 +598,19 @@ export function LicitacaoDetalhePage() {
 
             {abaAtiva === 'itens' && (
               <div className="space-y-4">
+                {modoResumoItens && taxaFreteResumo > 0 && (
+                  <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
+                    Frete de <strong>{formatarNumero(taxaFreteResumo)}%</strong> aplicado a todos os itens da sua proposta
+                    (já incluído no &quot;Valor unit. com frete&quot;).
+                  </p>
+                )}
+                {modoResumoItens && itensExibidos.length === 0 && (
+                  <p className="font-body text-sm italic text-ink-soft">Nenhum item com proposta preenchida.</p>
+                )}
                 {licitacao.grupos.map((grupo) => {
-                  const itensDoGrupo = licitacao.itens.filter((i) => i.grupoId === grupo.id)
+                  const itensDoGrupo = itensExibidos.filter((i) => i.grupoId === grupo.id)
+                  // No resumo, grupo sem nenhum item ofertado não aparece.
+                  if (modoResumoItens && itensDoGrupo.length === 0) return null
                   return (
                     <div key={grupo.id} className="rounded-xl border border-ink-soft/15 p-4">
                       <p className="mb-3 font-body text-sm font-semibold text-ink">
@@ -607,17 +625,19 @@ export function LicitacaoDetalhePage() {
                         )}
                       </div>
                       <p className="mt-3 text-right font-body text-sm font-medium text-forest-deep">
-                        Total do grupo: {formatarMoeda(totalReferenciaGrupo(licitacao.itens, grupo.id))}
+                        Total do grupo: {formatarMoeda(totalReferenciaGrupo(itensExibidos, grupo.id))}
                       </p>
                     </div>
                   )
                 })}
 
-                {(itensIndividuais.length > 0 || licitacao.grupos.length === 0) && (
+                {(modoResumoItens
+                  ? individuaisExibidos.length > 0
+                  : itensIndividuais.length > 0 || licitacao.grupos.length === 0) && (
                   <div className="rounded-xl border border-ink-soft/15 p-4">
                     <p className="mb-3 font-body text-sm font-semibold text-ink">Itens individuais</p>
                     <div className="space-y-2">
-                      {itensIndividuais.map((item) => (
+                      {(modoResumoItens ? individuaisExibidos : itensIndividuais).map((item) => (
                         <ItemLeitura key={item.id} item={item} resumo={modoResumoItens} taxaFrete={taxaFreteResumo} />
                       ))}
                       {itensIndividuais.length === 0 && (
@@ -627,16 +647,17 @@ export function LicitacaoDetalhePage() {
                   </div>
                 )}
 
-                {licitacao.itens.length > 0 && (
+                {itensExibidos.length > 0 && (
                   <div className="rounded-xl border border-forest/30 bg-forest-mist px-4 py-3 text-right">
                     <span className="font-body text-sm font-semibold text-forest-deep">
-                      Total da oportunidade: {formatarMoeda(totalReferenciaOportunidade(licitacao.itens))}
+                      {modoResumoItens ? 'Total de referência dos itens ofertados' : 'Total da oportunidade'}:{' '}
+                      {formatarMoeda(totalReferenciaOportunidade(itensExibidos))}
                     </span>
                     {modoResumoItens && (
                       <p className="mt-1 font-body text-sm font-bold text-forest-deep">
                         Total da sua proposta:{' '}
                         {formatarMoeda(
-                          licitacao.itens.reduce(
+                          itensExibidos.reduce(
                             (soma, item) =>
                               soma + (calcularAnaliseItem(item, taxaFreteResumo, taxaFreteResumo > 0).valorTotal ?? 0),
                             0
