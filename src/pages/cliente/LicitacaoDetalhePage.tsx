@@ -243,16 +243,15 @@ export function LicitacaoDetalhePage() {
     }
   }, [id])
 
-  // Quando o "Não vou participar" acontece por um bloqueio do sistema (empresa
-  // ME/EPP, ou licitação exclusiva ME/EPP e empresa "Demais"), o motivo é
-  // registrado sozinho e o cliente não precisa escolher. Nos demais casos a
-  // escolha do motivo é obrigatória (migração 052).
+  // Quando o "Não vou participar" acontece por um bloqueio do sistema (licitação
+  // exclusiva ME/EPP e empresa "Demais"), o motivo é registrado sozinho e o
+  // cliente não precisa escolher. Nos demais casos a escolha do motivo é
+  // obrigatória (migração 052). Empresa ME/EPP não tem mais bloqueio pela
+  // empresa inteira (24/11/2026): ela escolhe participar ou não, como as demais.
   const motivoAutomatico: MotivoNaoParticipacao | null =
-    porteCliente === 'me_epp'
-      ? 'bloqueio_porte'
-      : porteCliente === 'demais' && licitacao && licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens)
-        ? 'exclusiva_me_epp'
-        : null
+    porteCliente === 'demais' && licitacao && licitacao.itens.length > 0 && licitacaoExclusivaMeEpp(licitacao.itens)
+      ? 'exclusiva_me_epp'
+      : null
   const motivoParaGravar: MotivoNaoParticipacao | '' = motivoAutomatico ?? motivoEscolhido
   const explicacaoObrigatoria = motivoParaGravar === 'outro'
   const recusaValida = motivoParaGravar !== '' && (!explicacaoObrigatoria || motivoRecusa.trim() !== '')
@@ -572,17 +571,7 @@ export function LicitacaoDetalhePage() {
                 </div>
               </div>
             ) : licitacao.decisaoCliente === 'pendente' ? (
-              porteCliente === 'me_epp' ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
-                    🔒 Empresas classificadas como ME/EPP não enviam proposta pelo sistema — fale com a Salutti
-                    diretamente sobre esta licitação.
-                  </p>
-                  <Button variant="ghost" onClick={() => setRecusando(true)} disabled={decidindo}>
-                    Não vou participar
-                  </Button>
-                </div>
-              ) : !podeEditarPropostaCliente(licitacao) ? (
+              !podeEditarPropostaCliente(licitacao) ? (
                 <p className="rounded-lg bg-brass-pale/60 px-3 py-2 font-body text-xs text-brass">
                   🔒 O prazo para participar desta licitação já encerrou (até {DIAS_UTEIS_LIMITE_EDICAO_PROPOSTA_CLIENTE}{' '}
                   dias úteis antes da sessão, às 18h30).
