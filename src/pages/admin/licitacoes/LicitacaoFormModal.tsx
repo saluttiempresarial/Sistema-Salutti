@@ -137,6 +137,10 @@ import { SeletorUnidadeMedida } from '../../../components/SeletorUnidadeMedida';
 // deploy). Para reativar: troque para true — nada mais precisa mudar.
 const IMPORTACAO_EDITAL_IA_ATIVA = false;
 
+// Opção própria da lista "Recebimento em qual banco": quando o edital não define
+// o banco, o analista escolhe "Não exigido" e o sistema não pede o nome de outro banco.
+const BANCO_NAO_EXIGIDO = 'Não exigido';
+
 // Monta a lista de abas com a contagem de itens de checklist ainda sem
 // marcação (Exigido/Não exigido) ao lado do nome — para o Analista ver de
 // longe onde falta preencher, sem precisar entrar em cada aba. O item
@@ -437,6 +441,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   // resultado independentes.
   const [clientesAdicionaisIds, setClientesAdicionaisIds] = useState<string[]>([]);
   const [buscaClienteAdicional, setBuscaClienteAdicional] = useState('');
+  // "Cadastrar também para outras empresas?" Sim/Não. Padrão Não: a lista de empresas só abre com Sim.
+  const [cadastrarOutrasEmpresas, setCadastrarOutrasEmpresas] = useState(false);
 
   // Documentos do edital (23/11/2026): obrigatório ter ao menos 1 arquivo. Os
   // arquivos novos só sobem para o Storage depois que a licitação é salva
@@ -688,6 +694,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     if (!isOpen) {
       setClientesAdicionaisIds([]);
       setBuscaClienteAdicional('');
+      setCadastrarOutrasEmpresas(false);
     }
   }, [isOpen]);
 
@@ -1107,7 +1114,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     }
 
     // Empresas extras marcadas (só em licitação nova); a principal nunca se repete.
-    const extrasValidos = licitacaoEmEdicao ? [] : clientesAdicionaisIds.filter((id) => id !== form.clienteId);
+    const extrasValidos = licitacaoEmEdicao || !cadastrarOutrasEmpresas ? [] : clientesAdicionaisIds.filter((id) => id !== form.clienteId);
     if (form.participacao === 'exclusiva_me_epp') {
       const extrasDemais = extrasValidos
         .map((id) => clientes.find((c) => c.value === id))
@@ -1952,8 +1959,38 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               )}
               {!licitacaoEmEdicao && (
                 <div className="col-span-2 rounded-lg border border-ink-soft/15 bg-forest-mist/20 p-3.5">
-                  <p className="font-body text-sm font-medium text-ink">Cadastrar também para outras empresas (opcional)</p>
-                  <p className="mt-0.5 font-body text-xs text-ink-soft">
+                  <p className="font-body text-sm font-medium text-ink">Cadastrar também para outras empresas?</p>
+                  <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Cadastrar também para outras empresas">
+                    {[
+                      { valor: false, rotulo: 'Não' },
+                      { valor: true, rotulo: 'Sim' },
+                    ].map((opcao) => (
+                      <button
+                        key={opcao.rotulo}
+                        type="button"
+                        role="radio"
+                        aria-checked={cadastrarOutrasEmpresas === opcao.valor}
+                        onClick={() => {
+                          setCadastrarOutrasEmpresas(opcao.valor);
+                          if (!opcao.valor) {
+                            // Ao escolher Não, as empresas marcadas e a busca são esquecidas.
+                            setClientesAdicionaisIds([]);
+                            setBuscaClienteAdicional('');
+                          }
+                        }}
+                        className={`min-w-[5rem] rounded-lg border px-4 py-1.5 font-body text-sm font-medium transition-colors ${
+                          cadastrarOutrasEmpresas === opcao.valor
+                            ? 'border-forest bg-forest text-white'
+                            : 'border-ink-soft/30 bg-white text-ink hover:bg-forest-mist/40'
+                        }`}
+                      >
+                        {opcao.rotulo}
+                      </button>
+                    ))}
+                  </div>
+                  {cadastrarOutrasEmpresas && (
+                  <>
+                  <p className="mt-2.5 font-body text-xs text-ink-soft">
                     Ao salvar, o sistema cria uma licitação separada para cada empresa marcada, com os mesmos dados e itens.
                     Cada empresa terá a sua própria proposta, disputa e resultado. A família do item não é copiada: escolha-a
                     depois, em cada licitação.
@@ -1986,6 +2023,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                       {clientesAdicionaisIds.filter((id) => id !== form.clienteId).length} empresa(s) extra(s) marcada(s):
                       serão criadas {clientesAdicionaisIds.filter((id) => id !== form.clienteId).length + 1} licitações no total.
                     </p>
+                  )}
+                  </>
                   )}
                 </div>
               )}
@@ -2182,15 +2221,23 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               />
               <SelectField
                 label="Recebimento em qual banco"
-                value={bancoEmOutros(form.condicoesComerciais.recebimentoBanco) ? BANCO_OUTROS : form.condicoesComerciais.recebimentoBanco}
+                value={
+                  form.condicoesComerciais.recebimentoBanco === BANCO_NAO_EXIGIDO
+                    ? BANCO_NAO_EXIGIDO
+                    : bancoEmOutros(form.condicoesComerciais.recebimentoBanco)
+                      ? BANCO_OUTROS
+                      : form.condicoesComerciais.recebimentoBanco
+                }
                 onChange={(e) => atualizarCondicoes('recebimentoBanco', e.target.value)}
                 placeholder="Selecione"
                 options={[
                   ...BANCOS_RECEBIMENTO.map((banco) => ({ value: banco, label: banco })),
+                  { value: BANCO_NAO_EXIGIDO, label: 'Não exigido' },
                   { value: BANCO_OUTROS, label: 'Outros (especificar)' },
                 ]}
               />
-              {bancoEmOutros(form.condicoesComerciais.recebimentoBanco) && (
+              {form.condicoesComerciais.recebimentoBanco !== BANCO_NAO_EXIGIDO &&
+                bancoEmOutros(form.condicoesComerciais.recebimentoBanco) && (
                 <TextField
                   label="Nome do banco (obrigatório)"
                   value={form.condicoesComerciais.recebimentoBanco === BANCO_OUTROS ? '' : form.condicoesComerciais.recebimentoBanco}
