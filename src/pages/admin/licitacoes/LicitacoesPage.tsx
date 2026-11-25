@@ -420,7 +420,7 @@ export function LicitacoesPage() {
     if (!licitacao.liberadaAoClienteEm) {
       return (
         <div className="flex flex-col items-start gap-1.5">
-          <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 font-body text-xs font-medium text-slate-600">
+          <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 font-body text-xs font-medium text-ink-soft">
             Não liberada ao cliente
           </span>
           {podeEditar && (
@@ -444,7 +444,7 @@ export function LicitacoesPage() {
           licitacao.decisaoCliente === 'participar'
             ? 'bg-forest-mist text-forest-deep'
             : licitacao.decisaoCliente === 'recusar'
-            ? 'bg-slate-100 text-slate-600'
+            ? 'bg-slate-100 text-ink-soft'
             : 'bg-brass-pale text-brass'
         }`}
       >

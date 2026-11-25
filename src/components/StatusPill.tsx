@@ -10,6 +10,10 @@
 // Cores (15/10, redesenho do painel): neutro em cinza, "info" (Em análise)
 // em azul, "warning" (Enviado) em dourado, ganho em verde e perdido em
 // vermelho — antes "info" e "success" eram dois verdes quase iguais.
+//
+// 25/11/2026 (legibilidade): o tom "neutral" passou a usar o texto padrão do
+// sistema (text-ink-soft) em vez do cinza fixo "slate-600". O tom "warning"
+// (text-brass) já usa o dourado escuro definido em tailwind.config.js.
 
 export type StatusTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -19,7 +23,7 @@ interface StatusPillProps {
 }
 
 const TONE_CLASSES: Record<StatusTone, string> = {
-  neutral: 'bg-slate-100 text-slate-600',
+  neutral: 'bg-slate-100 text-ink-soft',
   success: 'bg-forest-mist text-forest-deep',
   warning: 'bg-brass-pale text-brass',
   danger: 'bg-red-50 text-red-700',

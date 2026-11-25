@@ -8,7 +8,9 @@ export default {
         // atualizar também o site estático, para manter as duas frentes consistentes.
         forest: {
           DEFAULT: '#0B5C3C',
-          deep: '#073F29',
+          // "deep" é o verde escuro dos VALORES FINANCEIROS e destaques (texto) e
+          // do hover dos botões. Segue o token de texto --texto-valor (index.css).
+          deep: 'rgb(var(--texto-valor) / <alpha-value>)',
           mist: '#E7F0EA',
         },
         // Verde exato extraído do arquivo do logo oficial (círculo do ícone
@@ -32,14 +34,29 @@ export default {
           DEFAULT: '#F7F4EC',
           2: '#EFEADA',
         },
+        // TIPOGRAFIA (ajuste de legibilidade de 25/11/2026) — as cores vêm de
+        // variáveis CSS em src/index.css (:root), para trocar a paleta num só
+        // lugar. Formato "rgb(var(--x) / <alpha-value>)" mantém funcionando as
+        // classes com transparência (ex.: border-ink-soft/10).
+        //   ink        = texto principal e títulos            (#1F2937)
+        //   ink-soft   = descrições e textos de conteúdo      (#333333)
+        //   ink-aux    = legendas e informações auxiliares    (#64748B)
+        //   forest-deep (acima) = valores financeiros/destaque (#174B36)
         ink: {
-          DEFAULT: '#17231C',
-          soft: '#4A5A50',
+          DEFAULT: 'rgb(var(--texto-titulo) / <alpha-value>)',
+          soft: 'rgb(var(--texto-conteudo) / <alpha-value>)',
+          aux: 'rgb(var(--texto-auxiliar) / <alpha-value>)',
         },
       },
+      // Texto na cor "brass" (dourado) sobre o fundo brass-pale tinha contraste de
+      // 2,8:1 (abaixo do mínimo de 4,5). Só o TEXTO usa o dourado escuro; fundos,
+      // bordas e anéis continuam com o dourado original.
+      textColor: {
+        brass: 'rgb(var(--texto-ouro) / <alpha-value>)',
+      },
       fontFamily: {
-        display: ['Lora', 'ui-serif', 'Georgia', 'serif'],
-        body: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
+        body: ['"Source Sans 3"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
       },
       boxShadow: {

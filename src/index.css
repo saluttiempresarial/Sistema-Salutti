@@ -3,69 +3,32 @@
 @tailwind utilities;
 
 @layer base {
+  /* Paleta de TIPOGRAFIA (25/11/2026). Valores em canais "R G B" para o Tailwind
+     aceitar transparência. Para ajustar a legibilidade do sistema inteiro, edite
+     só estas linhas. */
+  :root {
+    --texto-titulo: 31 41 55; /* #1F2937 — texto principal e títulos */
+    --texto-conteudo: 51 51 51; /* #333333 — descrições e conteúdo */
+    --texto-valor: 23 75 54; /* #174B36 — valores financeiros e destaques */
+    --texto-auxiliar: 100 116 139; /* #64748B — legendas e auxiliares */
+    --texto-ouro: 107 78 15; /* #6B4E0F — texto dourado (avisos e selos) */
+  }
   html {
     font-family: theme('fontFamily.body');
   }
   h1, h2, h3, h4 {
     font-family: theme('fontFamily.display');
+    color: rgb(var(--texto-titulo));
+  }
+  /* Texto digitado nos campos e dicas (placeholder) legíveis, sem cinza claro. */
+  input, select, textarea {
+    color: rgb(var(--texto-titulo));
+  }
+  input::placeholder, textarea::placeholder {
+    color: rgb(var(--texto-auxiliar));
+    opacity: 1;
   }
   body {
     @apply bg-paper text-ink;
-  }
-}
-
-/* Impressão (29/10): usada pelo botão "Imprimir / salvar em PDF" dos
-   Indicadores. Esconde menu, barras superiores e tudo o que tem a classe
-   "no-print"; mostra só o que tem "print-only". */
-.print-only {
-  display: none;
-}
-
-@media print {
-  @page {
-    size: A4;
-    margin: 12mm;
-  }
-
-  * {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  aside,
-  header.sticky,
-  .no-print {
-    display: none !important;
-  }
-
-  .print-only {
-    display: block !important;
-  }
-
-  body {
-    background: #fff !important;
-  }
-
-  /* A página dentro do conteúdo perde margem e altura mínima da tela. */
-  main > div {
-    padding: 0 !important;
-    min-height: 0 !important;
-    background: #fff !important;
-  }
-
-  [class*='shadow'] {
-    box-shadow: none !important;
-  }
-
-  /* Listas com rolagem na tela saem inteiras no papel. */
-  [class*='max-h-'],
-  [class*='overflow-y-auto'],
-  [class*='overflow-auto'] {
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  section {
-    break-inside: avoid;
   }
 }

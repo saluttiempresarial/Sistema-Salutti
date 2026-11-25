@@ -275,9 +275,9 @@ interface DetalheLegado {
 // ---------------------------------------------------------------------------
 // Estilos do layout "Tela Disputa – Resultado" (26/10/2026)
 // ---------------------------------------------------------------------------
-const CLASSE_ROTULO = 'font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-[#4B5651]';
+const CLASSE_ROTULO = 'font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-soft';
 const CLASSE_CAMPO =
-  'box-border h-11 w-full rounded-md border border-[#C9D3CD] bg-white px-3 text-sm text-ink focus:border-forest focus:outline-none disabled:bg-[#F1F3F1] disabled:text-[#5E6863]';
+  'box-border h-11 w-full rounded-md border border-[#C9D3CD] bg-white px-3 text-sm text-ink focus:border-forest focus:outline-none disabled:bg-[#F1F3F1] disabled:text-ink-soft';
 const CLASSE_LEITURA =
   'box-border flex h-11 items-center rounded-md border border-[#C9D3CD] bg-white px-3 text-sm font-semibold text-ink';
 
@@ -371,7 +371,7 @@ function CartaoResultado({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-[15px] font-semibold text-ink">{titulo}</div>
-          {subtitulo && <div className="mt-0.5 text-[13px] text-[#5E6863]">{subtitulo}</div>}
+          {subtitulo && <div className="mt-0.5 text-[13px] text-ink-soft">{subtitulo}</div>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-[#E6EFE9] px-2.5 py-1 text-xs font-semibold text-[#1E4D3A]">
@@ -409,7 +409,7 @@ function CartaoResultado({
         <div className="flex flex-col gap-1.5">
           <span className={CLASSE_ROTULO}>Posição</span>
           {posicaoSomenteLeitura !== undefined ? (
-            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-[#5E6863]`}>{posicaoSomenteLeitura || '—'}</div>
+            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-ink-soft`}>{posicaoSomenteLeitura || '—'}</div>
           ) : (
             <input
               type="number"
@@ -450,7 +450,7 @@ function CartaoResultado({
             Valor ofertado <span className="normal-case tracking-normal">({baseValor})</span>
           </span>
           {ofertadoSomenteLeitura !== undefined ? (
-            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-[#5E6863]`}>{ofertadoSomenteLeitura}</div>
+            <div className={`${CLASSE_LEITURA} bg-[#F1F3F1] text-ink-soft`}>{ofertadoSomenteLeitura}</div>
           ) : (
             <input
               type="text"
@@ -468,7 +468,7 @@ function CartaoResultado({
               className={CLASSE_CAMPO}
             />
           )}
-          {ofertadoAjuda && <span className="text-[11px] text-[#5E6863]">{ofertadoAjuda}</span>}
+          {ofertadoAjuda && <span className="text-[11px] text-ink-soft">{ofertadoAjuda}</span>}
         </div>
         {!compacto && (
           <>
@@ -549,7 +549,7 @@ function CartaoResultado({
                 </option>
               ))}
             </select>
-            <span className="text-xs text-[#5E6863]">aparece só quando o resultado é de perda</span>
+            <span className="text-xs text-ink-soft">aparece só quando o resultado é de perda</span>
           </div>
         )}
         {mostrarMotivo && valores.motivoPerda === 'desclassificado_proposta' && (
@@ -568,7 +568,7 @@ function CartaoResultado({
                 </option>
               ))}
             </select>
-            <span className="text-xs text-[#5E6863]">de onde veio a causa; alimenta "Perdas na habilitação"</span>
+            <span className="text-xs text-ink-soft">de onde veio a causa; alimenta "Perdas na habilitação"</span>
           </div>
         )}
         {perdaEvitavel && (
@@ -587,7 +587,7 @@ function CartaoResultado({
                 </option>
               ))}
             </select>
-            <span className="text-xs text-[#5E6863]">o vencedor ficou igual ou acima do nosso mínimo</span>
+            <span className="text-xs text-ink-soft">o vencedor ficou igual ou acima do nosso mínimo</span>
           </div>
         )}
           </>
@@ -1127,13 +1127,13 @@ export function DisputaFormModal({
           >
             {resultadoDefinitivo ? 'Resultado definitivo' : 'Resultado provisório'}
           </span>
-          <span className="text-xs text-[#5E6863]">
+          <span className="text-xs text-ink-soft">
             calculado pelo sistema: vira “definitivo” quando houver data de homologação
           </span>
         </div>
 
         <div className="rounded-md border border-[#E1E7E3] bg-[#F4F6F4] px-4 py-3 text-[13px]">
-          <span className="text-[#5E6863]">Portal:</span> <strong>{licitacao?.portal || '—'}</strong>
+          <span className="text-ink-soft">Portal:</span> <strong>{licitacao?.portal || '—'}</strong>
         </div>
 
         {/* ------------------------------------------------------------------
@@ -1142,7 +1142,7 @@ export function DisputaFormModal({
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 className="font-display text-lg text-[#1E4D3A]">1. Acompanhamento do processo</h2>
-            <span className="text-[13px] text-[#5E6863]">em que fase a licitação está no órgão</span>
+            <span className="text-[13px] text-ink-soft">em que fase a licitação está no órgão</span>
           </div>
 
           <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-[18px]">
@@ -1176,7 +1176,7 @@ export function DisputaFormModal({
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-[#5E6863]">substitui “Resultado: Em andamento”</span>
+              <span className="text-xs text-ink-soft">substitui “Resultado: Em andamento”</span>
             </label>
 
             {/* Como a disputa aconteceu — define se o Valor ofertado é
@@ -1208,7 +1208,7 @@ export function DisputaFormModal({
                     </button>
                   ))}
                 </div>
-                <span className="text-xs text-[#5E6863]">
+                <span className="text-xs text-ink-soft">
                   {modoResultado === 'grupo' && 'O valor ofertado é preenchido uma vez, já total, no card do grupo.'}
                   {modoResultado === 'item' && 'O valor ofertado é preenchido por item (preço unitário).'}
                   {modoResultado === 'grupo_e_item' &&
@@ -1270,7 +1270,7 @@ export function DisputaFormModal({
                 disabled={!adjudicadaEmLiberada}
                 className={CLASSE_CAMPO}
               />
-              <span className="text-xs text-[#5E6863]">liberado quando a situação for Adjudicada ou Homologada</span>
+              <span className="text-xs text-ink-soft">liberado quando a situação for Adjudicada ou Homologada</span>
             </label>
             <label className="flex flex-col gap-1.5">
               <span className={CLASSE_ROTULO}>Homologada em {homologadaEmLiberada ? '*' : ''}</span>
@@ -1281,7 +1281,7 @@ export function DisputaFormModal({
                 disabled={!homologadaEmLiberada}
                 className={CLASSE_CAMPO}
               />
-              <span className="text-xs text-[#5E6863]">obrigatório só quando a situação for Homologada</span>
+              <span className="text-xs text-ink-soft">obrigatório só quando a situação for Homologada</span>
             </label>
             <label className="flex flex-col gap-1.5">
               <span className={CLASSE_ROTULO}>Observação</span>
@@ -1318,11 +1318,11 @@ export function DisputaFormModal({
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 className="font-display text-lg text-[#1E4D3A]">2. Resultado do cliente por grupo/item</h2>
-            <span className="text-[13px] text-[#5E6863]">como o cliente ficou em cada grupo ou item</span>
+            <span className="text-[13px] text-ink-soft">como o cliente ficou em cada grupo ou item</span>
           </div>
 
           {!resultadoDefinitivo && (
-            <p className="text-xs text-[#5E6863]">
+            <p className="text-xs text-ink-soft">
               "Ganho (homologado)" e "Perdido (homologado)" ficam liberados quando houver a data em "Homologada em".
             </p>
           )}
@@ -1389,7 +1389,7 @@ export function DisputaFormModal({
                             titulo={
                               <>
                                 {bloco.grupoRotulo} — Total do grupo{' '}
-                                <span className="text-[13px] font-normal text-[#5E6863]">· {bloco.linhas.length} itens</span>
+                                <span className="text-[13px] font-normal text-ink-soft">· {bloco.linhas.length} itens</span>
                               </>
                             }
                             valores={valoresGrupo ?? VALORES_VAZIOS}
@@ -1409,7 +1409,7 @@ export function DisputaFormModal({
                             titulo={
                               <>
                                 {bloco.grupoRotulo} — Total do grupo{' '}
-                                <span className="text-[13px] font-normal text-[#5E6863]">· {bloco.linhas.length} itens</span>
+                                <span className="text-[13px] font-normal text-ink-soft">· {bloco.linhas.length} itens</span>
                               </>
                             }
                             valores={{
@@ -1476,7 +1476,7 @@ export function DisputaFormModal({
                             >
                               <span>
                                 <strong className="block font-semibold">{descricao}</strong>
-                                <span className="text-[#5E6863]">{subtitulo}</span>
+                                <span className="text-ink-soft">{subtitulo}</span>
                               </span>
                               <span>Ref.: {linha.item.precoReferencia > 0 ? formatarMoeda(linha.item.precoReferencia) : '—'}</span>
                               <span>
@@ -1485,7 +1485,7 @@ export function DisputaFormModal({
                                   ? formatarMoeda(linha.precoMinimoComFreteUnitario)
                                   : '—'}
                               </span>
-                              <span className="text-[#5E6863]">ofertado no grupo</span>
+                              <span className="text-ink-soft">ofertado no grupo</span>
                             </div>
                           );
                         }
