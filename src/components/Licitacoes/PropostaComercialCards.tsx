@@ -676,7 +676,7 @@ export function PropostaComercialCards({
         <p className="rounded-lg bg-red-50 px-3 py-2 font-body text-sm text-red-700">{erroDecisao}</p>
       )}
 
-      {ocultarNaoParticiparPorPadrao && (
+      {ocultarNaoParticiparPorPadrao && visaoEquipe && (
         <div className="flex justify-end">
           <button
             type="button"
@@ -1102,7 +1102,9 @@ export function PropostaComercialCards({
 
       {ocultarNaoParticipar && blocos.every(({ itens }) => !itens.some((item) => item.propostaCliente?.precoMinimo != null)) && (
         <p className="rounded-xl border border-ink-soft/15 bg-paper-2/60 px-4 py-6 text-center font-body text-sm text-ink-soft">
-          O Cliente ainda não começou a preencher nenhum grupo desta proposta.
+          {visaoEquipe
+            ? 'O Cliente ainda não começou a preencher nenhum grupo desta proposta.'
+            : 'Nenhum item com proposta preenchida.'}
         </p>
       )}
 

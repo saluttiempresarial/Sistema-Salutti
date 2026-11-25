@@ -5,11 +5,13 @@
 // (/cliente/licitacoes, completa). No computador largo é uma tabela; no tablet,
 // uma lista de cartões. Ordenada pelo prazo interno mais próximo de vencer.
 // Clicar numa licitação abre o detalhe (/cliente/licitacoes/:id).
+// Nas licitações em que o cliente decidiu participar, o ícone do olho abre a
+// proposta (/cliente/licitacoes/:id/proposta), igual ao que a equipe Salutti vê.
 
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Etiqueta } from '@/components/dashboard/Etiqueta'
-import { IconeDocumento, IconeSetaDireita } from '@/components/icones'
+import { IconeDocumento, IconeOlho, IconeSetaDireita } from '@/components/icones'
 import { DECISAO_CLIENTE_LABEL, type DecisaoCliente, type Licitacao } from '@/types/licitacao'
 import type { TomEtiqueta } from '@/utils/eventosPainel'
 import { formatarDataHora, formatarMoeda, calcularPrazoInterno, classificarUrgenciaPrazo } from '@/utils/prazoUtils'
@@ -39,6 +41,20 @@ const TOM_DECISAO: Record<DecisaoCliente, TomEtiqueta> = {
   pendente: 'warning',
   participar: 'success',
   recusar: 'neutral',
+}
+
+/** Ícone do olho: abre a proposta comercial (só quando o cliente decidiu participar). */
+function LinkVerProposta({ licitacao }: { licitacao: Licitacao }) {
+  return (
+    <Link
+      to={`/cliente/licitacoes/${licitacao.id}/proposta`}
+      title="Ver proposta"
+      aria-label={`Ver proposta da licitação ${licitacao.numeroPregao}`}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-forest-mist hover:text-forest-deep"
+    >
+      <IconeOlho className="h-[18px] w-[18px]" />
+    </Link>
+  )
 }
 
 function PrazoProposta({ licitacao }: { licitacao: Licitacao }) {
@@ -146,7 +162,7 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                   <th className="px-2.5 py-3 align-bottom leading-tight">Limite de retorno</th>
                   <th className="px-2.5 py-3 align-bottom leading-tight">Prazo para alteração</th>
                   <th className="px-2.5 py-3 align-bottom leading-tight">Decisão</th>
-                  <th className="w-12 px-2 py-3" />
+                  <th className="w-20 px-2 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-soft/10">
@@ -190,14 +206,17 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                         <Etiqueta rotulo={DECISAO_CLIENTE_LABEL[licitacao.decisaoCliente]} tom={TOM_DECISAO[licitacao.decisaoCliente]} />
                       </td>
                       <td className="px-2.5 py-3">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/cliente/licitacoes/${licitacao.id}`)}
-                          aria-label={`Abrir ${licitacao.numeroPregao}`}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-forest-mist hover:text-forest-deep"
-                        >
-                          <IconeSetaDireita className="h-5 w-5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          {licitacao.decisaoCliente === 'participar' && <LinkVerProposta licitacao={licitacao} />}
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/cliente/licitacoes/${licitacao.id}`)}
+                            aria-label={`Abrir ${licitacao.numeroPregao}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-forest-mist hover:text-forest-deep"
+                          >
+                            <IconeSetaDireita className="h-5 w-5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -265,6 +284,15 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                       </div>
                     </dl>
                   </button>
+                  {licitacao.decisaoCliente === 'participar' && (
+                    <Link
+                      to={`/cliente/licitacoes/${licitacao.id}/proposta`}
+                      className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 font-body text-sm font-semibold text-forest hover:bg-forest-mist hover:text-forest-deep"
+                    >
+                      <IconeOlho className="h-[18px] w-[18px]" />
+                      Ver proposta
+                    </Link>
+                  )}
                 </li>
               )
             })}

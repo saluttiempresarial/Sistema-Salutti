@@ -19,6 +19,10 @@
 // as correções de cálculo feitas em PropostaComercialCards/licitacaoCalculos
 // (24/09) também foram replicadas lá).
 //
+// Depois do prazo (25/11/2026) a tela fica somente leitura, igual à visão da
+// equipe: sem botão de salvar nem de desistir, e só com os itens que o cliente
+// ofertou (ocultarNaoParticiparPorPadrao, sem o botão "Mostrar tudo").
+//
 // Duas checagens que antes só existiam na tela anterior (LicitacaoDetalhePage)
 // foram reforçadas aqui também, porque é nesta tela que o Cliente de fato
 // edita e salva:
@@ -142,7 +146,7 @@ export function PropostaComercialPage() {
         >
           ← Voltar
         </Link>
-        {licitacao && !mostrarConfirmacaoDesistencia && (
+        {licitacao && dentroDoPrazo && !mostrarConfirmacaoDesistencia && (
           <button
             type="button"
             onClick={() => setMostrarConfirmacaoDesistencia(true)}
@@ -182,9 +186,9 @@ export function PropostaComercialPage() {
       ) : (
         <div className="mt-4 rounded-xl border border-ink-soft/10 bg-white p-6 shadow-soft">
           {!dentroDoPrazo && (
-            <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 font-body text-xs text-amber-800">
-              O prazo para editar e confirmar esta proposta já foi encerrado
-              ({prazoPropostaClienteInfo(licitacao).texto}). A visualização abaixo é somente leitura.
+            <p className="mb-4 rounded-lg border border-ink-soft/20 bg-paper-2/60 px-3 py-2 font-body text-sm text-ink-soft">
+              <strong className="text-ink">Prazo encerrado.</strong> Esta é a sua proposta como foi enviada, somente
+              para consulta ({prazoPropostaClienteInfo(licitacao).texto}).
             </p>
           )}
           {erroPrazo && (
@@ -196,6 +200,7 @@ export function PropostaComercialPage() {
             licitacao={licitacao}
             podeEditarItens={false}
             podeEditarPropostaComercial={dentroDoPrazo}
+            ocultarNaoParticiparPorPadrao={!dentroDoPrazo}
             porteCliente={porteCliente ?? undefined}
             salvando={salvando}
             onSalvar={handleSalvar}
