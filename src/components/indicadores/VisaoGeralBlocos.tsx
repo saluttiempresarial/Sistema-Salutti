@@ -6,6 +6,7 @@
 // (nenhuma regra nova).
 
 import type { ReactNode } from 'react'
+import { InfoTooltip } from '../InfoTooltip'
 import type { BarraOrgao, RelatorioPrincipal, ResultadoLicitacaoFiltro } from '../../types/indicadores'
 import { formatarNumero } from '../../utils/prazoUtils'
 
@@ -21,7 +22,7 @@ export function CartaoVisao({
   className = '',
 }: {
   titulo: string
-  /** Texto de apoio, visível ao passar o mouse no ícone "?". */
+  /** Explicação do cartão: abre num balão ao passar o mouse ou clicar no ícone ⓘ ao lado do título. */
   ajuda?: string
   children: ReactNode
   className?: string
@@ -30,15 +31,7 @@ export function CartaoVisao({
     <section className={`rounded-2xl border border-ink-soft/10 bg-white p-5 shadow-soft ${className}`}>
       <h3 className="flex items-center gap-2 font-display text-base font-semibold text-ink">
         {titulo}
-        {ajuda && (
-          <span
-            title={ajuda}
-            aria-label={ajuda}
-            className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-ink-soft/40 font-body text-[10px] font-normal text-ink-soft"
-          >
-            ?
-          </span>
-        )}
+        {ajuda && <InfoTooltip titulo={titulo} texto={ajuda} />}
       </h3>
       <div className="mt-4">{children}</div>
     </section>

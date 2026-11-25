@@ -2070,7 +2070,7 @@ export function IndicadoresGraficos({
           {ver('volume_periodo') && (
             <CartaoVisao
               titulo="Licitações e valor adjudicado por mês"
-              ajuda="Barras: licitações por mês da sessão. Linha: valor dos itens e grupos ganhos. Passe o mouse para ver o valor de referência."
+              ajuda={'Barras (eixo da esquerda): quantidade de licitações em cada mês da sessão.\nLinha (eixo da direita): valor adjudicado, ou seja, o valor dos itens e grupos ganhos.\nPasse o mouse sobre o mês para ver também o valor de referência.\nValor adjudicado não é faturamento: em registro de preços, só vira receita com o empenho.'}
               className="lg:col-span-3"
             >
               <VolumeEValorMensal volume={indicadores.volumePorMes} valor={ver('valor_adjudicado') ? indicadores.valorAdjudicado : undefined} />
@@ -2079,7 +2079,7 @@ export function IndicadoresGraficos({
           {ver('funil') && (
             <CartaoVisao
               titulo="Funil do período"
-              ajuda="Licitações enviadas ao cliente, quantas ele respondeu, em quantas decidiu participar e quantas foram ganhas (homologadas)."
+              ajuda={'O caminho das licitações, da etapa inicial até o resultado:\n• Enviadas ao cliente: liberadas para ele analisar.\n• Retornadas: o cliente respondeu (participar ou recusar).\n• Participou: o cliente decidiu participar.\n• Ganhas (homologado): ao menos um item ou grupo ganho, com resultado homologado.\nO percentual ao lado de cada etapa mostra quanto ela representa da etapa anterior. Com o filtro de resultado ativo, a última etapa acompanha o que foi pedido.'}
               className={ver('volume_periodo') ? 'lg:col-span-2' : 'lg:col-span-5'}
             >
               <FunilPeriodo dados={indicadores.relatorioPrincipal} resultadoFiltro={resultadoFiltro} />
@@ -2088,7 +2088,7 @@ export function IndicadoresGraficos({
           {ver('funil') && (
             <CartaoVisao
               titulo="Resultado das disputas"
-              ajuda="Ganhas e perdidas são resultados homologados. Em análise: falta a homologação. Aguardando: participou, mas ainda não há resultado lançado."
+              ajuda={'Situação das licitações em que o cliente participou:\n• Ganhas: ao menos um item ou grupo ganho, com resultado homologado.\n• Perdidas: nenhum item ganho, com resultado homologado.\n• Em análise: arrematadas ou perdidas na disputa, mas ainda sem homologação; o resultado não é definitivo.\n• Aguardando resultado: o cliente participou, mas ainda não há resultado lançado.'}
               className="lg:col-span-2"
             >
               <RoscaResultados dados={indicadores.relatorioPrincipal} />
@@ -2097,7 +2097,7 @@ export function IndicadoresGraficos({
           {ver('orgaos') && (
             <CartaoVisao
               titulo="Órgãos com mais participações"
-              ajuda="Os seis órgãos com mais participações e, em cada um, em quantas houve vitória."
+              ajuda={'Os seis órgãos em que o cliente mais participou.\nBarra dourada: participações. Barra verde: participações com vitória.\nO texto à direita ("2 de 5") indica quantas participações tiveram vitória, do total daquele órgão.'}
               className={ver('funil') ? 'lg:col-span-3' : 'lg:col-span-5'}
             >
               <RankingOrgaos barras={indicadores.orgaos} />

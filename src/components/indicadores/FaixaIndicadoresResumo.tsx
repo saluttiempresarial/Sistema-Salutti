@@ -7,6 +7,7 @@
 // Usa os mesmos números dos cards abaixo: nenhum cálculo novo.
 
 import type { ReactNode } from 'react'
+import { InfoTooltip } from '../InfoTooltip'
 import type { IndicadoresAdmin } from '../../types/indicadores'
 import { formatarNumero } from '../../utils/prazoUtils'
 
@@ -60,6 +61,9 @@ function variacaoPontos(atual: number | null, anterior: number | null | undefine
   return { texto: `${v > 0 ? '▲' : '▼'} ${formatarNumero(Math.abs(v), 1)} p.p. vs. anterior`, sentido: v > 0 ? 'alta' : 'baixa' }
 }
 
+const EXPLICACAO_COMPARACAO =
+  '\nO gráfico pequeno mostra a evolução mês a mês. A variação compara com o período anterior de mesma duração e só aparece quando o filtro de período tem data inicial e final.'
+
 function Tendencia({ valores, cor }: { valores: number[]; cor: string }) {
   if (valores.length < 2) return <div className="h-7" aria-hidden="true" />
   const min = Math.min(...valores)
@@ -84,6 +88,7 @@ function Kpi({
   anterior,
   nota,
   alerta,
+  ajuda,
 }: {
   titulo: string
   valor: ReactNode
@@ -94,12 +99,17 @@ function Kpi({
   anterior?: string
   nota?: string
   alerta?: boolean
+  /** Explicação do número, em balão ao lado do título. */
+  ajuda?: string
 }) {
   const cor =
     variacao?.sentido === 'alta' ? 'text-forest-deep' : variacao?.sentido === 'baixa' ? 'text-red-700' : 'text-ink-soft'
   return (
     <div className={`flex flex-col rounded-2xl border p-4 shadow-soft ${alerta ? 'border-brass/50' : 'border-ink-soft/10'} bg-white`}>
-      <p className="font-body text-xs text-ink-soft">{titulo}</p>
+      <p className="flex items-center gap-1.5 font-body text-xs text-ink-soft">
+        {titulo}
+        {ajuda && <InfoTooltip titulo={titulo} texto={ajuda} />}
+      </p>
       <p className="mt-1 font-display text-3xl font-semibold text-forest-deep">{valor}</p>
       {tendencia !== undefined && (
         <div className="mt-2">
@@ -124,6 +134,7 @@ export function FaixaIndicadoresResumo({ atual, anterior, serie = [], pode }: Fa
       <Kpi
         key="enviadas"
         titulo="Enviadas ao cliente"
+        ajuda={`Quantidade de licitações liberadas ao cliente no período para ele decidir se participa.${EXPLICACAO_COMPARACAO}`}
         valor={formatarNumero(atual.relatorioPrincipal.enviadas)}
         tendencia={serie.map((p) => p.enviadas)}
         variacao={variacaoRelativa(atual.relatorioPrincipal.enviadas, anterior?.relatorioPrincipal.enviadas)}
@@ -132,6 +143,7 @@ export function FaixaIndicadoresResumo({ atual, anterior, serie = [], pode }: Fa
       <Kpi
         key="participacao"
         titulo="Taxa de participação"
+        ajuda={`De cada 100 licitações enviadas ao cliente, quantas ele decidiu disputar. Cálculo: licitações em que participou ÷ licitações enviadas.${EXPLICACAO_COMPARACAO}`}
         valor={pct(part)}
         corTendencia="#A9822F"
         tendencia={serie.filter((p) => p.participacao !== null).map((p) => p.participacao as number)}
@@ -148,6 +160,7 @@ export function FaixaIndicadoresResumo({ atual, anterior, serie = [], pode }: Fa
       <Kpi
         key="vitoria"
         titulo="Taxa de vitória"
+        ajuda={`Cálculo por item: itens e grupos ganhos ÷ (ganhos + perdidos). Itens ainda sem resultado não entram na conta.${EXPLICACAO_COMPARACAO}`}
         valor={pct(taxa)}
         tendencia={atual.taxaVitoriaPorMes.filter((m) => m.percentualQuantidade !== null).map((m) => m.percentualQuantidade as number)}
         variacao={variacaoPontos(taxa, taxaAnterior)}
@@ -161,6 +174,7 @@ export function FaixaIndicadoresResumo({ atual, anterior, serie = [], pode }: Fa
       <Kpi
         key="valor"
         titulo="Valor adjudicado"
+        ajuda={`Soma do valor dos itens e grupos ganhos no período.\nNão é faturamento: em registro de preços, o valor é o máximo potencial da ata e só vira receita com o empenho.${EXPLICACAO_COMPARACAO}`}
         valor={moedaCompacta(atual.valorAdjudicado.total)}
         tendencia={atual.valorAdjudicado.porMes.map((m) => m.valor)}
         variacao={variacaoRelativa(atual.valorAdjudicado.total, anterior?.valorAdjudicado.total)}
@@ -175,6 +189,7 @@ export function FaixaIndicadoresResumo({ atual, anterior, serie = [], pode }: Fa
       <Kpi
         key="atencao"
         titulo="Requer atenção"
+        ajuda={'Licitações em aberto com prazo interno vencido ou que vence até o próximo dia útil. Considera os próximos 7 dias e não segue o filtro de período.'}
         valor={formatarNumero(n)}
         alerta={n > 0}
         nota={n > 0 ? 'prazos vencidos ou vencendo em 24 h' : 'nenhum prazo crítico'}
