@@ -50,9 +50,9 @@ function LinkVerProposta({ licitacao }: { licitacao: Licitacao }) {
       to={`/cliente/licitacoes/${licitacao.id}/proposta`}
       title="Ver proposta"
       aria-label={`Ver proposta da licitação ${licitacao.numeroPregao}`}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-forest-mist hover:text-forest-deep"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-forest/40 bg-forest-mist text-forest-deep shadow-sm transition-colors hover:bg-forest hover:text-white"
     >
-      <IconeOlho className="h-[18px] w-[18px]" />
+      <IconeOlho className="h-5 w-5" />
     </Link>
   )
 }
@@ -162,7 +162,7 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                   <th className="px-2.5 py-3 align-bottom leading-tight">Limite de retorno</th>
                   <th className="px-2.5 py-3 align-bottom leading-tight">Prazo para alteração</th>
                   <th className="px-2.5 py-3 align-bottom leading-tight">Decisão</th>
-                  <th className="w-20 px-2 py-3" />
+                  <th className="w-24 px-2 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-soft/10">
@@ -287,9 +287,9 @@ export function TabelaMinhasLicitacoes({ licitacoes, carregando, limite, linkVer
                   {licitacao.decisaoCliente === 'participar' && (
                     <Link
                       to={`/cliente/licitacoes/${licitacao.id}/proposta`}
-                      className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 font-body text-sm font-semibold text-forest hover:bg-forest-mist hover:text-forest-deep"
+                      className="mt-1.5 inline-flex items-center gap-2 rounded-lg border border-forest/40 bg-forest-mist px-3 py-1.5 font-body text-sm font-semibold text-forest-deep transition-colors hover:bg-forest hover:text-white"
                     >
-                      <IconeOlho className="h-[18px] w-[18px]" />
+                      <IconeOlho className="h-5 w-5" />
                       Ver proposta
                     </Link>
                   )}

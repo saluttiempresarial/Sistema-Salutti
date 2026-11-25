@@ -826,9 +826,20 @@ export function PropostaComercialCards({
                         className="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left"
                       >
                         <div className="min-w-0">
-                          <div className="font-body text-sm font-semibold text-ink">
+                          {/* Descrição longa: só 3 linhas com o item fechado; completa ao abrir (25/11/2026). */}
+                          <div
+                            className="font-body text-sm font-semibold text-ink"
+                            style={
+                              itemAbertoAgora
+                                ? undefined
+                                : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
+                            }
+                          >
                             {itemVivo.numero}. {itemVivo.descricao}
                           </div>
+                          {!itemAbertoAgora && itemVivo.descricao.length > 220 && (
+                            <span className="font-body text-xs font-semibold text-forest">Ver descrição completa</span>
+                          )}
                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                             <span className="font-body text-base text-ink">
                               {itemVivo.unidadeMedida} · Qtd. <strong>{formatarNumero(itemVivo.quantidade)}</strong> · Ref. unit.{' '}
