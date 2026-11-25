@@ -2044,7 +2044,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   )}
                   {licitacaoEmEdicao.motivoRecusaCliente && ` — "${licitacaoEmEdicao.motivoRecusaCliente}"`}
                 </p>
-                <p className="mt-1 text-xs text-ink-soft/70">
+                <p className="mt-1 text-xs text-ink-soft">
                   Essa decisão é registrada pelo próprio cliente no Portal do Cliente, não é editável por aqui.
                 </p>
               </div>
@@ -2454,8 +2454,10 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
             {form.estrutura && form.grupos.map((grupo) => {
               const itensDoGrupo = form.itens.filter((i) => i.grupoId === grupo.id);
               return (
-                <div key={grupo.id} className="rounded-xl border border-ink-soft/15 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
+                <div key={grupo.id} className="overflow-hidden rounded-xl border-2 border-forest">
+                  {/* Cabeçalho do grupo em faixa verde-clara e moldura verde (25/11/2026),
+                      no mesmo padrão da tela do cliente — separa o grupo dos itens individuais. */}
+                  <div className="flex items-center justify-between gap-3 border-b border-forest/30 bg-forest-mist px-4 py-3">
                     <input
                       data-foco-grupo={grupo.id}
                       value={grupo.numero}
@@ -2482,6 +2484,7 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                     </div>
                   </div>
 
+                  <div className="border-l-8 border-forest-mist p-4 pl-3">
                   <div className="space-y-3">
                     {itensDoGrupo.map((item) => (
                       <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} numeroRepetido={itensRepetidos.has(item.id)} />
@@ -2496,8 +2499,9 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                       + Item no grupo
                     </Button>
                   </div>
+                  </div>
 
-                  <p className="mt-3 text-right font-body text-sm font-medium text-forest-deep">
+                  <p className="bg-forest-mist px-4 py-2 text-right font-body text-sm font-semibold text-forest-deep">
                     Total do grupo: {formatarMoeda(totalReferenciaGrupo(form.itens, grupo.id))}
                   </p>
                 </div>
@@ -2705,7 +2709,20 @@ function ItemLicitacaoRow({
   const [qtdeTexto, setQtdeTexto] = useState(() => numeroParaCampoDecimal(item.quantidade, 0));
 
   return (
-    <div className="relative rounded-lg bg-paper-2/60 p-3">
+    <div
+      className={`relative rounded-lg p-3 ${
+        item.exclusivoMeEpp ? 'border-l-4 border-brass bg-brass-pale/40' : 'bg-paper-2/60'
+      }`}
+    >
+      {/* Item exclusivo para ME/EPP: faixa e selo dourados (25/11/2026), iguais aos da
+          tela do cliente. */}
+      {item.exclusivoMeEpp && (
+        <div className="mb-2 pr-8">
+          <span className="inline-block whitespace-nowrap rounded-full border border-brass bg-brass-pale px-2.5 py-0.5 font-body text-[11px] font-bold uppercase tracking-wide text-brass">
+            Exclusivo ME/EPP
+          </span>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => onRemover(item.id)}

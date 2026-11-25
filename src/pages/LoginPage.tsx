@@ -96,7 +96,7 @@ export function LoginPage() {
           </ul>
         </div>
 
-        <p className="relative text-xs text-white/50">
+        <p className="relative text-xs text-white/70">
           © {new Date().getFullYear()} Salutti · Acesso restrito a usuários autorizados
         </p>
       </aside>

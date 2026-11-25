@@ -8,7 +8,7 @@
 import React from 'react';
 
 const baseFieldClass =
-  'w-full rounded-md border border-charcoal-3/20 bg-white px-3 py-2 font-body text-sm text-ink placeholder:text-ink-soft/50 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20';
+  'w-full rounded-md border border-charcoal-3/20 bg-white px-3 py-2 font-body text-sm text-ink placeholder:text-ink-aux focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20';
 
 interface FieldWrapperProps {
   label: string;

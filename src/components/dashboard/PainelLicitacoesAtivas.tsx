@@ -40,7 +40,7 @@ const STATUS_TONE: Record<StatusLicitacao, StatusTone> = {
 
 const DECISAO_CLASSES: Record<DecisaoCliente, string> = {
   participar: 'bg-forest-mist text-forest-deep',
-  recusar: 'bg-slate-100 text-slate-600',
+  recusar: 'bg-slate-100 text-ink-soft',
   pendente: 'bg-brass-pale text-brass',
 }
 
@@ -173,7 +173,7 @@ export function PainelLicitacoesAtivas({
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar por nº, cliente ou objeto..."
               aria-label="Buscar licitações ativas"
-              className="w-full rounded-lg border border-ink-soft/20 bg-white py-2.5 pl-10 pr-3 font-body text-sm text-ink placeholder:text-ink-soft/70 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
+              className="w-full rounded-lg border border-ink-soft/20 bg-white py-2.5 pl-10 pr-3 font-body text-sm text-ink placeholder:text-ink-aux focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20"
             />
           </div>
 

@@ -27,7 +27,7 @@ const COR_DATA: Record<TomEtiqueta, string> = {
   warning: 'border-brass bg-brass-pale/60 text-brass',
   success: 'border-forest bg-forest-mist text-forest-deep',
   info: 'border-sky-400 bg-sky-50 text-sky-700',
-  neutral: 'border-slate-300 bg-slate-50 text-slate-600',
+  neutral: 'border-slate-300 bg-slate-50 text-ink-soft',
 }
 
 const COR_ICONE: Record<TomEtiqueta, string> = {
@@ -35,7 +35,7 @@ const COR_ICONE: Record<TomEtiqueta, string> = {
   warning: 'text-brass',
   success: 'text-forest',
   info: 'text-sky-600',
-  neutral: 'text-slate-500',
+  neutral: 'text-ink-soft',
 }
 
 interface ProximosEventosProps {

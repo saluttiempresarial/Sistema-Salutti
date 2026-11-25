@@ -11,7 +11,7 @@ const CLASSES: Record<TomEtiqueta, string> = {
   warning: 'bg-brass-pale text-brass ring-brass/25',
   success: 'bg-forest-mist text-forest-deep ring-forest/20',
   info: 'bg-sky-50 text-sky-700 ring-sky-200',
-  neutral: 'bg-slate-100 text-slate-600 ring-slate-200',
+  neutral: 'bg-slate-100 text-ink-soft ring-slate-200',
 }
 
 interface EtiquetaProps {

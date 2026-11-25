@@ -173,7 +173,7 @@ export function BuscaGlobal() {
         aria-expanded={mostrarPainel}
         aria-controls="busca-global-resultados"
         autoComplete="off"
-        className="w-full rounded-xl border border-ink-soft/15 bg-white py-2.5 pl-11 pr-4 font-body text-sm text-ink shadow-soft placeholder:text-ink-soft/70 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20 sm:pr-24"
+        className="w-full rounded-xl border border-ink-soft/15 bg-white py-2.5 pl-11 pr-4 font-body text-sm text-ink shadow-soft placeholder:text-ink-aux focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/20 sm:pr-24"
       />
       <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-ink-soft/15 bg-paper px-2 py-0.5 font-mono text-[11px] text-ink-soft sm:block">
         Ctrl + K

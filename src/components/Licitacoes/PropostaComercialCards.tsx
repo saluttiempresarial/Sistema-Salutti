@@ -750,22 +750,38 @@ export function PropostaComercialCards({
           ? itensAoVivoDoGrupo.filter((item) => item.propostaCliente?.precoMinimo != null || item.id === itemAberto)
           : itensAoVivoDoGrupo
         const grupoAcimaDaReferencia = !!grupo && statusGrupo.chave === 'nao_participar'
+        // Grupo de verdade (não o bloco "Itens individuais"): cabeçalho verde (25/11/2026),
+        // no mesmo padrão da aba Itens do cliente. Quantos itens do grupo são exclusivos ME/EPP:
+        const ehGrupo = !!grupo
+        const exclusivosDoGrupo = itens.filter((item) => item.exclusivoMeEpp).length
 
         return (
-          <div key={idBloco} className="overflow-hidden rounded-2xl border border-ink-soft/10 bg-white shadow-soft">
+          <div
+            key={idBloco}
+            className={`overflow-hidden rounded-2xl bg-white shadow-soft ${
+              ehGrupo ? 'border-2 border-forest' : 'border border-ink-soft/10'
+            }`}
+          >
             <button
               type="button"
               onClick={() => setGrupoAberto(aberto ? null : idBloco)}
-              className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-paper-2/40"
+              className={`flex w-full items-center justify-between gap-4 px-5 py-4 text-left ${
+                ehGrupo ? 'bg-forest text-white hover:bg-forest-deep' : 'hover:bg-paper-2/40'
+              }`}
             >
               <div className="flex items-center gap-3">
-                <IconeGrupo />
-                <div className="font-display text-base font-bold text-ink">
+                <IconeGrupo claro={ehGrupo} />
+                <div className={`font-display text-base font-bold ${ehGrupo ? 'text-white' : 'text-ink'}`}>
                   {nomeGrupo}
-                  <span className="ml-1.5 font-body text-xs font-normal text-ink-soft">
+                  <span className={`ml-1.5 font-body text-xs font-normal ${ehGrupo ? 'text-white/85' : 'text-ink-soft'}`}>
                     | {itens.length} {itens.length === 1 ? 'item' : 'itens'}
                   </span>
                 </div>
+                {ehGrupo && exclusivosDoGrupo > 0 && (
+                  <span className="whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-body text-[11px] font-bold text-forest-deep">
+                    {exclusivosDoGrupo} {exclusivosDoGrupo === 1 ? 'exclusivo' : 'exclusivos'} ME/EPP
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-5">
@@ -779,12 +795,12 @@ export function PropostaComercialCards({
                   {preenchidosGrupo} de {itens.length} preenchidos
                 </span>
                 <div className="text-right">
-                  <div className="font-body text-[10px] uppercase tracking-wide text-ink-soft">Valor de referência</div>
-                  <div className="font-body text-sm font-bold text-ink">{formatarMoeda(valorRefGrupo)}</div>
+                  <div className={`font-body text-[10px] uppercase tracking-wide ${ehGrupo ? 'text-white/85' : 'text-ink-soft'}`}>Valor de referência</div>
+                  <div className={`font-body text-sm font-bold ${ehGrupo ? 'text-white' : 'text-ink'}`}>{formatarMoeda(valorRefGrupo)}</div>
                 </div>
                 <div className="text-right">
-                  <div className="font-body text-[10px] uppercase tracking-wide text-ink-soft">Valor da proposta</div>
-                  <div className="font-body text-sm font-bold text-ink">{formatarMoeda(valorPropostaGrupo)}</div>
+                  <div className={`font-body text-[10px] uppercase tracking-wide ${ehGrupo ? 'text-white/85' : 'text-ink-soft'}`}>Valor da proposta</div>
+                  <div className={`font-body text-sm font-bold ${ehGrupo ? 'text-white' : 'text-ink'}`}>{formatarMoeda(valorPropostaGrupo)}</div>
                 </div>
                 <span className={`whitespace-nowrap rounded-full px-3 py-1 font-body text-xs font-semibold ${statusGrupo.classe}`}>
                   {statusGrupo.label}
@@ -794,7 +810,7 @@ export function PropostaComercialCards({
                     ⛔ Sem opção de concorrer
                   </span>
                 )}
-                <IconeChevron aberto={aberto} />
+                <IconeChevron aberto={aberto} claro={ehGrupo} />
               </div>
             </button>
 
@@ -1306,16 +1322,16 @@ function CampoEditavel({
   )
 }
 
-function IconeGrupo() {
+function IconeGrupo({ claro }: { claro?: boolean }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-forest">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={claro ? 'text-white' : 'text-forest'}>
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M3 9h18" />
     </svg>
   )
 }
 
-function IconeChevron({ aberto }: { aberto: boolean }) {
+function IconeChevron({ aberto, claro }: { aberto: boolean; claro?: boolean }) {
   return (
     <svg
       width="18"
@@ -1324,7 +1340,7 @@ function IconeChevron({ aberto }: { aberto: boolean }) {
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
-      className={`text-ink-soft transition-transform ${aberto ? 'rotate-180' : ''}`}
+      className={`${claro ? 'text-white' : 'text-ink-soft'} transition-transform ${aberto ? 'rotate-180' : ''}`}
     >
       <path d="M6 9l6 6 6-6" />
     </svg>

@@ -137,7 +137,7 @@ export function ConfiguracoesPage() {
           Ajustes gerais do sistema — mudanças aqui afetam todo mundo, não só a sua conta.
         </p>
         {config && (
-          <p className="mt-1 font-body text-xs text-ink-soft/70">
+          <p className="mt-1 font-body text-xs text-ink-soft">
             Última atualização: {new Date(config.atualizadoEm).toLocaleString('pt-BR')}
           </p>
         )}

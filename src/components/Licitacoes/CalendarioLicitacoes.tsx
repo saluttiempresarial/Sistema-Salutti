@@ -312,7 +312,7 @@ export function CalendarioLicitacoes({
                     </p>
                   </div>
                   {eventos.length === 0 ? (
-                    <p className="self-center font-body text-sm text-ink-soft/70">Sem eventos</p>
+                    <p className="self-center font-body text-sm text-ink-soft">Sem eventos</p>
                   ) : (
                     <ul className="min-w-0 flex-1 space-y-1.5">
                       {eventos.map((evento, i) => (

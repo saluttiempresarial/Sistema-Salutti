@@ -8,9 +8,10 @@ export default {
         // atualizar também o site estático, para manter as duas frentes consistentes.
         forest: {
           DEFAULT: '#0B5C3C',
-          // "deep" é o verde escuro dos VALORES FINANCEIROS e destaques (texto) e
-          // do hover dos botões. Segue o token de texto --texto-valor (index.css).
-          deep: 'rgb(var(--texto-valor) / <alpha-value>)',
+          // Verde escuro de fundos (menu lateral, login) e hover de botões — cor de
+          // identidade, não muda. O TEXTO em forest-deep usa o tom de valores
+          // financeiros (#174B36): ver "textColor" mais abaixo.
+          deep: '#073F29',
           mist: '#E7F0EA',
         },
         // Verde exato extraído do arquivo do logo oficial (círculo do ícone
@@ -51,8 +52,12 @@ export default {
       // Texto na cor "brass" (dourado) sobre o fundo brass-pale tinha contraste de
       // 2,8:1 (abaixo do mínimo de 4,5). Só o TEXTO usa o dourado escuro; fundos,
       // bordas e anéis continuam com o dourado original.
+      // Também só no texto: verde escuro dos VALORES FINANCEIROS e destaques.
       textColor: {
         brass: 'rgb(var(--texto-ouro) / <alpha-value>)',
+        forest: {
+          deep: 'rgb(var(--texto-valor) / <alpha-value>)',
+        },
       },
       fontFamily: {
         display: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
