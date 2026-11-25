@@ -148,18 +148,32 @@ function ItemChecklistLeitura({ item }: { item: ItemChecklistExigencia }) {
   )
 }
 
+// Item da lista da aba "Itens". Item exclusivo para ME/EPP (Microempresa e
+// Empresa de Pequeno Porte) ganha selo dourado e faixa lateral (25/11/2026),
+// para a exclusividade ser a primeira coisa que se vê — antes era só um texto
+// pequeno na linha de baixo.
 function ItemLeitura({ item }: { item: ItemLicitacao }) {
   return (
-    <div className="rounded-lg bg-paper-2/60 p-4">
+    <div
+      className={`rounded-lg p-4 ${
+        item.exclusivoMeEpp ? 'border-l-4 border-brass bg-brass-pale/40' : 'bg-paper-2/60'
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-body text-sm font-semibold text-ink">Item {item.numero}</p>
           <p className="mt-0.5 font-body text-xs text-ink-soft">
             {formatarNumero(item.quantidade)} {item.unidadeMedida} × {formatarMoeda(item.precoReferencia)}
-            {item.exclusivoMeEpp && ' · Exclusivo ME/EPP'}
           </p>
         </div>
-        <p className="font-body text-sm font-medium text-forest-deep">{formatarMoeda(totalReferenciaItem(item))}</p>
+        <div className="flex items-center gap-3">
+          {item.exclusivoMeEpp && (
+            <span className="whitespace-nowrap rounded-full border border-brass bg-brass-pale px-2.5 py-0.5 font-body text-[11px] font-bold uppercase tracking-wide text-brass">
+              Exclusivo ME/EPP
+            </span>
+          )}
+          <p className="font-body text-sm font-medium text-forest-deep">{formatarMoeda(totalReferenciaItem(item))}</p>
+        </div>
       </div>
       {item.descricao && (
         <div className="mt-3 border-t border-ink-soft/10 pt-3">
@@ -477,12 +491,24 @@ export function LicitacaoDetalhePage() {
               <div className="space-y-4">
                 {licitacao.grupos.map((grupo) => {
                   const itensDoGrupo = licitacao.itens.filter((i) => i.grupoId === grupo.id)
+                  const exclusivosDoGrupo = itensDoGrupo.filter((i) => i.exclusivoMeEpp).length
                   return (
-                    <div key={grupo.id} className="rounded-xl border border-ink-soft/15 p-4">
-                      <p className="mb-3 font-body text-sm font-semibold text-ink">
-                        {grupo.numero} — {grupo.nome}
-                      </p>
-                      <div className="space-y-2">
+                    <div key={grupo.id} className="overflow-hidden rounded-xl border-2 border-forest">
+                      {/* Cabeçalho verde: diferencia o grupo dos itens individuais (25/11/2026). */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-forest px-4 py-3 text-white">
+                        <p className="font-body text-sm font-bold">
+                          {grupo.numero} — {grupo.nome}
+                          <span className="ml-2 text-xs font-normal opacity-85">
+                            | {itensDoGrupo.length} {itensDoGrupo.length === 1 ? 'item' : 'itens'}
+                          </span>
+                        </p>
+                        {exclusivosDoGrupo > 0 && (
+                          <span className="whitespace-nowrap rounded-full bg-white px-2.5 py-0.5 font-body text-[11px] font-bold text-forest-deep">
+                            {exclusivosDoGrupo} {exclusivosDoGrupo === 1 ? 'exclusivo' : 'exclusivos'} ME/EPP
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-2 border-l-8 border-forest-mist bg-white p-3 pl-4">
                         {itensDoGrupo.map((item) => (
                           <ItemLeitura key={item.id} item={item} />
                         ))}
@@ -490,7 +516,7 @@ export function LicitacaoDetalhePage() {
                           <p className="font-body text-xs italic text-ink-soft">Nenhum item neste grupo.</p>
                         )}
                       </div>
-                      <p className="mt-3 text-right font-body text-sm font-medium text-forest-deep">
+                      <p className="bg-forest-mist px-4 py-2 text-right font-body text-sm font-semibold text-forest-deep">
                         Total do grupo: {formatarMoeda(totalReferenciaGrupo(licitacao.itens, grupo.id))}
                       </p>
                     </div>
