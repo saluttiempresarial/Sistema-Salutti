@@ -777,6 +777,26 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
     }));
   }
 
+  // Exclusividade ME/EPP (Microempresa e Empresa de Pequeno Porte) por grupo
+  // (regra confirmada em 26/11/2026): o grupo é TODO exclusivo ou TODO ampla
+  // concorrência. A marca continua gravada item a item (exclusivoMeEpp); aqui só
+  // se confere e se aplica a regra ao grupo inteiro. "misto" é erro e bloqueia o
+  // salvamento.
+  function situacaoGrupoMeEpp(grupoId: string): 'vazio' | 'exclusivo' | 'demais' | 'misto' {
+    const itensDoGrupo = form.itens.filter((i) => i.grupoId === grupoId);
+    if (itensDoGrupo.length === 0) return 'vazio';
+    const marcados = itensDoGrupo.filter((i) => i.exclusivoMeEpp).length;
+    if (marcados === 0) return 'demais';
+    return marcados === itensDoGrupo.length ? 'exclusivo' : 'misto';
+  }
+
+  function definirExclusividadeGrupo(grupoId: string, exclusivo: boolean) {
+    setForm((atual) => ({
+      ...atual,
+      itens: atual.itens.map((i) => (i.grupoId === grupoId ? { ...i, exclusivoMeEpp: exclusivo } : i)),
+    }));
+  }
+
   function removerGrupo(id: string) {
     const grupo = form.grupos.find((g) => g.id === id);
     const qtdItens = form.itens.filter((i) => i.grupoId === id).length;
@@ -805,7 +825,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       unidadeMedida: '',
       quantidade: 1,
       precoReferencia: 0,
-      exclusivoMeEpp: false,
+      // Item novo dentro de grupo exclusivo ME/EPP já nasce exclusivo (o grupo não pode ficar misto).
+      exclusivoMeEpp: grupoId ? situacaoGrupoMeEpp(grupoId) === 'exclusivo' : false,
     };
     setForm((atual) => ({ ...atual, itens: [...atual.itens, novoItem] }));
     focarNovo(`[data-foco-item="${novoItem.id}"]`);
@@ -1113,8 +1134,46 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
       return;
     }
 
+    // Grupo misto (itens ME/EPP e ampla concorrência juntos) não existe: ou o grupo
+    // todo é exclusivo ME/EPP, ou todo é ampla concorrência (26/11/2026).
+    const gruposMistosSalvar = form.grupos.filter((g) => situacaoGrupoMeEpp(g.id) === 'misto');
+    if (gruposMistosSalvar.length > 0) {
+      setAbaAtiva('itens');
+      setErroChecklist(
+        `Grupo misto não é permitido: o grupo é todo exclusivo ME/EPP ou todo ampla concorrência. Corrija na aba "Itens": ${gruposMistosSalvar
+          .map((g) => `Grupo ${g.numero || g.nome || ''}`.trim())
+          .join(', ')}.`
+      );
+      return;
+    }
+
+    // Cliente "Demais" não pode receber item ou grupo exclusivo ME/EPP: o sistema não
+    // deixa salvar enquanto existirem (27/11/2026, a pedido da Melissa/Márcio). O analista
+    // remove com "Excluir grupo" ou com o "✕" do item.
+    const itensMeEppSalvar = form.itens.filter((i) => i.exclusivoMeEpp);
+    if (clienteEhDemais && itensMeEppSalvar.length > 0) {
+      setAbaAtiva('itens');
+      setErroChecklist(
+        'Não é possível salvar: existem itens ou grupos exclusivos ME/EPP (Microempresa e Empresa de Pequeno Porte) e o cliente não é deste porte de empresa (é "Demais"). Remova esses itens ou grupos na aba "Itens" (use "Excluir grupo" ou o "✕" do item) ou escolha outro cliente.'
+      );
+      return;
+    }
+
     // Empresas extras marcadas (só em licitação nova); a principal nunca se repete.
     const extrasValidos = licitacaoEmEdicao || !cadastrarOutrasEmpresas ? [] : clientesAdicionaisIds.filter((id) => id !== form.clienteId);
+    if (itensMeEppSalvar.length > 0) {
+      const extrasDemaisMeEpp = extrasValidos
+        .map((id) => clientes.find((c) => c.value === id))
+        .filter((c) => c?.porte === 'demais')
+        .map((c) => c?.label);
+      if (extrasDemaisMeEpp.length > 0) {
+        setAbaAtiva('gerais');
+        setErroChecklist(
+          `Não é possível salvar: existem itens ou grupos exclusivos ME/EPP e estas empresas não são deste porte de empresa (são "Demais"): ${extrasDemaisMeEpp.join(', ')}. Desmarque-as na Vinculação ou remova os itens ou grupos ME/EPP.`
+        );
+        return;
+      }
+    }
     if (form.participacao === 'exclusiva_me_epp') {
       const extrasDemais = extrasValidos
         .map((id) => clientes.find((c) => c.value === id))
@@ -1252,6 +1311,8 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
   const urgencia = dataParaPrazo ? classificarUrgenciaPrazo(dataParaPrazo) : null;
 
   const itensIndividuais = form.itens.filter((i) => !i.grupoId);
+  const gruposExclusivosMeEpp = form.grupos.filter((g) => situacaoGrupoMeEpp(g.id) === 'exclusivo').length;
+  const itensAvulsosExclusivosMeEpp = itensIndividuais.filter((i) => i.exclusivoMeEpp).length;
   const totalOportunidade = totalReferenciaOportunidade(form.itens);
 
   return (
@@ -2451,10 +2512,29 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
               </div>
             </div>
 
+            {clienteEhDemais && (gruposExclusivosMeEpp > 0 || itensAvulsosExclusivosMeEpp > 0) && (
+              <div className="rounded-xl border border-red-400 bg-red-50 px-4 py-3 font-body text-sm text-ink">
+                <p className="font-semibold text-red-700">
+                  Não será possível salvar: existem itens ou grupos exclusivos ME/EPP (Microempresa e Empresa de Pequeno
+                  Porte) e o cliente não é deste porte de empresa (é "Demais").
+                </p>
+                <p className="mt-1">
+                  Ainda constam {gruposExclusivosMeEpp} {gruposExclusivosMeEpp === 1 ? 'grupo' : 'grupos'} e{' '}
+                  {itensAvulsosExclusivosMeEpp} {itensAvulsosExclusivosMeEpp === 1 ? 'item avulso' : 'itens avulsos'}{' '}
+                  exclusivos. Remova-os com "Excluir grupo" ou com o "✕" do item para poder salvar, ou escolha outro
+                  cliente.
+                </p>
+              </div>
+            )}
+
             {form.estrutura && form.grupos.map((grupo) => {
               const itensDoGrupo = form.itens.filter((i) => i.grupoId === grupo.id);
+              const situacaoGrupo = situacaoGrupoMeEpp(grupo.id);
               return (
-                <div key={grupo.id} className="overflow-hidden rounded-xl border-2 border-forest">
+                <div
+                  key={grupo.id}
+                  className={`overflow-hidden rounded-xl border-2 ${situacaoGrupo === 'misto' ? 'border-red-500' : 'border-forest'}`}
+                >
                   {/* Cabeçalho do grupo em faixa verde-clara e moldura verde (25/11/2026),
                       no mesmo padrão da tela do cliente — separa o grupo dos itens individuais. */}
                   <div className="flex items-center justify-between gap-3 border-b border-forest/30 bg-forest-mist px-4 py-3">
@@ -2470,7 +2550,14 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                       onChange={(e) => renomearGrupo(grupo.id, e.target.value)}
                       className="flex-1 rounded-md border border-transparent bg-transparent font-body text-sm font-semibold text-ink hover:border-ink-soft/20 focus:border-forest focus:outline-none"
                     />
-                    <div className="flex shrink-0 gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
+                      {itensDoGrupo.length > 0 && (
+                        <CheckboxField
+                          label="Grupo exclusivo ME/EPP"
+                          checked={situacaoGrupo === 'exclusivo'}
+                          onChange={(e) => definirExclusividadeGrupo(grupo.id, e.target.checked)}
+                        />
+                      )}
                       <Button variant="ghost" onClick={() => adicionarItem(grupo.id)} className="text-xs">
                         + Item no grupo
                       </Button>
@@ -2485,6 +2572,12 @@ export function LicitacaoFormModal({ isOpen, onClose, onSave, licitacaoEmEdicao,
                   </div>
 
                   <div className="border-l-8 border-forest-mist p-4 pl-3">
+                  {situacaoGrupo === 'misto' && (
+                    <p className="mb-3 font-body text-xs font-semibold text-red-700">
+                      Grupo misto não é permitido: este grupo mistura itens ME/EPP e ampla concorrência. Marque ou
+                      desmarque "Grupo exclusivo ME/EPP" para valer para o grupo inteiro.
+                    </p>
+                  )}
                   <div className="space-y-3">
                     {itensDoGrupo.map((item) => (
                       <ItemLicitacaoRow key={item.id} item={item} onChange={atualizarItem} onRemover={removerItem} clienteEhDemais={clienteEhDemais} familias={familias} erroFamilias={erroFamilias} temCliente={Boolean(form.clienteId)} onCriarFamilia={criarFamilia} numeroRepetido={itensRepetidos.has(item.id)} />
@@ -2715,8 +2808,9 @@ function ItemLicitacaoRow({
       }`}
     >
       {/* Item exclusivo para ME/EPP: faixa e selo dourados (25/11/2026), iguais aos da
-          tela do cliente. */}
-      {item.exclusivoMeEpp && (
+          tela do cliente. Dentro de grupo o selo não se repete: quem sinaliza é a caixa
+          "Grupo exclusivo ME/EPP" do cabeçalho do grupo (27/11/2026). */}
+      {item.exclusivoMeEpp && !item.grupoId && (
         <div className="mb-2 pr-8">
           <span className="inline-block whitespace-nowrap rounded-full border border-brass bg-brass-pale px-2.5 py-0.5 font-body text-[11px] font-bold uppercase tracking-wide text-brass">
             Exclusivo ME/EPP
